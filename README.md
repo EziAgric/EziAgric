@@ -6,7 +6,7 @@
 
 **Amana** is a decentralized escrow protocol designed to secure agricultural trade across different regions. By leveraging **Soroban Smart Contracts**, Amana eliminates the "Trust Gap" between buyers and sellers, ensuring fair trade even when parties are hundreds of miles apart.
 
-This is the main repository containing the smart contracts and orchestration logic. Backend, frontend, and mobile applications are maintained in separate repositories for better organization and independent deployment.
+This is the main repository containing the smart contracts and orchestration logic. Backend, frontend, and mobile applications are maintained in this monorepo for simpler development and unified deployment.
 
 ---
 
@@ -36,34 +36,38 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 
 - `frontend/` → Next.js app environment (UI + wallet + Supabase/Pinata client integration)
 - `backend/` → Node.js/TypeScript API environment (Supabase + Pinata + integration endpoints)
+- `mobile/` → React Native Expo environment (mobile wallet, notification, and trade UX)
 - `contracts/` → Rust/Soroban smart contract environment
 
 ### Frontend setup
 
-The frontend has been moved to the separate repository: `Amana-Frontend/`.
-
-1. `cd Amana-Frontend`
+1. `cd frontend`
 2. `cp .env.example .env.local`
 3. `npm install`
 4. `npm run dev`
 
 ### Backend setup
 
-The backend has been moved to the separate repository: `Amana-backend-service/`.
-
-1. `cd Amana-backend-service`
+1. `cd backend`
 2. `cp .env.example .env`
 3. `cp .env.tracing.example .env.tracing` (for distributed tracing configuration)
 4. `npm install`
 5. `npm run dev`
 
+### Mobile setup
+
+1. `cd mobile`
+2. `cp .env.example .env.local`
+3. `npm install`
+4. `npm start`
+
 ### Backend API docs
 
-- Source of truth: `Amana-backend-service/src/docs/openapi.yaml`
+- Source of truth: `backend/src/docs/openapi.yaml`
 - Dev Swagger UI: `http://localhost:4000/api/docs`
 - JSON export: `http://localhost:4000/api/docs/openapi.json`
 
-The backend writes `Amana-backend-service/src/docs/openapi.json` from the YAML spec in non-production runs so reviewers can inspect either format.
+The backend writes `backend/src/docs/openapi.json` from the YAML spec in non-production runs so reviewers can inspect either format.
 
 ### Contracts setup
 
@@ -74,8 +78,14 @@ The backend writes `Amana-backend-service/src/docs/openapi.json` from the YAML s
 
 Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
 
-- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build` in `Amana-Frontend/`
-- **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `Amana-backend-service/`
+- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
+- **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
+- **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobil
+Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
+
+- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
+- **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
+- **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobile/`
 - **Contracts Required Gate**: `cargo test` in `contracts/amana_escrow/`
 
 Path-aware execution is enabled to avoid unnecessary runtime. If a stack has no changed files, the gate reports a skip-note and passes.
