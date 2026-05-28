@@ -34,6 +34,9 @@ const envSchema = z.object({
   AUDIT_SIGNING_KEY_ID: z.string().min(1).optional(),
   AUDIT_SIGNING_PRIVATE_KEY_PEM: z.string().min(1).optional(),
   AUDIT_SIGNING_PUBLIC_KEY_PEM: z.string().min(1).optional(),
+  // Webhook configuration
+  WEBHOOK_URL: z.string().url().optional(),
+  WEBHOOK_SECRET: z.string().optional(),
 });
 
 export const env = envSchema.parse(processEnv);

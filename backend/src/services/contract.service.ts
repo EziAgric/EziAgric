@@ -17,7 +17,7 @@ let serverFactory: RpcServerFactory = (rpcUrl: string) =>
 export interface BuildCreateTradeTxInput {
   buyerAddress: string;
   sellerAddress: string;
-  amount: string;
+  amountUsdc: string;
   buyerLossBps: number;
   sellerLossBps: number;
 }
@@ -235,7 +235,7 @@ export class ContractService {
 
     const account = await getRpcAccount(this.rpcServer, input.buyerAddress);
     const contract = new StellarSdk.Contract(this.contractId);
-    const amount = this.toContractAmount(input.amount);
+    const amount = this.toContractAmount(input.amountUsdc);
 
     const transaction = new StellarSdk.TransactionBuilder(account, {
       fee: StellarSdk.BASE_FEE,

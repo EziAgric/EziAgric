@@ -26,8 +26,8 @@ export const tradeIdParamSchema = z.object({
 
 export const listTradesQuerySchema = z.object({
   status: z.nativeEnum(TradeStatus).optional(),
-  page: z.preprocess((val: unknown) => Number(val), z.number().int().min(1).default(1)),
-  limit: z.preprocess((val: unknown) => Number(val), z.number().int().min(1).max(100).default(20)),
+  page: z.preprocess((val: unknown) => val === undefined ? undefined : Number(val), z.number().int().min(1).default(1)),
+  limit: z.preprocess((val: unknown) => val === undefined ? undefined : Number(val), z.number().int().min(1).max(100).default(20)),
   sort: z.string().optional(),
 });
 

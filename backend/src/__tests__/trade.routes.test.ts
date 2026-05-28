@@ -86,7 +86,7 @@ describe("Trade Routes", () => {
     expect(ContractService.prototype.buildCreateTradeTx).toHaveBeenCalledWith({
       buyerAddress,
       sellerAddress,
-      amount: "125.1234567",
+      amountUsdc: "125.1234567",
       buyerLossBps: expect.any(Number),
       sellerLossBps: expect.any(Number),
     });

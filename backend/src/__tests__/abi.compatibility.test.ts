@@ -222,7 +222,7 @@ describe("ABI Compatibility Tests", () => {
             const input = {
                 buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                 sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-                amount: "100.5000000",
+                amountUsdc: "100.5000000",
                 buyerLossBps: 5000,
                 sellerLossBps: 5000,
             } as any;
@@ -242,7 +242,7 @@ describe("ABI Compatibility Tests", () => {
             const input = {
                 buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                 sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-                amount: "100.5000000",
+                amountUsdc: "100.5000000",
                 buyerLossBps: 5000,
                 sellerLossBps: 5000,
             } as any;
@@ -266,7 +266,7 @@ describe("ABI Compatibility Tests", () => {
             const input = {
                 buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                 sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-                amount: "100.5000000",
+                amountUsdc: "100.5000000",
                 buyerLossBps: 5000,
                 sellerLossBps: 5000,
             } as any;
@@ -288,7 +288,7 @@ describe("ABI Compatibility Tests", () => {
             const input = {
                 buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                 sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-                amount: "100.5000000",
+                amountUsdc: "100.5000000",
                 buyerLossBps: 5000,
                 sellerLossBps: 5000,
             } as any;
@@ -646,7 +646,7 @@ describe("ABI Compatibility Tests", () => {
             const input = {
                 buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                 sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-                amount: "100.5000000",
+                amountUsdc: "100.5000000",
                 buyerLossBps: 5000,
                 sellerLossBps: 5000,
             } as any;
@@ -664,7 +664,7 @@ describe("ABI Compatibility Tests", () => {
             const input = {
                 buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                 sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-                amount: "100.5000000",
+                amountUsdc: "100.5000000",
                 buyerLossBps: 5000,
                 sellerLossBps: 5000,
             } as any;

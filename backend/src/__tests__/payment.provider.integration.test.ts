@@ -130,7 +130,7 @@ describe("Payment Provider Integration – Trade lifecycle", () => {
     await expect(contractService.buildCreateTradeTx({
       buyerAddress: BUYER,
       sellerAddress: SELLER,
-      amount: "200.0000000",
+      amountUsdc: "200.0000000",
       buyerLossBps: 5000,
       sellerLossBps: 5000,
     })).rejects.toThrow("insufficient liquidity");

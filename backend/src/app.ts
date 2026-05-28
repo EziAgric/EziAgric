@@ -16,6 +16,7 @@ import { createGoalsRouter } from "./routes/goals.routes";
 import { createHealthRouter } from "./routes/health.routes";
 import { disputeRoutes } from "./routes/dispute.routes";
 import { disputeCategoryRoutes } from "./routes/disputeCategory.routes";
+import { createTreasuryRouter } from "./routes/treasury.routes";
 import userRoutes from "./routes/user.routes";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
@@ -115,6 +116,9 @@ export function createApp(): express.Application {
 
   // Dispute categories: CRUD /dispute-categories
   app.use("/dispute-categories", disputeCategoryRoutes);
+
+  // Treasury management
+  app.use("/treasury", createTreasuryRouter());
 
   // Error handler is registered last so it catches errors from all routes,
   // including any routes added to the app after createApp() returns.

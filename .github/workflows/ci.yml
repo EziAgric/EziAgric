@@ -95,6 +95,14 @@ jobs:
         if: needs.changes.outputs.frontend == 'true'
         run: npm test
 
+      - name: Upload coverage report
+        if: needs.changes.outputs.frontend == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 7
+
       - name: Skip note (no frontend changes)
         if: needs.changes.outputs.frontend != 'true'
         run: echo "No frontend file changes detected, required gate passed."
@@ -131,6 +139,14 @@ jobs:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
         run: npm test
+
+      - name: Upload coverage report
+        if: needs.changes.outputs.backend == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 7
 
       - name: Skip note (no backend changes)
         if: needs.changes.outputs.backend != 'true'

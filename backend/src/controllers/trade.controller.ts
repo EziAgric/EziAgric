@@ -104,14 +104,14 @@ export class TradeController {
         );
       }
 
-      const { tradeId, unsignedXdr } = await this.contractService.buildCreateTradeTx({
-        buyerAddress,
-        sellerAddress,
-        amount: normalizedAmountUsdc,
-        buyerLossBps: buyerLossBps as number,
-        sellerLossBps: sellerLossBps as number,
-      });
-
+      const { tradeId, unsignedXdr } =
+        await this.contractService.buildCreateTradeTx({
+          buyerAddress,
+          sellerAddress,
+          amountUsdc: normalizedAmountUsdc,
+          buyerLossBps: buyerLossBps as number,
+          sellerLossBps: sellerLossBps as number,
+        });
       await this.tradeService.createPendingTrade({
         tradeId,
         buyerAddress,
