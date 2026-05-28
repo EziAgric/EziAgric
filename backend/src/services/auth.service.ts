@@ -109,6 +109,11 @@ export class AuthService {
       if (error instanceof jwt.TokenExpiredError) {
         throw new AppError(ErrorCode.AUTH_ERROR, 'Token expired', 401);
       }
+      // NotBeforeError extends JsonWebTokenError, so this must be checked first
+      // to surface a precise "not yet valid" message instead of the generic one.
+      if (error instanceof jwt.NotBeforeError) {
+        throw new AppError(ErrorCode.AUTH_ERROR, 'Token not yet valid', 401);
+      }
       if (error instanceof jwt.JsonWebTokenError) {
         throw new AppError(ErrorCode.AUTH_ERROR, 'Invalid token', 401);
       }
