@@ -33,7 +33,7 @@ export function VaultValueCard({
         onAccept={() => { setShowDisclaimer(false); onReleaseFunds?.(); }}
         onDecline={() => setShowDisclaimer(false)}
         lossRatio={{ buyer: 5000, seller: 5000 }}
-        tradeValueUsdc={String(value)}
+        tradeValueCngn={String(value)}
       />
       <div className="flex flex-col w-76 h-[335.13px]">
         <div className="flex items-center justify-between mb-2">
