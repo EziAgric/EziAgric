@@ -1,23 +1,26 @@
 import dotenv from "dotenv";
+import cors from "cors";
 import express from "express";
 import fs from "fs";
 import path from "path";
 import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
 import { PrismaClient } from "@prisma/client";
-import { EventListenerService } from "./services/eventListener.service";
+import { createApp } from "./app";
+import { createTradeRouter } from "./routes/trade.routes";
+import userRoutes from "./routes/user.routes";
 import { walletRoutes } from "./routes/wallet.routes";
+import { EventListenerService } from "./services/eventListener.service";
 
 dotenv.config();
 
-const app = createApp();
-const port = Number(process.env.PORT || 4000);
 const prisma = new PrismaClient();
+const app = createApp(prisma);
+const port = Number(process.env.PORT || 4000);
 
 app.use(cors());
 app.use(express.json());
 app.use("/trades", createTradeRouter(prisma));
-
 app.use("/wallet", walletRoutes);
 
 const docsDir = path.join(__dirname, "docs");
@@ -47,14 +50,6 @@ if (process.env.NODE_ENV !== "production" && openapiSpec) {
 
 app.use("/users", userRoutes);
 
-app.get("/health", (_req, res) => {
-  res.status(200).json({
-    status: "ok",
-    service: "amana-backend",
-    timestamp: new Date().toISOString(),
-  });
-});
-
 const eventListenerService = new EventListenerService(prisma);
 
 app.listen(port, async () => {
@@ -68,7 +63,6 @@ app.listen(port, async () => {
   }
 });
 
-// Graceful shutdown
 const shutdown = async (signal: string) => {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
   eventListenerService.stop();

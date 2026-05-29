@@ -9,10 +9,10 @@ paths:
   /health:
     get:
       summary: Health check
-      description: Returns service status and timestamp.
+      description: Returns service status, timestamp, and database connectivity.
       responses:
         "200":
-          description: OK
+          description: Service is healthy (DB connected or not configured)
           content:
             application/json:
               schema:
@@ -20,6 +20,7 @@ paths:
                 properties:
                   status:
                     type: string
+                    enum: [ok, degraded]
                     example: ok
                   service:
                     type: string
@@ -28,25 +29,49 @@ paths:
                     type: string
                     format: date-time
                     example: "2026-03-23T12:00:00.000Z"
+                  db:
+                    type: string
+                    enum: [connected, not_configured, disconnected]
+                    example: connected
                 required:
                   - status
                   - service
                   - timestamp
+                  - db
               example:
                 status: ok
                 service: amana-backend
                 timestamp: "2026-03-23T12:00:00.000Z"
-        "500":
-          description: Server error
+                db: connected
+        "503":
+          description: Service is degraded (DB disconnected)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message:
+                  status:
                     type: string
-                    example: Internal server error
+                    enum: [ok, degraded]
+                    example: degraded
+                  service:
+                    type: string
+                    example: amana-backend
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2026-03-23T12:00:00.000Z"
+                  db:
+                    type: string
+                    enum: [connected, not_configured, disconnected]
+                    example: disconnected
                 required:
-                  - message
+                  - status
+                  - service
+                  - timestamp
+                  - db
               example:
-                message: Internal server error
+                status: degraded
+                service: amana-backend
+                timestamp: "2026-03-23T12:00:00.000Z"
+                db: disconnected
