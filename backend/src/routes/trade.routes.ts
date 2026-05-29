@@ -13,11 +13,14 @@ import {
   listTradesQuerySchema, 
   initiateDisputeSchema 
 } from "../schemas/trade.schemas";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+import { createWalletRateLimiter } from "../lib/rateLimit";
 
 export function createTradeRouter(prisma: PrismaClient = defaultPrisma) {
   const router = Router();
   const tradeService = new TradeService(prisma);
   const tradeController = new TradeController(tradeService);
+  const disputeLimiter = createWalletRateLimiter(RATE_LIMIT_CONFIG.dispute);
 
   const requireWalletFromJwt = (req: AuthRequest, res: Response): string | null => {
     const addr = req.user?.walletAddress?.trim();
@@ -61,7 +64,8 @@ export function createTradeRouter(prisma: PrismaClient = defaultPrisma) {
 
   router.post(
     "/:id/dispute", 
-    authMiddleware, 
+    authMiddleware,
+    disputeLimiter,
     idempotencyMiddleware,
     validateRequest({ params: tradeIdParamSchema, body: initiateDisputeSchema }),
     tradeController.initiateDispute
