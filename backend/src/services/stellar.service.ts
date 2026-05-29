@@ -153,7 +153,12 @@ public async getAccountBalance(publicKey: string, assetCode: string = TOKEN_CONF
       const response = await this.sorobanRpc.sendTransaction(transaction as any);
       
       // Log transaction hash for debugging
-      appLogger.info({ hash: response.hash }, "Transaction submitted");
+      appLogger.info({
+        provider: "stellar",
+        status: response.status === 'ERROR' ? "authorization_failed" : "provider_response",
+        timestamp: new Date().toISOString(),
+        hash: response.hash
+      }, "Transaction submitted");
       
       // Check response status
       if (response.status === 'ERROR') {
@@ -161,11 +166,21 @@ public async getAccountBalance(publicKey: string, assetCode: string = TOKEN_CONF
         if (response.errorResult) {
           // Contract panic - execution failure
           const errorMessage = this.parseContractError(response.errorResult);
-          appLogger.error({ errorMessage }, "Contract Panic");
+          appLogger.error({ 
+            errorMessage,
+            provider: "stellar",
+            status: "authorization_denied",
+            timestamp: new Date().toISOString()
+          }, "Contract Panic");
           throw new Error(`Contract Panic: ${errorMessage}`);
         } else {
           // RPC error - infrastructure failure
-          appLogger.error({ response }, "RPC Error");
+          appLogger.error({ 
+            response,
+            provider: "stellar",
+            status: "authorization_failed",
+            timestamp: new Date().toISOString()
+          }, "RPC Error");
           throw new Error(`RPC Error: ${response.status}`);
         }
       }

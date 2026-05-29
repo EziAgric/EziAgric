@@ -72,6 +72,14 @@ export async function handleTradeFunded(tx: Prisma.TransactionClient, event: Par
     status: EVENT_TO_STATUS[EventType.TradeFunded],
     version: 1,
   });
+  appLogger.info({
+    requestId: undefined,
+    userId: undefined,
+    paymentId: event.tradeId,
+    provider: "stellar",
+    status: "authorization_approved",
+    timestamp: new Date().toISOString()
+  }, "Payment authorization approved");
   appLogger.debug({ tradeId: event.tradeId, ledger: event.ledgerSequence }, "[EventHandler] TradeFunded");
   webhookService.dispatch(event.tradeId, TradeStatus.FUNDED, { ledger: event.ledgerSequence });
 }
