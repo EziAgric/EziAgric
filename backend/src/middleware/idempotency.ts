@@ -39,8 +39,8 @@ export const idempotencyMiddleware = async (
     return next();
   }
 
-  const cacheKey = `idempotency:${req.path}:${key}`;
-  const lockKey = `idempotency:lock:${req.path}:${key}`;
+  const cacheKey = `idempotency:${req.method}:${req.path}:${key}`;
+  const lockKey = `idempotency:lock:${req.method}:${req.path}:${key}`;
 
   try {
     const cachedResponse = await redis.get(cacheKey);
@@ -97,9 +97,8 @@ export const idempotencyMiddleware = async (
     // Intercept res.json to cache the response
     const originalJson = res.json.bind(res);
     res.json = (body: any) => {
-      // Only cache successful or specific error responses if needed
-      // For now, we cache everything to be strictly idempotent
-      if (res.statusCode < 500) {
+      // Only cache successful responses
+      if (res.statusCode >= 200 && res.statusCode < 300) {
         const responseData = {
           status: res.statusCode,
           body,

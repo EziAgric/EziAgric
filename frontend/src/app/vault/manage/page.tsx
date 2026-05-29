@@ -610,6 +610,12 @@ export default function VaultManagePage() {
                   </div>
                 </div>
 
+                {parseFloat(walletBalance?.balance ?? "0") === 0 && (
+                  <div className="rounded-lg border border-status-warning/20 bg-status-warning/10 px-4 py-3 text-sm text-status-warning flex items-center justify-between">
+                    <span>No available balance. Fund your wallet before creating a payment.</span>
+                  </div>
+                )}
+
                 {loading && trades.length === 0 ? (
                   <div className="rounded-2xl border border-border-default bg-card overflow-hidden">
                     {Array.from({ length: 4 }).map((_, i) => (
@@ -718,6 +724,7 @@ export default function VaultManagePage() {
                                 label="Deposit"
                                 variant="gold"
                                 onClick={() => openModal("deposit", trade)}
+                                disabled={parseFloat(walletBalance?.balance ?? "0") === 0}
                               />
                             )}
                             {canRelease && (

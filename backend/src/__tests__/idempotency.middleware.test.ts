@@ -120,12 +120,12 @@ describe("idempotencyMiddleware", () => {
     await Promise.resolve();
 
     expect(redisMock.set).toHaveBeenCalledWith(
-      "idempotency:/trades:idem-1",
+      "idempotency:POST:/trades:idem-1",
       expect.any(String),
       "EX",
       86400,
     );
-    expect(redisMock.del).toHaveBeenCalledWith("idempotency:lock:/trades:idem-1");
+    expect(redisMock.del).toHaveBeenCalledWith("idempotency:lock:POST:/trades:idem-1");
   });
 
   it("serves in-flight duplicate request from replay cache without duplicate side effects", async () => {
@@ -134,20 +134,20 @@ describe("idempotencyMiddleware", () => {
     let lockHeld = false;
 
     redisMock.get.mockImplementation(async (key: string) => {
-      if (key === "idempotency:/trades:idem-1") {
+      if (key === "idempotency:POST:/trades:idem-1") {
         return cachedPayload as any;
       }
       return null as any;
     });
 
     redisMock.set.mockImplementation(async (key: string, value: string, mode: string) => {
-      if (key === "idempotency:lock:/trades:idem-1" && mode === "NX") {
+      if (key === "idempotency:lock:POST:/trades:idem-1" && mode === "NX") {
         if (lockHeld) return null as any;
         lockHeld = true;
         return "OK" as any;
       }
 
-      if (key === "idempotency:/trades:idem-1") {
+      if (key === "idempotency:POST:/trades:idem-1") {
         cachedPayload = value;
         return "OK" as any;
       }
@@ -156,7 +156,7 @@ describe("idempotencyMiddleware", () => {
     });
 
     redisMock.del.mockImplementation(async (key: string) => {
-      if (key === "idempotency:lock:/trades:idem-1") {
+      if (key === "idempotency:lock:POST:/trades:idem-1") {
         lockHeld = false;
       }
       return 1 as any;

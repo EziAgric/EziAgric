@@ -129,6 +129,10 @@ jobs:
         if: needs.changes.outputs.backend == 'true'
         run: npm ci
 
+      - name: Check Env Coverage
+        if: needs.changes.outputs.backend == 'true'
+        run: npx tsx scripts/check-env-coverage.ts
+
       - name: Lint
         if: needs.changes.outputs.backend == 'true'
         run: npm run lint
