@@ -1,6 +1,7 @@
 import { Trade } from "@prisma/client";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { env } from "../config/env";
+import { withRpcMetrics } from "../lib/metrics";
 import { retryAsync } from "../lib/retry";
 import { TOKEN_CONFIG } from "../config/token";
 
@@ -75,21 +76,27 @@ async function getRpcAccount(
   server: StellarSdk.rpc.Server,
   accountId: string,
 ): Promise<StellarSdk.Account> {
-  return retryAsync(() => server.getAccount(accountId));
+  return withRpcMetrics("getAccount", () =>
+    retryAsync(() => server.getAccount(accountId)),
+  );
 }
 
 async function prepareRpcTransaction(
   server: StellarSdk.rpc.Server,
   transaction: StellarSdk.Transaction,
 ): Promise<StellarSdk.Transaction> {
-  return retryAsync(() => server.prepareTransaction(transaction));
+  return withRpcMetrics("prepareTransaction", () =>
+    retryAsync(() => server.prepareTransaction(transaction)),
+  );
 }
 
 async function simulateRpcTransaction(
   server: StellarSdk.rpc.Server,
   transaction: StellarSdk.Transaction,
 ): Promise<StellarSdk.rpc.Api.SimulateTransactionResponse> {
-  return retryAsync(() => server.simulateTransaction(transaction));
+  return withRpcMetrics("simulateTransaction", () =>
+    retryAsync(() => server.simulateTransaction(transaction)),
+  );
 }
 
 function getEscrowContractId(): string {
