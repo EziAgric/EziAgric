@@ -45,5 +45,6 @@ declare module 'lucide-react' {
   export const Video: LucideIcon;
   export const X: LucideIcon;
   export const RefreshCw: LucideIcon;
+  export const TrendingUp: LucideIcon;
   export const XCircle: LucideIcon;
 }
