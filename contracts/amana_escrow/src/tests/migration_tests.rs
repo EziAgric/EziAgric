@@ -33,7 +33,7 @@ mod migration_tests {
             .address();
         token::StellarAssetClient::new(env, &token_id).mint(&buyer, &amount);
         EscrowContractClient::new(env, &contract_id)
-            .initialize(&admin, &token_id, &treasury, &fee_bps);
+            .initialize(&admin, &token_id, &treasury, &fee_bps, &token_id);
         (contract_id, token_id, buyer, seller, treasury, admin)
     }
 
@@ -53,7 +53,7 @@ mod migration_tests {
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
         let new_treasury = Address::generate(&env);
-        client.initialize(&admin, &new_token, &new_treasury, &50_u32);
+        client.initialize(&admin, &new_token, &new_treasury, &50_u32, &new_token);
     }
 
     // -----------------------------------------------------------------------
@@ -94,7 +94,7 @@ mod migration_tests {
         let new_contract = env.register(EscrowContract, ());
         let treasury_b = Address::generate(&env);
         EscrowContractClient::new(&env, &new_contract)
-            .initialize(&admin_b, &token_b, &treasury_b, &100_u32);
+            .initialize(&admin_b, &token_b, &treasury_b, &100_u32, &token_b);
 
         // ── Old trade is unaffected by the new deployment ───────────────────
         let trade_after = old_client.get_trade(&trade_id);
@@ -164,6 +164,7 @@ mod migration_tests {
             &token_b,
             &Address::generate(&env),
             &100_u32,
+            &token_b,
         );
 
         // Resolve old dispute — must use token-A
@@ -216,6 +217,7 @@ mod migration_tests {
             &token_b,
             &Address::generate(&env),
             &100_u32,
+            &token_b,
         );
 
         // All three old trades still reference token-A

@@ -1,109 +1,204 @@
 "use client";
 
-import React from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { api, ApiError, type ReputationResponse } from "@/lib/api";
+import { RepScoreRing } from "@/components/ui/RepScoreRing";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { Button } from "@/components/ui/Button";
+import { AlertCircle, RefreshCw, TrendingUp, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 
-interface MetricCardProps {
-  title: string;
-  value: string;
-  change?: string;
-  changeType?: "positive" | "negative" | "neutral";
-}
-
-function MetricCard({ title, value, change, changeType }: MetricCardProps) {
+function SkeletonReputationPage() {
   return (
-    <div className="bg-bg-elevated rounded-lg p-6 border border-border-default">
-      <h3 className="text-sm font-medium text-text-secondary mb-2">{title}</h3>
-      <div className="text-2xl font-bold text-text-primary mb-1">{value}</div>
-      {change && (
-        <div
-          className={`text-sm ${
-            changeType === "positive"
-              ? "text-status-success"
-              : changeType === "negative"
-              ? "text-status-danger"
-              : "text-text-secondary"
-          }`}
-        >
-          {change}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface HistoryItemProps {
-  date: string;
-  event: string;
-  impact: string;
-}
-
-function HistoryItem({ date, event, impact }: HistoryItemProps) {
-  return (
-    <div className="flex items-center justify-between py-3 border-b border-border-default last:border-b-0">
-      <div>
-        <div className="text-sm font-medium text-text-primary">{event}</div>
-        <div className="text-xs text-text-secondary">{date}</div>
+    <div className="px-6 py-8 max-w-6xl mx-auto space-y-8">
+      <div className="space-y-3">
+        <Skeleton className="h-9 w-44" />
+        <Skeleton className="h-4 w-72" />
       </div>
-      <div className="text-sm text-text-primary">{impact}</div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-bg-elevated rounded-lg border border-border-default p-8 flex flex-col items-center gap-4">
+          <Skeleton className="h-32 w-32 rounded-full" />
+          <Skeleton className="h-5 w-16" />
+        </div>
+
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-bg-elevated rounded-lg border border-border-default p-6 space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-7 w-16" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-bg-elevated rounded-lg border border-border-default">
+        <div className="p-6 border-b border-border-default space-y-2">
+          <Skeleton className="h-6 w-36" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="p-6 space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-5 w-12 rounded-full" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
+}
+
+function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+
+function getImpactColor(impact: number): string {
+  if (impact > 0) return "text-status-success";
+  if (impact < 0) return "text-status-danger";
+  return "text-text-secondary";
+}
+
+function getImpactLabel(impact: number): string {
+  if (impact > 0) return `+${impact}`;
+  return `${impact}`;
+}
+
+function getEventIcon(type: string) {
+  switch (type) {
+    case "trade_completed":
+      return <CheckCircle2 className="w-4 h-4 text-status-success" />;
+    case "trade_initiated":
+      return <Clock className="w-4 h-4 text-status-info" />;
+    case "dispute_initiated":
+      return <AlertTriangle className="w-4 h-4 text-status-warning" />;
+    case "dispute_resolved":
+      return <AlertCircle className="w-4 h-4 text-status-danger" />;
+    default:
+      return <TrendingUp className="w-4 h-4 text-text-secondary" />;
+  }
 }
 
 export default function ReputationPage() {
-  // Mock data - in real implementation, this would come from API
+  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
+
+  const [data, setData] = useState<ReputationResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchReputation = useCallback(async () => {
+    if (!token) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const reputation = await api.reputation.getMyReputation(token);
+      setData(reputation);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError("Failed to load reputation data");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchReputation();
+    }
+  }, [isAuthenticated, token, fetchReputation]);
+
+  const isPageLoading = authLoading || (isAuthenticated && loading);
+
+  if (!isAuthenticated && !authLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center space-y-6">
+        <div className="w-16 h-16 rounded-full bg-bg-elevated border border-border-default flex items-center justify-center">
+          <AlertCircle className="w-8 h-8 text-gold" />
+        </div>
+        <h1 className="text-2xl font-bold text-text-primary">Connect Wallet</h1>
+        <p className="text-text-secondary max-w-md">
+          Please connect your wallet to view your trust score and trading reputation on the Amana platform.
+        </p>
+      </div>
+    );
+  }
+
+  if (isPageLoading) {
+    return <SkeletonReputationPage />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-bg-elevated border border-border-default flex items-center justify-center">
+          <AlertCircle className="w-8 h-8 text-status-danger" />
+        </div>
+        <h1 className="text-xl font-semibold text-text-primary">Failed to Load Reputation</h1>
+        <p className="text-text-secondary max-w-md">{error}</p>
+        <Button variant="primary" onClick={fetchReputation}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Try Again
+        </Button>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center space-y-6">
+        <div className="w-16 h-16 rounded-full bg-bg-elevated border border-border-default flex items-center justify-center">
+          <TrendingUp className="w-8 h-8 text-text-secondary" />
+        </div>
+        <h1 className="text-2xl font-bold text-text-primary">No Reputation Data</h1>
+        <p className="text-text-secondary max-w-md">
+          Your reputation will be calculated once you start trading on the Amana platform.
+        </p>
+      </div>
+    );
+  }
+
+  const ringScore = (data.trustScore / 100) * 5;
+
   const metrics = [
     {
-      title: "Trust Score",
-      value: "98.5%",
-      change: "+2.1%",
-      changeType: "positive" as const,
+      title: "Total Trades",
+      value: data.totalTrades.toString(),
+      icon: <TrendingUp className="w-5 h-5 text-gold" />,
     },
     {
-      title: "Total Trades",
-      value: "247",
-      change: "+12",
-      changeType: "positive" as const,
+      title: "Completed",
+      value: data.completedTrades.toString(),
+      icon: <CheckCircle2 className="w-5 h-5 text-status-success" />,
+    },
+    {
+      title: "Disputed",
+      value: data.disputedTrades.toString(),
+      icon: <AlertTriangle className="w-5 h-5 text-status-warning" />,
     },
     {
       title: "Success Rate",
-      value: "96.8%",
-      change: "+0.5%",
-      changeType: "positive" as const,
-    },
-    {
-      title: "Avg. Rating",
-      value: "4.9/5",
-      change: "No change",
-      changeType: "neutral" as const,
-    },
-  ];
-
-  const history = [
-    {
-      date: "Dec 15, 2024",
-      event: "Completed trade with high rating",
-      impact: "+0.2%",
-    },
-    {
-      date: "Dec 10, 2024",
-      event: "Successful dispute resolution",
-      impact: "+0.1%",
-    },
-    {
-      date: "Dec 5, 2024",
-      event: "New buyer verification",
-      impact: "+0.3%",
-    },
-    {
-      date: "Nov 28, 2024",
-      event: "Trade milestone reached",
-      impact: "+0.1%",
+      value: `${data.successRate}%`,
+      icon: <TrendingUp className="w-5 h-5 text-status-info" />,
     },
   ];
 
   return (
     <div className="px-6 py-8 max-w-6xl mx-auto">
-      {/* Page header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-text-primary mb-2">Reputation</h1>
         <p className="text-text-secondary">
@@ -111,14 +206,30 @@ export default function ReputationPage() {
         </p>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {metrics.map((metric, index) => (
-          <MetricCard key={index} {...metric} />
-        ))}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div className="bg-bg-elevated rounded-lg border border-border-default p-8 flex flex-col items-center gap-3">
+          <RepScoreRing score={ringScore} size="xl" animated />
+          <p className="text-sm text-text-secondary mt-2">Trust Score</p>
+          <p className="text-3xl font-bold text-text-primary">{data.trustScore}</p>
+          <p className="text-xs text-text-muted">out of 100</p>
+        </div>
+
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {metrics.map((metric) => (
+            <div
+              key={metric.title}
+              className="bg-bg-elevated rounded-lg border border-border-default p-6"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                {metric.icon}
+                <h3 className="text-sm font-medium text-text-secondary">{metric.title}</h3>
+              </div>
+              <p className="text-2xl font-bold text-text-primary">{metric.value}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Trust History */}
       <div className="bg-bg-elevated rounded-lg border border-border-default">
         <div className="p-6 border-b border-border-default">
           <h2 className="text-xl font-semibold text-text-primary">Trust History</h2>
@@ -127,15 +238,38 @@ export default function ReputationPage() {
           </p>
         </div>
         <div className="p-6">
-          <div className="space-y-0">
-            {history.map((item, index) => (
-              <HistoryItem key={index} {...item} />
-            ))}
-          </div>
+          {data.history.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+              <Clock className="w-12 h-12 text-text-muted" />
+              <p className="text-text-secondary">
+                No reputation events yet. Complete trades to build your trust history.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {data.history.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between py-3 border-b border-border-default last:border-b-0"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0">
+                      {getEventIcon(item.type)}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">{item.event}</div>
+                      <div className="text-xs text-text-secondary">{formatDate(item.timestamp)}</div>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-medium ${getImpactColor(item.impact)}`}>
+                    {getImpactLabel(item.impact)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Additional sections can be added here based on Figma design */}
     </div>
   );
 }

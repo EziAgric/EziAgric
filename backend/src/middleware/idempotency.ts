@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { redis } from "../lib/redis";
 import { appLogger } from "./logger";
+import { alertService } from "../services/alert.service";
 
 const IDEMPOTENCY_TTL = 60 * 60 * 24; // 24 hours
 const IDEMPOTENCY_LOCK_TTL = 30; // 30 seconds
@@ -114,6 +115,15 @@ export const idempotencyMiddleware = async (
     next();
   } catch (error) {
     appLogger.error({ error, key }, "Idempotency middleware error");
+    void alertService.dispatch(
+      "cache_unavailable",
+      "Idempotency cache unavailable; proceeding without idempotency protection",
+      {
+        path: req.path,
+        method: req.method,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+    );
     next(); // Proceed without idempotency if Redis fails
   }
 };

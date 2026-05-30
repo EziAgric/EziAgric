@@ -45,7 +45,7 @@ mod ttl_tests {
             token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &amount);
 
             let client = EscrowContractClient::new(&env, &contract_id);
-            client.initialize(&admin, &usdc_id, &treasury, &100_u32);
+            client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
             client.set_mediator(&mediator);
 
             Ctx { env, contract_id, buyer, seller, mediator }

@@ -122,3 +122,21 @@ export interface DisputeListResponse {
     totalPages: number;
   };
 }
+
+export interface ReputationEvent {
+  id: string;
+  event: string;
+  impact: number;
+  impactLabel: string;
+  timestamp: string;
+  type: "trade_completed" | "trade_initiated" | "dispute_initiated" | "dispute_resolved" | "dispute_involved" | "account_created";
+}
+
+export interface ReputationResponse {
+  trustScore: number;
+  totalTrades: number;
+  completedTrades: number;
+  disputedTrades: number;
+  successRate: number;
+  history: ReputationEvent[];
+}

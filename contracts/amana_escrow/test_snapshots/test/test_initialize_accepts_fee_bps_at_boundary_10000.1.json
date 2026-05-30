@@ -45,6 +45,9 @@
                 },
                 {
                   "u32": 10000
+                },
+                {
+                  "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 }
               ]
             }
@@ -172,12 +175,12 @@
                       "key": {
                         "vec": [
                           {
-                            "symbol": "SchemaVersion"
+                            "symbol": "SourceToken"
                           }
                         ]
                       },
                       "val": {
-                        "u32": 1
+                        "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                       }
                     },
                     {

@@ -94,6 +94,10 @@ export const envSchema = z.object({
   // Webhooks
   WEBHOOK_URL: z.string().url().optional(),
   WEBHOOK_SECRET: z.string().optional(),
+  // Ops alert webhook configuration
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_WEBHOOK_SECRET: z.string().optional(),
+  ALERT_COOLDOWN_MS: z.coerce.number().default(300_000),
   // Rate limiting configuration
   TRUST_PROXY: z
     .enum(['true', 'false'])

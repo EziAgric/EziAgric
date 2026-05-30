@@ -1,0 +1,76 @@
+name: Staging Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+    paths:
+      - '.github/workflows/staging.yml'
+      - 'scripts/staging-up.sh'
+      - 'scripts/staging-validate.sh'
+      - 'scripts/migrate-*.sh'
+      - 'backend/**'
+      - 'docker-compose.yml'
+      - '.env.staging.example'
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - '.github/workflows/staging.yml'
+      - 'scripts/staging-up.sh'
+      - 'scripts/staging-validate.sh'
+      - 'scripts/migrate-*.sh'
+      - 'backend/**'
+      - 'docker-compose.yml'
+      - '.env.staging.example'
+
+concurrency:
+  group: staging-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging-deploy:
+    name: Deploy & Validate Staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Create .env.staging
+        run: |
+          cp .env.staging.example .env.staging
+          cat >> .env.staging <<'EOF'
+          STAGING_POSTGRES_PASSWORD=${{ secrets.STAGING_POSTGRES_PASSWORD || 'staging-password' }}
+          STAGING_REDIS_PASSWORD=${{ secrets.STAGING_REDIS_PASSWORD || 'staging-redis-pass' }}
+          STAGING_DATABASE_URL=${{ secrets.STAGING_DATABASE_URL || 'postgresql://postgres:staging-password@localhost:5434/amana_staging' }}
+          JWT_SECRET=${{ secrets.STAGING_JWT_SECRET || 'ci-staging-jwt-secret-placeholder-minimum-32' }}
+          EOF
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Start staging stack
+        run: |
+          chmod +x ./scripts/staging-up.sh ./scripts/staging-validate.sh
+          ./scripts/staging-up.sh
+        timeout-minutes: 10
+
+      - name: Validate staging deployment
+        run: ./scripts/staging-validate.sh
+        timeout-minutes: 5
+
+      - name: Tear down staging stack
+        if: always()
+        run: docker compose --profile staging down -v --remove-orphans

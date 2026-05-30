@@ -70,6 +70,15 @@ Mutation endpoints support idempotency via the `Idempotency-Key` header.
 
 - **Request ID**: Every request is assigned a unique `X-Request-ID` header for correlation.
 - **Logging**: Structured logging using **Pino**, including error codes and request IDs.
+- **Health checks**: `GET /health` reports database, Redis cache, and indexer status. Returns `503` when unhealthy.
+- **Ops alerting**: Configure a dedicated ops webhook separate from trade lifecycle webhooks:
+  - `ALERT_WEBHOOK_URL` — destination for infrastructure alerts (optional)
+  - `ALERT_WEBHOOK_SECRET` — optional HMAC secret; sent as `X-Alert-Signature`
+  - `ALERT_COOLDOWN_MS` — per-alert-type cooldown (default 300000 ms) to prevent alert storms
+- **Alert types**:
+  - `db_connection_failure` — database health check failed
+  - `redis_connection_failure` — Redis health check or client connection error
+  - `cache_unavailable` — idempotency cache unavailable during a mutation request
 
 ## 6. Wallet Route Security and Bootstrap Parity
 

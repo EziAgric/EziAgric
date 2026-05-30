@@ -19,12 +19,17 @@ describe("Health Routes", () => {
             expect(response.body).toHaveProperty("checks");
         });
 
-        it("should include database and indexer checks", async () => {
+        it("should include database, redis, indexer, and dependency checks", async () => {
             const response = await request(app).get("/health");
 
             expect(response.body.checks).toHaveProperty("database");
+            expect(response.body.checks).toHaveProperty("redis");
             expect(response.body.checks).toHaveProperty("indexer");
+            expect(response.body.checks).toHaveProperty("stellar");
+            expect(response.body.checks).toHaveProperty("ipfs");
+            expect(response.body.checks).toHaveProperty("config");
             expect(response.body.checks.database).toHaveProperty("status");
+            expect(response.body.checks.redis).toHaveProperty("status");
             expect(response.body.checks.indexer).toHaveProperty("status");
         });
 
@@ -32,8 +37,12 @@ describe("Health Routes", () => {
             const response = await request(app).get("/health");
 
             expect(response.body.details).toHaveProperty("databaseLatency");
+            expect(response.body.details).toHaveProperty("redisLatency");
             expect(response.body.details).toHaveProperty("indexerLagSeconds");
             expect(response.body.details).toHaveProperty("lastProcessedLedger");
+            expect(response.body.details).toHaveProperty("stellarNetwork");
+            expect(response.body.details).toHaveProperty("ipfsGateway");
+            expect(response.body.details).toHaveProperty("missingEnvVars");
         });
 
         it("should return 503 when unhealthy", async () => {

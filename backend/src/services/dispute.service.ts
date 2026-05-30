@@ -8,7 +8,7 @@ import {
   assertValidTransition,
 } from "./disputeTransitions";
 
-export { COMPLETED_DISPUTE_STATUSES };
+export { COMPLETED_DISPUTE_STATUSES, DisputeStatus };
 
 export interface DisputeCleanupResult {
   purgedCount: number;
@@ -42,22 +42,22 @@ export interface DisputeListResponse {
 }
 
 const disputeInclude = {
-  trade: { select: { buyerAddress: true, sellerAddress: true, amountUsdc: true } },
+  trade: {
+    select: { buyerAddress: true, sellerAddress: true, amountUsdc: true },
+  },
 } as const;
 
-function toDisputeResponse(
-  dispute: {
-    id: number;
-    tradeId: string;
-    initiator: string;
-    reason: string;
-    status: DisputeStatus;
-    createdAt: Date;
-    updatedAt: Date;
-    resolvedAt: Date | null;
-    trade: { buyerAddress: string; sellerAddress: string; amountUsdc: string };
-  },
-): DisputeResponse {
+function toDisputeResponse(dispute: {
+  id: number;
+  tradeId: string;
+  initiator: string;
+  reason: string;
+  status: DisputeStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  resolvedAt: Date | null;
+  trade: { buyerAddress: string; sellerAddress: string; amountUsdc: string };
+}): DisputeResponse {
   return {
     id: dispute.id,
     tradeId: dispute.tradeId,
@@ -76,13 +76,17 @@ export class DisputeService {
 
   async listMediatorDisputes(
     mediatorAddress: string,
-    params: { status?: DisputeStatus; page?: number; limit?: number } = {}
+    params: { status?: DisputeStatus; page?: number; limit?: number } = {},
   ): Promise<DisputeListResponse> {
     const { status, page = 1, limit = 10 } = params;
     const offset = (page - 1) * limit;
 
     if (!getMediatorAllowlist().has(mediatorAddress)) {
-      throw new AppError(ErrorCode.AUTH_ERROR, "Unauthorized: Not a mediator", 403);
+      throw new AppError(
+        ErrorCode.AUTH_ERROR,
+        "Unauthorized: Not a mediator",
+        403,
+      );
     }
 
     const where = status ? { status } : {};
@@ -131,10 +135,14 @@ export class DisputeService {
    */
   async purgeCompletedDisputeData(
     mediatorAddress: string,
-    olderThanDays = 90
+    olderThanDays = 90,
   ): Promise<DisputeCleanupResult> {
     if (!getMediatorAllowlist().has(mediatorAddress)) {
-      throw new AppError(ErrorCode.AUTH_ERROR, "Unauthorized: Not a mediator", 403);
+      throw new AppError(
+        ErrorCode.AUTH_ERROR,
+        "Unauthorized: Not a mediator",
+        403,
+      );
     }
 
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
@@ -161,7 +169,9 @@ export class DisputeService {
 
     return {
       purgedCount: completed.length,
-      tradeIds: completed.map((d: { id: number; tradeId: string }) => d.tradeId),
+      tradeIds: completed.map(
+        (d: { id: number; tradeId: string }) => d.tradeId,
+      ),
     };
   }
 
@@ -173,10 +183,14 @@ export class DisputeService {
   async transitionDisputeStatus(
     tradeId: string,
     mediatorAddress: string,
-    newStatus: DisputeStatus
+    newStatus: DisputeStatus,
   ): Promise<DisputeResponse> {
     if (!getMediatorAllowlist().has(mediatorAddress)) {
-      throw new AppError(ErrorCode.AUTH_ERROR, "Unauthorized: Not a mediator", 403);
+      throw new AppError(
+        ErrorCode.AUTH_ERROR,
+        "Unauthorized: Not a mediator",
+        403,
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -186,12 +200,20 @@ export class DisputeService {
       });
 
       if (!dispute) {
-        throw new AppError(ErrorCode.DISPUTE_NOT_FOUND, `No dispute found for trade: ${tradeId}`, 404);
+        throw new AppError(
+          ErrorCode.DISPUTE_NOT_FOUND,
+          `No dispute found for trade: ${tradeId}`,
+          404,
+        );
       }
 
       assertValidTransition(dispute.status, newStatus);
 
-      const applied = await applyDisputeStatusTransition(tx, dispute, newStatus);
+      const applied = await applyDisputeStatusTransition(
+        tx,
+        dispute,
+        newStatus,
+      );
       assertTransitionApplied(applied, tradeId);
 
       const updated = await tx.dispute.findUniqueOrThrow({

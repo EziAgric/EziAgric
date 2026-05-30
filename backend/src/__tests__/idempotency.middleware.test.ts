@@ -9,6 +9,12 @@ jest.mock("../lib/redis", () => ({
   },
 }));
 
+jest.mock("../services/alert.service", () => ({
+  alertService: {
+    dispatch: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+
 jest.mock("../middleware/logger", () => ({
   appLogger: {
     info: jest.fn(),
@@ -17,6 +23,7 @@ jest.mock("../middleware/logger", () => ({
 }));
 
 import { redis } from "../lib/redis";
+import { alertService } from "../services/alert.service";
 import { idempotencyMiddleware } from "../middleware/idempotency";
 
 function createReq(
@@ -58,12 +65,14 @@ function createRes() {
 
 describe("idempotencyMiddleware", () => {
   const redisMock = redis as jest.Mocked<typeof redis>;
+  const alertMock = alertService as jest.Mocked<typeof alertService>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     redisMock.get.mockResolvedValue(null as any);
     redisMock.set.mockResolvedValue("OK" as any);
     redisMock.del.mockResolvedValue(1 as any);
+    alertMock.dispatch.mockResolvedValue(undefined);
   });
 
   it("bypasses when idempotency key is missing", async () => {
@@ -201,5 +210,14 @@ describe("idempotencyMiddleware", () => {
     await idempotencyMiddleware(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
+    expect(alertMock.dispatch).toHaveBeenCalledWith(
+      "cache_unavailable",
+      expect.stringContaining("Idempotency cache unavailable"),
+      expect.objectContaining({
+        path: "/trades",
+        method: "POST",
+        error: "redis down",
+      }),
+    );
   });
 });

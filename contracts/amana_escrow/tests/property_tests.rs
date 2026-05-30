@@ -60,7 +60,7 @@ impl PropEnv {
             .address();
         let contract_id = env.register(EscrowContract, ());
         EscrowContractClient::new(&env, &contract_id)
-            .initialize(&admin, &usdc_id, &treasury, &fee_bps);
+            .initialize(&admin, &usdc_id, &treasury, &fee_bps, &usdc_id);
         PropEnv { env, contract_id, usdc_id, admin, treasury }
     }
 
@@ -214,7 +214,7 @@ fn test_prop_invalid_lifecycle_transitions_seeded() {
             .address();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        client.initialize(&admin, &usdc_id, &treasury, &100u32);
+        client.initialize(&admin, &usdc_id, &treasury, &100u32, &usdc_id);
 
         let amount = rng.gen_range(1i128..=100_000);
         token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &amount);
@@ -234,7 +234,7 @@ fn test_prop_invalid_lifecycle_transitions_seeded() {
                 .address();
             let cid2 = env2.register(EscrowContract, ());
             let c2 = EscrowContractClient::new(&env2, &cid2);
-            c2.initialize(&admin2, &usdc2, &treasury2, &100u32);
+            c2.initialize(&admin2, &usdc2, &treasury2, &100u32, &usdc2);
             let amt2 = 1_000i128;
             token::StellarAssetClient::new(&env2, &usdc2).mint(&buyer2, &(amt2 * 2));
             let tid2 = c2.create_trade(&buyer2, &seller2, &amt2, &5000u32, &5000u32);

@@ -18,6 +18,7 @@ import { disputeRoutes } from "./routes/dispute.routes";
 import { disputeCategoryRoutes } from "./routes/disputeCategory.routes";
 import { createTreasuryRouter } from "./routes/treasury.routes";
 import userRoutes from "./routes/user.routes";
+import reputationRoutes from "./routes/reputation.routes";
 import { env } from "./config/env";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
@@ -100,6 +101,7 @@ export function createApp(): express.Application {
   app.use("/auth", authRoutes);
   app.use("/wallet", walletRoutes);
   app.use("/users", userRoutes);
+  app.use("/users", reputationRoutes);
 
   const tradeRouter = createTradeRouter();
   app.use("/trades", tradeRouter);
