@@ -47,6 +47,7 @@ const IMPLEMENTED_ROUTES = [
   "/health",
   "/health/live",
   "/health/ready",
+  "/health/startup",
   "/auth/challenge",
   "/auth/verify",
   "/auth/logout",
@@ -70,6 +71,9 @@ const IMPLEMENTED_ROUTES = [
   "/trades/{id}/history",
   "/trades/{id}/history/verify",
   "/goals",
+  "/treasury/balance",
+  "/treasury/withdraw",
+  "/treasury/config",
 ];
 
 describe("OpenAPI drift detection", () => {
