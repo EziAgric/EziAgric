@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { StrKey } from '@stellar/stellar-sdk';
-import jwt from 'jsonwebtoken';
 import { AuthService } from '../services/auth.service';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { AuthRequest } from '../services/auth.service';
@@ -19,18 +18,26 @@ const challengeSchema = z.object({
   }),
 });
 
+function isZodError(err: unknown): err is { errors: unknown[] } {
+  return err instanceof z.ZodError;
+}
+
+function handleAuthError(err: unknown, isVerify: boolean) {
+  if (isZodError(err)) {
+    return { status: 400, error: err.errors };
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return { status: isVerify ? 401 : 400, error: message };
+}
+
 router.post('/challenge', authLimiter, async (req, res) => {
   try {
     const { walletAddress } = challengeSchema.parse(req.body);
     const challenge = await AuthService.generateChallenge(walletAddress);
     res.json({ challenge });
   } catch (err: unknown) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: err.errors });
-    } else {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(400).json({ error: msg });
-    }
+    const { status, error } = handleAuthError(err, false);
+    res.status(status).json({ error });
   }
 });
 
@@ -47,12 +54,8 @@ router.post('/verify', authLimiter, async (req, res) => {
     const token = await AuthService.verifySignatureAndIssueJWT(walletAddress, signedChallenge);
     res.json({ token });
   } catch (err: unknown) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: err.errors });
-    } else {
-      const msg = err instanceof Error ? err.message : String(err);
-      res.status(401).json({ error: msg });
-    }
+    const { status, error } = handleAuthError(err, true);
+    res.status(status).json({ error });
   }
 });
 
@@ -64,7 +67,7 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
       await AuthService.revokeToken(jti, exp);
     }
     res.json({ message: 'Logged out successfully' });
-  } catch (_err: unknown) {
+  } catch (_err: unknown) { // eslint-disable-line @typescript-eslint/no-unused-vars
     res.status(500).json({ error: 'Logout failed' });
   }
 });

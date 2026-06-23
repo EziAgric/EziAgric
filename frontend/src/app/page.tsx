@@ -5,7 +5,7 @@ import {
   ShieldCheck,
   Truck,
   Lock,
-  FileCheck,
+  CheckCircle2,
   Star,
 } from "lucide-react";
 import Link from "next/link";
@@ -36,11 +36,11 @@ const steps = [
     icon: Truck,
   },
   {
-    step: "03",
-    title: "Verify & settle",
+    step: "04",
+    title: "Verify & complete",
     description:
-      "On confirmed delivery, escrow releases automatically. If a dispute arises, a mediator reviews evidence and issues a binding ruling.",
-    icon: FileCheck,
+      "Seller delivers goods. Buyer confirms receipt on-chain. Funds release instantly from escrow to seller.",
+    icon: CheckCircle2,
   },
 ];
 

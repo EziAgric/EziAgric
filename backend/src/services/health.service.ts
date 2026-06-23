@@ -387,4 +387,34 @@ export class HealthService {
       },
     };
   }
+
+  /**
+   * Perform startup readiness check
+   * Checks critical dependencies needed for the application to start
+   */
+  async performStartupCheck(): Promise<{
+    status: "ready" | "not_ready";
+    timestamp: string;
+    checks: Record<string, HealthIndicatorResult>;
+  }> {
+    const timestamp = new Date().toISOString();
+
+    const [databaseCheck, redisCheck, configCheck] = await Promise.all([
+      this.checkDatabase(),
+      this.checkRedis(),
+      this.checkConfig(),
+    ]);
+
+    const checks = {
+      database: databaseCheck,
+      redis: redisCheck,
+      config: configCheck,
+    };
+
+    const status = databaseCheck.status === "up" && redisCheck.status === "up" && configCheck.status === "up"
+      ? "ready"
+      : "not_ready";
+
+    return { status, timestamp, checks };
+  }
 }

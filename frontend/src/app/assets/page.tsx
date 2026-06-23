@@ -523,9 +523,6 @@ export default function AssetsPage() {
     if (isAuthenticated && token) void fetchData();
   }, [isAuthenticated, token, fetchData]);
 
-  // Reset to page 1 when filters change
-  useEffect(() => { setPage(1); }, [search, statusFilter]);
-
   // Filter trades client-side
   const filteredTrades = useMemo(() => {
     let result = allTrades;
@@ -661,6 +658,7 @@ export default function AssetsPage() {
 
             {/* Asset table */}
             <AssetTable
+              key={`${search}-${statusFilter}`}
               trades={pagedTrades}
               loading={loading && allTrades.length === 0}
               page={page}

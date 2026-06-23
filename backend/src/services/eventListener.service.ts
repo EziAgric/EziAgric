@@ -287,7 +287,7 @@ export class EventListenerService {
           eventId: event.eventId,
           eventType: event.eventType,
           tradeId: event.tradeId,
-          payload: event.data,
+          payload: event.data as Prisma.JsonObject,
           status: "PENDING",
         },
         select: {
