@@ -9,6 +9,9 @@ import { requestIdMiddleware } from "./middleware/requestId";
 import { authRoutes } from "./routes/auth.routes";
 import { walletRoutes } from "./routes/wallet.routes";
 import { createTradeRouter } from "./routes/trade.routes";
+import { createTradeTemplateRouter } from "./routes/trade.template.routes";
+import { createTradeWatchlistRouter } from "./routes/trade.watchlist.routes";
+import { createTradeEvidenceRouter } from "./routes/trade.evidence.routes";
 import { createManifestRouter } from "./routes/manifest.routes";
 import { createEvidenceRouter } from "./routes/evidence.routes";
 import { createAuditTrailRouter } from "./routes/auditTrail.routes";
@@ -105,8 +108,11 @@ export function createApp(): express.Application {
   app.use("/users", userRoutes);
   app.use("/users", reputationRoutes);
 
-  const tradeRouter = createTradeRouter();
-  app.use("/trades", tradeRouter);
+  // These literal routes must precede the generic /trades/:id handler.
+  app.use("/trades", createTradeTemplateRouter());
+  app.use("/trades", createTradeWatchlistRouter());
+  app.use("/trades", createTradeEvidenceRouter());
+  app.use("/trades", createTradeRouter());
 
   // Manifest: POST /trades/:id/manifest
   app.use("/trades/:id/manifest", createManifestRouter());
@@ -171,4 +177,3 @@ export function createApp(): express.Application {
 
   return app;
 }
-

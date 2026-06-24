@@ -1,4 +1,5 @@
 import { Readable } from "stream";
+import crypto from "crypto";
 import { getPinataClient } from "../config/ipfs";
 import { retryAsync } from "../lib/retry";
 import { appLogger } from "../middleware/logger";
@@ -139,5 +140,26 @@ export class IPFSService {
     getFileUrl(cid: string): string {
         const gateway = process.env.IPFS_GATEWAY_URL ?? env.IPFS_GATEWAY_URL;
         return `${gateway.replace(/\/$/, "")}/${cid}`;
+    }
+
+    /**
+     * Creates a short-lived URL for a signature-aware IPFS gateway. Configure
+     * the gateway with the same signing secret; public gateway URLs remain
+     * compatible but do not themselves enforce this signature.
+     */
+    getSignedFileUrl(cid: string, ttlSeconds = env.IPFS_URL_TTL_SECONDS): { url: string; expiresAt: Date } {
+        const safeTtl = Math.min(3600, Math.max(1, ttlSeconds));
+        const expiresAt = new Date(Date.now() + safeTtl * 1000);
+        const expires = Math.floor(expiresAt.getTime() / 1000);
+        const secret = process.env.IPFS_URL_SIGNING_SECRET ?? env.IPFS_URL_SIGNING_SECRET ??
+            process.env.JWT_SECRET ?? env.JWT_SECRET;
+        const signature = crypto
+            .createHmac("sha256", secret)
+            .update(`${cid}:${expires}`)
+            .digest("base64url");
+        const url = new URL(this.getFileUrl(cid));
+        url.searchParams.set("expires", String(expires));
+        url.searchParams.set("signature", signature);
+        return { url: url.toString(), expiresAt };
     }
 }

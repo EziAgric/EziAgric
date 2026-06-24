@@ -9,6 +9,7 @@ jest.mock('ioredis', () => {
     set: jest.fn(),
     del: jest.fn(),
     exists: jest.fn(),
+    on: jest.fn(),
   };
   const ctor = jest.fn().mockImplementation(() => m);
   (ctor as any)._instance = m;
@@ -257,7 +258,9 @@ describe('AuthService', () => {
         sub: realWallet.toLowerCase(), 
         walletAddress: realWallet.toLowerCase(), 
         jti: oldJti,
-        exp: Math.floor(Date.now() / 1000) + 3600
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iss: 'amana',
+        aud: 'amana-api',
       };
       const oldToken = jwt.sign(payload, 'test-secret');
       
@@ -273,12 +276,14 @@ describe('AuthService', () => {
 
     it('should allow refresh of recently expired token', async () => {
       const oldJti = 'expired-jti';
-      const exp = Math.floor(Date.now() / 1000) - 3600;
+      const exp = Math.floor(Date.now() / 1000) - 60;
       const payload = { 
         sub: realWallet.toLowerCase(), 
         walletAddress: realWallet.toLowerCase(), 
         jti: oldJti,
-        exp: exp
+        exp: exp,
+        iss: 'amana',
+        aud: 'amana-api',
       };
       const oldToken = jwt.sign(payload, 'test-secret');
       
@@ -296,7 +301,9 @@ describe('AuthService', () => {
         sub: realWallet.toLowerCase(), 
         walletAddress: realWallet.toLowerCase(), 
         jti: oldJti,
-        exp: exp
+        exp: exp,
+        iss: 'amana',
+        aud: 'amana-api',
       };
       const oldToken = jwt.sign(payload, 'test-secret');
       
@@ -310,7 +317,7 @@ describe('AuthService', () => {
     });
 
     it('should throw auth error if token is revoked', async () => {
-      const payload = { jti: 'revoked-jti', sub: 'user', walletAddress: 'addr' };
+      const payload = { jti: 'revoked-jti', sub: 'user', walletAddress: 'addr', iss: 'amana', aud: 'amana-api' };
       const token = jwt.sign(payload, 'test-secret');
       const redisMock = getRedisMock();
       redisMock.exists.mockResolvedValue(1);
@@ -325,6 +332,8 @@ describe('AuthService', () => {
         {
           sub: realWallet.toLowerCase(),
           exp: Math.floor(Date.now() / 1000) + 3600,
+          iss: 'amana',
+          aud: 'amana-api',
         },
         'test-secret'
       );
@@ -336,6 +345,46 @@ describe('AuthService', () => {
         statusCode: 401
       });
       expect(redisMock.exists).not.toHaveBeenCalled();
+    });
+
+    it('rejects refresh tokens minted for another issuer or audience', async () => {
+      const token = jwt.sign(
+        {
+          sub: realWallet.toLowerCase(),
+          walletAddress: realWallet.toLowerCase(),
+          jti: 'wrong-issuer-jti',
+          iss: 'other-issuer',
+          aud: 'other-audience',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        },
+        'test-secret',
+      );
+
+      await expect(AuthService.refreshToken(token)).rejects.toMatchObject({
+        code: ErrorCode.AUTH_ERROR,
+        statusCode: 401,
+      });
+    });
+
+    it('rejects a recently expiring token issued beyond the maximum refresh age', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const token = jwt.sign(
+        {
+          sub: realWallet.toLowerCase(),
+          walletAddress: realWallet.toLowerCase(),
+          jti: 'stale-issued-jti',
+          iss: 'amana',
+          aud: 'amana-api',
+          iat: now - (8 * 24 * 3600),
+          exp: now + 60,
+        },
+        'test-secret',
+      );
+
+      await expect(AuthService.refreshToken(token)).rejects.toMatchObject({
+        code: ErrorCode.AUTH_ERROR,
+        message: expect.stringMatching(/too old/),
+      });
     });
   });
 

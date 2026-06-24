@@ -35,7 +35,8 @@ export type TradeListFilters = {
   sort?: string;
 };
 
-type TradeDatabase = Pick<PrismaClient, "trade" | "dispute" | "disputeCategory">;
+type TradeDatabase = Pick<PrismaClient, "trade" | "dispute" | "disputeCategory"> &
+  Partial<Pick<PrismaClient, "userWatchlist">>;
 
 export class TradeAccessDeniedError extends Error {
   constructor() {
@@ -100,6 +101,51 @@ export class TradeService {
       OR: [{ buyerAddress: address }, { sellerAddress: address }],
       ...(filters.status ? { status: filters.status } : {}),
     };
+
+    const watchlist = this.prisma.userWatchlist;
+    if (watchlist) {
+      // Prisma cannot order a relation by whether it belongs to *this* caller.
+      // Fetch the caller's indexed bookmarks first, then query only the
+      // remaining trades for the rest of the page. This keeps watched trades at
+      // the top without incorrectly promoting trades watched by other users.
+      const [entries, total] = await Promise.all([
+        watchlist.findMany({
+          where: { userAddress: address.toLowerCase() },
+          include: { trade: true },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        }),
+        this.prisma.trade.count({ where }),
+      ]);
+      const watched = entries
+        .map((entry) => entry.trade)
+        .filter((trade) =>
+          !filters.status || trade.status === filters.status,
+        );
+      const watchedIds = watched.map((trade) => trade.tradeId);
+      const watchedPage = watched.slice(skip, skip + limit);
+      const remainingSlots = limit - watchedPage.length;
+      const remainingSkip = Math.max(0, skip - watched.length);
+      const unwatchlisted = remainingSlots > 0
+        ? await this.prisma.trade.findMany({
+          where: watchedIds.length > 0
+            ? { AND: [where, { NOT: { tradeId: { in: watchedIds } } }] }
+            : where,
+          orderBy,
+          skip: remainingSkip,
+          take: remainingSlots,
+        })
+        : [];
+
+      return {
+        items: [...watchedPage, ...unwatchlisted],
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        },
+      };
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.trade.findMany({

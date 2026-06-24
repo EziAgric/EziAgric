@@ -10,6 +10,11 @@ import { redis } from '../lib/redis';
 const CHALLENGE_PREFIX = 'challenge:';
 const REVOKED_PREFIX = 'revoked_jti:';
 const CHALLENGE_TTL = 300; // 5 min
+// A refresh token can be expired briefly, but it must still be a recently
+// issued access token. Keeping these limits here makes the exceptional refresh
+// path deliberately narrower than normal JWT validation.
+const REFRESH_EXPIRY_GRACE_SECONDS = 15 * 60;
+const REFRESH_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 export interface JWTPayload {
   sub: string;
@@ -130,18 +135,30 @@ export class AuthService {
     try {
       const decoded = jwt.verify(oldToken, secret, {
         algorithms: ['HS256'],
-        ignoreExpiration: true, // Allow refresh of expired tokens
+        issuer: process.env.JWT_ISSUER ?? env.JWT_ISSUER,
+        audience: process.env.JWT_AUDIENCE ?? env.JWT_AUDIENCE,
+        ignoreExpiration: true, // Expiration is checked explicitly against a short grace period below.
       }) as JWTPayload;
 
-      if (!decoded.jti || !decoded.walletAddress) {
+      if (
+        !decoded.jti ||
+        !decoded.walletAddress ||
+        typeof decoded.iat !== 'number' ||
+        !Number.isFinite(decoded.iat) ||
+        typeof decoded.exp !== 'number' ||
+        !Number.isFinite(decoded.exp)
+      ) {
         throw new AppError(ErrorCode.AUTH_ERROR, 'Token refresh failed: invalid token claims', 401);
       }
 
-      // But only within a grace period (e.g., 7 days)
+      // A refreshed token must be both recently expired and recently issued.
+      // This prevents a valid but arbitrarily old signed token from being used
+      // as a renewable credential forever.
       const now = Math.floor(Date.now() / 1000);
-      const gracePeriod = 7 * 24 * 60 * 60;
-      
-      if (decoded.exp && now > decoded.exp + gracePeriod) {
+      if (now > decoded.exp + REFRESH_EXPIRY_GRACE_SECONDS) {
+        throw new AppError(ErrorCode.AUTH_ERROR, 'Token too old to refresh', 401);
+      }
+      if (decoded.iat > now + 60 || now - decoded.iat > REFRESH_MAX_AGE_SECONDS) {
         throw new AppError(ErrorCode.AUTH_ERROR, 'Token too old to refresh', 401);
       }
 
@@ -149,10 +166,13 @@ export class AuthService {
         throw new AppError(ErrorCode.AUTH_ERROR, 'Token revoked', 401);
       }
 
-      // Revoke the old token after successful refresh
-      if (decoded.exp && decoded.jti) {
-         await this.revokeToken(decoded.jti, decoded.exp);
-      }
+      // Keep the deny-list entry through the refresh grace window as well. An
+      // already-expired token otherwise has no remaining normal TTL and could
+      // be replayed repeatedly until its grace period ends.
+      await this.revokeToken(
+        decoded.jti,
+        Math.max(decoded.exp, now) + REFRESH_EXPIRY_GRACE_SECONDS,
+      );
 
       return this.issueToken(decoded.walletAddress);
     } catch (error: unknown) {
@@ -211,4 +231,3 @@ export class AuthService {
     return jwt.sign(payload, secret, { algorithm: 'HS256' });
   }
 }
-

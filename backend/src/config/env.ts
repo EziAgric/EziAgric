@@ -61,6 +61,10 @@ export const envSchema = z.object({
   IPFS_PINATA_CIRCUIT_COOLDOWN_MS: z.coerce.number().default(30000),
   IPFS_GATEWAY_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().default(3),
   IPFS_GATEWAY_CIRCUIT_COOLDOWN_MS: z.coerce.number().default(30000),
+  // Used by a signature-aware private gateway when issuing evidence downloads.
+  // In development it falls back to JWT_SECRET so URLs are still testable.
+  IPFS_URL_SIGNING_SECRET: z.string().min(32).optional(),
+  IPFS_URL_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(300),
 
   // Evidence / manifest retention
   EVIDENCE_MAX_BYTES: z.coerce.number().default(52428800),
