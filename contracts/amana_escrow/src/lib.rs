@@ -27,6 +27,10 @@ pub const MAX_HASH_LEN: u32 = 256;
 /// `get_schema_version()` and run the matching migration. See SECURITY.md.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
+/// Maximum allowed trade amount in stroops (1 quadrillion stroops ≈ 1 billion USDC).
+/// Prevents overflow in fee/loss calculations and limits exposure per trade.
+pub const MAX_TRADE_VALUE: i128 = 1_000_000_000_000_000;
+
 fn checked_fee_amount(amount: i128, fee_bps: u32) -> i128 {
     amount
         .checked_mul(fee_bps as i128)
@@ -564,6 +568,10 @@ impl EscrowContract {
     ) -> u64 {
         buyer.require_auth();
         assert!(amount > 0, "amount must be greater than zero");
+        assert!(
+            amount <= MAX_TRADE_VALUE,
+            "TradeValueTooLarge"
+        );
         assert!(
             buyer != seller,
             "buyer and seller must be different addresses"
