@@ -10,11 +10,9 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { appLogger } from "./middleware/logger";
 import { initializeTracing } from "./config/tracing";
-
-void env;
 import { HealthService } from "./services/health.service";
 
-env; // Validate early
+void env;
 
 // Initialize distributed tracing before any other imports
 initializeTracing();
