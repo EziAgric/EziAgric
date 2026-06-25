@@ -64,6 +64,7 @@ model User {
   watchlist       UserWatchlist[]
   refreshTokens   RefreshToken[]
   webhooks        Webhook[]
+  notifications   InAppNotification[]
 
   @@index([walletAddress])
 }
@@ -373,4 +374,25 @@ model WebhookDeliveryAttempt {
   webhook      Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
 
   @@index([webhookId, timestamp])
+}
+
+/// InAppNotification represents an in-app notification for a user
+/// - type: Category of notification (e.g. "trade_update", "dispute", "system")
+/// - isRead: Whether the notification has been read
+/// - metadata: Optional JSON payload with additional context
+model InAppNotification {
+  id          Int      @id @default(autoincrement())
+  userAddress String   @db.VarChar(255)
+  title       String   @db.VarChar(255)
+  message     String   @db.Text
+  type        String   @db.VarChar(50)
+  isRead      Boolean  @default(false)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userAddress], references: [walletAddress], onDelete: Cascade)
+
+  @@index([userAddress, isRead, createdAt])
 }
