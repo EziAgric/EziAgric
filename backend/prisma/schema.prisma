@@ -64,6 +64,7 @@ model User {
   watchlist       UserWatchlist[]
   refreshTokens   RefreshToken[]
   webhookSubscriptions WebhookSubscription[]
+  wallets         UserWallet[]
 
   @@index([walletAddress])
 }
@@ -326,6 +327,7 @@ model Goal {
 model RefreshToken {
   id        Int      @id @default(autoincrement())
   tokenHash String   @unique @db.VarChar(255)
+  jti       String   @unique @db.VarChar(255)
   userId    Int
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -334,6 +336,22 @@ model RefreshToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tokenHash])
+  @@index([jti])
+}
+
+model UserWallet {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  walletAddress String   @db.VarChar(255)
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, walletAddress])
+  @@index([userId])
+  @@index([walletAddress])
 }
 
 /// WebhookSubscription model for storing user webhook configurations
@@ -346,6 +364,7 @@ model WebhookSubscription {
   id          Int      @id @default(autoincrement())
   url         String   @db.VarChar(500)
   events      String[]
+  secret      String   @db.VarChar(255)
   secretHash  String   @db.VarChar(64)
   isActive    Boolean  @default(true)
   userId      Int

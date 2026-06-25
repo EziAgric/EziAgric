@@ -102,6 +102,10 @@ export const envSchema = z.object({
   ALERT_WEBHOOK_URL: z.string().url().optional(),
   ALERT_WEBHOOK_SECRET: z.string().optional(),
   ALERT_COOLDOWN_MS: z.coerce.number().default(300_000),
+  WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  WEBHOOK_RETRY_BASE_MS: z.coerce.number().int().positive().default(1000),
+  WEBHOOK_RETRY_MAX_MS: z.coerce.number().int().positive().default(30000),
+  ADMIN_STATS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
   // Rate limiting configuration
   TRUST_PROXY: z
     .enum(['true', 'false'])
