@@ -63,7 +63,7 @@ model User {
   tradeTemplates  TradeTemplate[]
   watchlist       UserWatchlist[]
   refreshTokens   RefreshToken[]
-  webhookSubscriptions WebhookSubscription[]
+  webhooks        Webhook[]
 
   @@index([walletAddress])
 }
@@ -336,25 +336,41 @@ model RefreshToken {
   @@index([tokenHash])
 }
 
-/// WebhookSubscription model for storing user webhook configurations
-/// - url: The webhook endpoint URL
-/// - events: Array of event types to subscribe to (e.g., ["trade.created", "trade.completed"])
-/// - secretHash: Hashed secret for webhook signature verification (SHA-256)
-/// - isActive: Whether the webhook is active
-/// - userId: Reference to the user who owns this webhook
-model WebhookSubscription {
+/// Webhook model representing a registered webhook endpoint owned by a user
+/// - url: The target URL to which webhook payloads are delivered
+/// - description: Optional human-readable label
+/// - isActive: Whether the webhook is currently accepting deliveries
+model Webhook {
   id          Int      @id @default(autoincrement())
-  url         String   @db.VarChar(500)
-  events      String[]
-  secretHash  String   @db.VarChar(64)
+  userAddress String   @db.VarChar(255)
+  url         String   @db.VarChar(2048)
+  description String?  @db.VarChar(255)
   isActive    Boolean  @default(true)
-  userId      Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User                    @relation(fields: [userAddress], references: [walletAddress], onDelete: Cascade)
+  deliveryAttempts WebhookDeliveryAttempt[]
 
-  @@index([userId])
-  @@index([isActive])
+  @@index([userAddress, createdAt])
+}
+
+/// WebhookDeliveryAttempt records a single delivery attempt for a webhook
+/// - timestamp: When the delivery was attempted
+/// - status: Outcome of the delivery (e.g. "success", "failure")
+/// - statusCode: HTTP status code returned by the target
+/// - responseBody: Response body from the target (if any)
+model WebhookDeliveryAttempt {
+  id           Int      @id @default(autoincrement())
+  webhookId    Int
+  timestamp    DateTime @default(now())
+  status       String   @db.VarChar(50)
+  statusCode   Int
+  responseBody String?  @db.Text
+
+  // Relations
+  webhook      Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, timestamp])
 }
