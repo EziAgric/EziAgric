@@ -457,6 +457,7 @@ model EscrowReleaseMilestone {
   milestoneIndex Int
   amountUsdc     String    @db.VarChar(100)
   dueAt          DateTime
+  conditionHash  String?   @db.VarChar(255)
   releasedAt     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

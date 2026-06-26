@@ -14,6 +14,7 @@ import { createTradeWatchlistRouter } from "./routes/trade.watchlist.routes";
 import { createTradeEvidenceRouter } from "./routes/trade.evidence.routes";
 import { createTradeExportRouter } from "./routes/trade.export.routes";
 import { createEscrowReleaseRouter } from "./routes/escrow.release.routes";
+import { createEscrowScheduleRouter } from "./routes/escrow.schedule.routes";
 import { createTradeManifestRouter } from "./routes/trade.manifest.routes";
 import { createManifestRouter } from "./routes/manifest.routes";
 import { createEvidenceRouter } from "./routes/evidence.routes";
@@ -125,6 +126,7 @@ export function createApp(): express.Application {
   app.use("/trades", createTradeWatchlistRouter());
   app.use("/trades", createTradeEvidenceRouter());
   app.use("/trades", createEscrowReleaseRouter());
+  app.use("/trades", createEscrowScheduleRouter());
   app.use("/trades", createTradeRouter());
 
   // Manifest: POST /trades/:id/manifest
