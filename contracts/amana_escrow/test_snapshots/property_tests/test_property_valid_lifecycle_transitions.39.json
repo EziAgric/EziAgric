@@ -45,6 +45,9 @@
                 },
                 {
                   "u32": 7842
+                },
+                {
+                  "address": "CACMVW2KK4H5FZDFF2AUCAKQTEJMZZWJUIZF23XMRVYQBSXYLHZ6BKWN"
                 }
               ]
             }
@@ -66,7 +69,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "i128": "90256"
+                  "i128": "42654"
                 }
               ]
             }
@@ -105,7 +108,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                     },
                     {
-                      "i128": "90256"
+                      "i128": "42654"
                     }
                   ]
                 }
@@ -176,7 +179,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
                 },
                 {
-                  "u32": 6618
+                  "u32": 5006
                 }
               ]
             }
@@ -346,7 +349,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "90256"
+                      "i128": "42654"
                     }
                   },
                   {
@@ -362,7 +365,7 @@
                       "symbol": "buyer_loss_bps"
                     },
                     "val": {
-                      "u32": 2319
+                      "u32": 1
                     }
                   },
                   {
@@ -400,7 +403,7 @@
                       "symbol": "seller_loss_bps"
                     },
                     "val": {
-                      "u32": 7681
+                      "u32": 9999
                     }
                   },
                   {
@@ -486,6 +489,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "CngnContract"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "address": "CACMVW2KK4H5FZDFF2AUCAKQTEJMZZWJUIZF23XMRVYQBSXYLHZ6BKWN"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "FeeBps"
                           }
                         ]
@@ -522,24 +537,24 @@
                       "key": {
                         "vec": [
                           {
-                            "symbol": "Treasury"
+                            "symbol": "SourceToken"
                           }
                         ]
                       },
                       "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                        "address": "CACMVW2KK4H5FZDFF2AUCAKQTEJMZZWJUIZF23XMRVYQBSXYLHZ6BKWN"
                       }
                     },
                     {
                       "key": {
                         "vec": [
                           {
-                            "symbol": "UsdcContract"
+                            "symbol": "Treasury"
                           }
                         ]
                       },
                       "val": {
-                        "address": "CACMVW2KK4H5FZDFF2AUCAKQTEJMZZWJUIZF23XMRVYQBSXYLHZ6BKWN"
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                       }
                     }
                   ]
@@ -748,7 +763,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "23445"
+                      "i128": "21299"
                     }
                   },
                   {
@@ -800,7 +815,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "14418"
+                      "i128": "4609"
                     }
                   },
                   {
@@ -852,7 +867,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "52393"
+                      "i128": "16746"
                     }
                   },
                   {

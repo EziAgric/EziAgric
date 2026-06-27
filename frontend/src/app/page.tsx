@@ -1,390 +1,260 @@
 import {
   ArrowRight,
   CircleDollarSign,
-  FileCheck2,
   Scale,
   ShieldCheck,
+  Truck,
+  Lock,
+  CheckCircle2,
+  Star,
 } from "lucide-react";
 import Link from "next/link";
+import { LandingCtaButtons } from "@/components/landing/LandingCtaButtons";
 
-const metrics = [
-  { label: "Escrow status", value: "Active", tone: "text-emerald" },
-  { label: "Settlement rail", value: "Stellar", tone: "text-status-info" },
-  { label: "Evidence store", value: "IPFS", tone: "text-gold" },
+// ─── Data ────────────────────────────────────────────────────────────────────
+
+const stats = [
+  { label: "Trades settled", value: "2,400+" },
+  { label: "Total escrow value", value: "$1.2M" },
+  { label: "Dispute resolution rate", value: "98%" },
+  { label: "Network", value: "Stellar" },
 ];
 
-const workflows = [
+const steps = [
   {
+    step: "01",
     title: "Create a trade",
-    description: "Define parties, escrow amount, and loss-sharing terms before funds move.",
-    href: "/trades/create",
+    description:
+      "Define counterparties, commodity, amount, and settlement terms. Funds are locked in escrow on the Stellar network before any goods move.",
     icon: CircleDollarSign,
   },
   {
-    title: "Track vault activity",
-    description: "Review locked funds, release sequence, manifest records, and audit events.",
-    href: "/vault",
-    icon: ShieldCheck,
+    step: "02",
+    title: "Track delivery",
+    description:
+      "Driver manifests, GPS checkpoints, and video evidence are attached on-chain as the shipment moves from farm to buyer.",
+    icon: Truck,
   },
   {
-    title: "Resolve disputes",
-    description: "Use signed evidence and mediator rulings when delivery does not match terms.",
-    href: "/trades",
-    icon: Scale,
+    step: "04",
+    title: "Verify & complete",
+    description:
+      "Seller delivers goods. Buyer confirms receipt on-chain. Funds release instantly from escrow to seller.",
+    icon: CheckCircle2,
   },
 ];
 
-const proofSteps = [
-  "Buyer and seller agree escrow terms",
-  "Funds lock before fulfillment starts",
-  "Manifest and evidence stay reviewable",
-  "Release or dispute resolution closes the trade",
+const features = [
+  {
+    icon: Lock,
+    title: "Non-custodial escrow",
+    description:
+      "Funds are held in a Soroban smart contract — no intermediary can move them without both parties' agreement or a mediator ruling.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Evidence-backed disputes",
+    description:
+      "Every dispute is anchored to verifiable on-chain evidence: manifests, video proof, and signed delivery confirmations.",
+  },
+  {
+    icon: Star,
+    title: "Reputation scoring",
+    description:
+      "Each completed trade builds a trust score for buyers, sellers, and drivers — making future trades faster and lower-risk.",
+  },
+  {
+    icon: Scale,
+    title: "Impartial mediation",
+    description:
+      "Certified mediators review evidence and issue rulings with full audit trails, ensuring fair outcomes for all parties.",
+  },
 ];
 
+// ─── Page ────────────────────────────────────────────────────────────────────
+
+/*
+ * Typography hierarchy (Figma token scale):
+ *   h1  → text-4xl / md:text-5xl   (hero heading)
+ *   h2  → text-2xl / md:text-3xl   (section heading)
+ *   h3  → text-xl                  (card heading)
+ *   p   → text-base / text-lg      (body)
+ *   small metadata → text-sm with text-text-secondary / text-text-muted
+ */
 export default function Home() {
   return (
-    <main className="min-h-screen bg-bg-primary text-text-primary">
-      <section className="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 gap-10 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_480px] lg:items-center lg:px-10">
-        <div className="flex flex-col justify-center">
-          <div className="mb-8 flex items-center gap-3 text-sm text-text-secondary">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald" />
-            Live escrow workspace
-          </div>
+    <div className="min-h-screen bg-bg-primary text-text-primary">
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden bg-gradient-hero px-6 py-20 md:py-32 lg:px-10">
+        {/* Subtle radial glow behind the headline */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
+          <div className="h-[480px] w-[480px] rounded-full bg-gold opacity-[0.04] blur-3xl" />
+        </div>
 
-          <h1 className="max-w-4xl text-5xl font-semibold leading-tight text-text-primary md:text-display">
-            Amana
+        <div className="relative mx-auto max-w-4xl text-center">
+          {/* Eyebrow */}
+          <span className="inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold-muted px-4 py-1.5 text-sm font-medium text-gold">
+            Built on Stellar · Soroban smart contracts
+          </span>
+
+          {/* Headline */}
+          <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight text-text-primary md:text-5xl">
+            Agricultural trade you can{" "}
+            <span className="bg-gradient-gold-cta bg-clip-text text-transparent">
+              trust
+            </span>
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-text-secondary">
-            Agricultural escrow for buyers, sellers, and mediators who need
-            settlement, evidence, and dispute outcomes in one verifiable workflow.
+
+          {/* Sub-headline */}
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-text-secondary">
+            Amana is a blockchain-powered escrow platform for agricultural
+            commodities. Lock funds, track delivery, resolve disputes — all
+            with verifiable on-chain evidence.
           </p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          {/* CTAs */}
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
               href="/trades/create"
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-gold px-5 py-3 font-semibold text-text-inverse transition-colors hover:bg-gold-hover"
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-gold-cta px-6 py-3 text-base font-semibold text-text-inverse shadow-glow-gold transition-shadow hover:shadow-glow-gold/60 focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2"
             >
-              Start trade
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              Start a trade
+              <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link
-              href="/assets"
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-border-default px-5 py-3 font-semibold text-text-primary transition-colors hover:border-border-hover hover:bg-bg-card"
-            >
-              Open workspace
-            </Link>
-          </div>
-
-          <div className="mt-10 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-3">
-            {metrics.map((metric) => (
-              <div key={metric.label} className="border-l border-border-default pl-4">
-                <p className="text-sm text-text-muted">{metric.label}</p>
-                <p className={`mt-1 text-xl font-semibold ${metric.tone}`}>
-                  {metric.value}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-border-default bg-bg-card p-5 shadow-card">
-          <div className="flex items-center justify-between border-b border-border-default pb-4">
-            <div>
-              <p className="text-sm text-text-muted">Current settlement</p>
-              <p className="mt-1 text-2xl font-semibold">Trade AM-2049</p>
-    <div className="min-h-screen bg-gradient-hero text-text-primary flex flex-col">
-      {/* Navigation Bar */}
-      <nav className="border-b border-border-default px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gold-muted border border-gold/30 flex items-center justify-center">
-            <svg
-              className="w-4 h-4 text-gold"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-            </svg>
-          </div>
-          <span className="text-lg font-bold text-gold tracking-tight">
-            Amana
-          </span>
-        </Link>
-        <div className="flex items-center gap-6">
-          <Link
-            href="/dashboard"
-            className="text-sm text-text-secondary hover:text-text-primary transition-colors"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/trades"
-            className="text-sm text-text-secondary hover:text-text-primary transition-colors"
-          >
-            Trades
-          </Link>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-        <div className="max-w-3xl text-center space-y-12">
-          {/* Hero Section */}
-          <div className="space-y-6">
-            <div className="flex justify-center">
-              <div className="w-20 h-20 rounded-xl bg-gold-muted border border-gold/30 flex items-center justify-center shadow-glow-gold">
-                <svg
-                  className="w-10 h-10 text-gold"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                </svg>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h1 className="text-5xl md:text-6xl font-bold text-text-primary tracking-tight">
-                Amana
-              </h1>
-              <p className="text-xl md:text-2xl text-gold font-semibold">
-                Secure Agricultural Escrow on Blockchain
-              </p>
-            </div>
-
-            <p className="text-lg text-text-secondary leading-relaxed max-w-2xl mx-auto">
-              Trade with confidence. Amana enables secure peer-to-peer
-              agricultural commodity settlement with blockchain-backed escrow,
-              real-time evidence submission, and mediator-led dispute
-              resolution.
-            </p>
-          </div>
-
-          {/* Features Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Feature 1 */}
-            <div className="bg-bg-card border border-border-default rounded-xl p-6 hover:border-border-hover transition-colors">
-              <div className="w-12 h-12 rounded-lg bg-gold-muted text-gold flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-text-primary mb-2 text-lg">
-                Real-Time Settlement
-              </h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                Execute and settle trades instantly with blockchain verification
-                and transparent transaction tracking.
-              </p>
-            </div>
-            <span className="rounded-md bg-emerald-muted px-3 py-1 text-sm font-medium text-emerald">
-              Funded
-            </span>
-          </div>
-
-          <div className="mt-5 space-y-4">
-            {proofSteps.map((step, index) => (
-              <div key={step} className="flex gap-3">
-                <div className="flex flex-col items-center">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-border-default bg-bg-primary text-sm text-gold">
-                    {index + 1}
-                  </span>
-                  {index < proofSteps.length - 1 ? (
-                    <span className="h-8 w-px bg-border-default" />
-                  ) : null}
-                </div>
-                <p className="pt-1 text-sm leading-6 text-text-secondary">{step}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 rounded-md bg-bg-primary p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">
-              <FileCheck2 className="h-4 w-4 text-status-info" aria-hidden="true" />
-              Evidence packet
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-text-muted">Manifest</p>
-                <p className="mt-1 text-text-primary">Submitted</p>
-              </div>
-              <div>
-                <p className="text-text-muted">Mediator</p>
-                <p className="mt-1 text-text-primary">Available</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="border-t border-border-default px-6 py-10 lg:px-10">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-5 md:grid-cols-3">
-          {workflows.map((workflow) => {
-            const Icon = workflow.icon;
-            return (
-              <Link
-                key={workflow.href}
-                href={workflow.href}
-                className="group rounded-lg border border-border-default bg-bg-card p-5 transition-colors hover:border-border-hover"
-              >
-                <Icon className="h-5 w-5 text-gold" aria-hidden="true" />
-                <h2 className="mt-4 text-lg font-semibold text-text-primary">
-                  {workflow.title}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">
-                  {workflow.description}
-                </p>
-                <span className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-gold">
-                  Continue
-                  <ArrowRight
-                    className="h-4 w-4 transition-transform group-hover:translate-x-1"
-                    aria-hidden="true"
-                  />
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-    </main>
-            {/* Feature 2 */}
-            <div className="bg-bg-card border border-border-default rounded-xl p-6 hover:border-border-hover transition-colors">
-              <div className="w-12 h-12 rounded-lg bg-emerald-muted text-emerald flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-text-primary mb-2 text-lg">
-                Verified Evidence
-              </h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                Submit and verify evidence directly on-chain for complete
-                transparency and immutable record-keeping.
-              </p>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="bg-bg-card border border-border-default rounded-xl p-6 hover:border-border-hover transition-colors">
-              <div className="w-12 h-12 rounded-lg bg-teal/15 text-teal flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <h3 className="font-semibold text-text-primary mb-2 text-lg">
-                Fair Dispute Resolution
-              </h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                Trusted mediators ensure fair resolution of any trade disputes
-                with transparent evidence review.
-              </p>
-            </div>
-          </div>
-
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
             <Link
               href="/dashboard"
-              className="px-8 py-4 bg-gradient-gold-cta text-text-inverse font-semibold rounded-lg hover:shadow-glow-gold transition-all duration-200 text-center"
+              className="inline-flex items-center gap-2 rounded-lg border border-border-default px-6 py-3 text-base font-semibold text-text-primary transition-colors hover:border-border-hover hover:bg-bg-card focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2"
             >
-              Go to Dashboard
+              Open dashboard
             </Link>
-            <Link
-              href="/trades"
-              className="px-8 py-4 border border-border-default text-text-primary font-semibold rounded-lg hover:bg-bg-card hover:border-border-hover transition-colors text-center"
-            >
-              View Trades
-            </Link>
-          </div>
-
-          {/* Trust Indicators */}
-          <div className="pt-8 border-t border-border-default">
-            <p className="text-sm text-text-muted mb-6">
-              Built on proven technology
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-8 text-text-secondary text-sm">
-              <div className="flex items-center gap-2">
-                <svg
-                  className="w-4 h-4 text-emerald"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>Stellar Blockchain</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <svg
-                  className="w-4 h-4 text-emerald"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>Soroban Smart Contracts</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <svg
-                  className="w-4 h-4 text-emerald"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>IPFS Storage</span>
-              </div>
-            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border-default px-6 py-6 text-center text-sm text-text-muted">
-        <p>© 2026 Amana. Secure agricultural escrow on blockchain.</p>
+      {/* ── Stats bar ────────────────────────────────────────────────────── */}
+      <section
+        aria-label="Platform statistics"
+        className="border-y border-border-default bg-bg-card px-6 py-8 lg:px-10"
+      >
+        <dl className="mx-auto grid max-w-5xl grid-cols-2 gap-6 md:grid-cols-4">
+          {stats.map((stat) => (
+            <div key={stat.label} className="text-center">
+              <dt className="text-sm text-text-muted">{stat.label}</dt>
+              <dd className="mt-1 text-2xl font-bold text-text-primary">
+                {stat.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      {/* ── How it works ─────────────────────────────────────────────────── */}
+      <section className="px-6 py-20 lg:px-10">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="text-center text-2xl font-bold md:text-3xl">
+            How it works
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-center text-base text-text-secondary">
+            Three steps from agreement to settlement — fully on-chain, fully
+            auditable.
+          </p>
+
+          <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-3">
+            {steps.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.step}
+                  className="relative rounded-xl border border-border-default bg-bg-card p-6 shadow-card"
+                >
+                  {/* Step number */}
+                  <span className="text-xs font-bold tracking-widest text-text-muted">
+                    {item.step}
+                  </span>
+                  {/* Icon */}
+                  <div className="mt-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gold-muted">
+                    <Icon className="h-5 w-5 text-gold" />
+                  </div>
+                  {/* Content */}
+                  <h3 className="mt-4 text-xl font-semibold">{item.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                    {item.description}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features ─────────────────────────────────────────────────────── */}
+      <section className="bg-bg-card px-6 py-20 lg:px-10">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="text-center text-2xl font-bold md:text-3xl">
+            Why Amana
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-center text-base text-text-secondary">
+            Purpose-built for agricultural supply chains where trust, evidence,
+            and fair resolution matter most.
+          </p>
+
+          <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {features.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <div
+                  key={feature.title}
+                  className="flex gap-4 rounded-xl border border-border-default bg-bg-elevated p-6 transition-colors hover:border-border-hover"
+                >
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gold-muted">
+                    <Icon className="h-5 w-5 text-gold" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold">{feature.title}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-text-secondary">
+                      {feature.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Bottom CTA ───────────────────────────────────────────────────── */}
+      <section className="px-6 py-20 lg:px-10">
+        <div className="mx-auto max-w-2xl rounded-2xl border border-gold/20 bg-gradient-card-glow p-10 text-center shadow-glow-gold">
+          <h2 className="text-2xl font-bold md:text-3xl">
+            Ready to settle your first trade?
+          </h2>
+          <p className="mx-auto mt-4 max-w-md text-base text-text-secondary">
+            Connect your Freighter wallet and create a trade in under two
+            minutes.
+          </p>
+          <LandingCtaButtons />
+        </div>
+      </section>
+
+      {/* ── Footer ───────────────────────────────────────────────────────── */}
+      <footer className="border-t border-border-default px-6 py-8 lg:px-10">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-sm text-text-muted sm:flex-row">
+          <span>© {new Date().getFullYear()} Amana. Agricultural escrow on Stellar.</span>
+          <nav aria-label="Footer navigation" className="flex gap-6">
+            <Link href="/trades" className="hover:text-text-secondary transition-colors">
+              Trades
+            </Link>
+            <Link href="/vault" className="hover:text-text-secondary transition-colors">
+              Vault
+            </Link>
+            <Link href="/dashboard" className="hover:text-text-secondary transition-colors">
+              Dashboard
+            </Link>
+          </nav>
+        </div>
       </footer>
     </div>
   );

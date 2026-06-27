@@ -1,5 +1,6 @@
 node_modules/
 **/node_modules/
+# Any package `dist/` (includes backend TypeScript output)
 dist/
 coverage/
 .env
@@ -8,6 +9,7 @@ coverage/
 .env.local
 .vscode/
 *.log
+backend/lint-output.txt
 
 # Pre-migration database backups
 backups/

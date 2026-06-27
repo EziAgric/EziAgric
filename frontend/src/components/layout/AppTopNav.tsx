@@ -3,18 +3,55 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NavLink } from "@/components/ui/Navigation";
 
+interface AppTopNavProps {
+  onToggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
+}
+
+// #445 — include Trades so the canonical shell highlights the active route;
+// this eliminates the need for a redundant page-level title that duplicated
+// the navigation context.
 const TOP_NAV = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/trades", label: "Trades" },
   { href: "/assets", label: "Assets" },
   { href: "/vault", label: "Vault" },
 ];
 
-export function AppTopNav() {
+export function AppTopNav({
+  onToggleSidebar,
+  isSidebarOpen,
+}: AppTopNavProps) {
   const pathname = usePathname();
 
   return (
-    <header className="h-14 bg-card border-b border-border-default flex items-center px-6 gap-8 flex-shrink-0">
+    <header className="h-14 bg-card border-b border-border-default flex items-center px-4 lg:px-6 gap-4 lg:gap-8 flex-shrink-0">
+      {/* Mobile menu button */}
+      <button
+        type="button"
+        onClick={onToggleSidebar}
+        className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-elevated transition-all"
+        aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
+      >
+        <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+          {isSidebarOpen ? (
+            <path
+              fillRule="evenodd"
+              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+              clipRule="evenodd"
+            />
+          ) : (
+            <path
+              fillRule="evenodd"
+              d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+              clipRule="evenodd"
+            />
+          )}
+        </svg>
+      </button>
+
       {/* Logo */}
       <Link href="/" className="text-gold font-bold text-lg tracking-tight flex-shrink-0">
         Amana
@@ -25,18 +62,9 @@ export function AppTopNav() {
         {TOP_NAV.map((item) => {
           const isActive = pathname?.startsWith(item.href);
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                isActive
-                  ? "bg-elevated text-gold border-b-2 border-gold"
-                  : "text-text-secondary hover:text-text-primary hover:bg-white/5 focus-visible:outline-offset-2 focus-visible:outline-gold"
-              }`}
-              aria-current={isActive ? "page" : undefined}
-            >
+            <NavLink key={item.href} href={item.href} isActive={isActive}>
               {item.label}
-            </Link>
+            </NavLink>
           );
         })}
       </nav>

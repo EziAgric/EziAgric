@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { signTransaction } from "@stellar/freighter-api";
 import {
   AuditLogCard,
   ContractManifestCard,
@@ -15,6 +16,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
 import {
   api,
+  apiConfig,
+  ApiError,
   type TradeStatsResponse,
   type TradeListResponse,
 } from "@/lib/api";
@@ -87,6 +90,7 @@ export default function VaultPage() {
 
   useEffect(() => {
     if (isAuthenticated && token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void fetchVaultData();
     }
   }, [isAuthenticated, token, fetchVaultData]);
@@ -125,6 +129,74 @@ export default function VaultPage() {
 
   const isEmpty =
     !loading && isAuthenticated && stats?.totalTrades === 0 && recentTrades?.items.length === 0;
+
+  const manifestTrade =
+    recentTrades?.items.find((trade) => ["FUNDED", "DELIVERED"].includes(trade.status)) ??
+    recentTrades?.items[0];
+
+  const handleManifestComplete = async (data: DriverManifestData) => {
+    if (manifestSubmittingRef.current) return;
+    if (!token || !manifestTrade) {
+      setManifestStatus("Connect your wallet and open a funded trade first.");
+      return;
+    }
+
+    manifestSubmittingRef.current = true;
+    setManifestSubmitting(true);
+    setManifestStatus(null);
+
+    try {
+      const expectedDeliveryAt =
+        manifestTrade.eta ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const response = await api.trades.submitManifest(token, manifestTrade.tradeId, {
+        driverName: data.driverName,
+        driverIdNumber: data.driverPhone,
+        vehicleRegistration: data.licensePlate,
+        routeDescription: "Driver manifest submitted from vault.",
+        expectedDeliveryAt,
+      });
+
+      const signResult = await signTransaction(response.unsignedXdr, {
+        networkPassphrase: apiConfig.getStellarNetworkPassphrase(),
+      });
+
+      if (signResult.error !== undefined) {
+        throw new Error(signResult.error.message || "Failed to sign manifest transaction");
+      }
+      if (!signResult.signedTxXdr) {
+        throw new Error("No signed manifest transaction returned");
+      }
+
+      const submitResponse = await fetch(apiConfig.getStellarRpcUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "sendTransaction",
+          params: { transaction: signResult.signedTxXdr },
+        }),
+      });
+      const submitResult = await submitResponse.json();
+
+      if (submitResult.error) {
+        throw new Error(submitResult.error.message || "Manifest transaction submission failed");
+      }
+
+      setManifestData(data);
+      setManifestStatus(`Manifest submitted for trade ${manifestTrade.tradeId}.`);
+      setIsManifestOpen(false);
+    } catch (err) {
+      setManifestStatus(
+        err instanceof ApiError || err instanceof Error
+          ? err.message
+          : "Failed to submit manifest",
+      );
+    } finally {
+      manifestSubmittingRef.current = false;
+      setManifestSubmitting(false);
+    }
+  };
 
   return (
     <section className="min-h-full bg-bg-primary px-6 py-8 lg:px-10">
@@ -347,10 +419,7 @@ export default function VaultPage() {
         <DriverManifestForm
           isOpen={isManifestOpen}
           onDismiss={() => setIsManifestOpen(false)}
-          onComplete={(data) => {
-            setManifestData(data);
-            setIsManifestOpen(false);
-          }}
+          onComplete={handleManifestComplete}
         />
 
         <VaultFooter

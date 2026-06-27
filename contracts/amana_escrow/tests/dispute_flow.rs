@@ -130,12 +130,12 @@ impl H {
 
     fn funded_trade(&self, amount: i128) -> u64 {
         self.c()
-            .initialize(&self.admin, &self.token, &self.admin, &0u32);
+            .initialize(&self.admin, &self.token, &self.admin, &0u32, &self.token);
         self.c().set_mediator(&self.mediator);
         self.tok().mint(&self.buyer, &amount);
         let trade_id =
             self.c()
-                .create_trade(&self.buyer, &self.seller, &amount, &5000u32, &5000u32);
+                .create_trade(&self.buyer, &self.seller, &amount, &5000u32, &5000u32, &None);
         self.c().deposit(&trade_id);
         db_upsert(DbTrade {
             trade_id,

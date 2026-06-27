@@ -6,6 +6,8 @@
 
 **Amana** is a decentralized escrow protocol designed to secure agricultural trade across different regions. By leveraging **Soroban Smart Contracts**, Amana eliminates the "Trust Gap" between buyers and sellers, ensuring fair trade even when parties are hundreds of miles apart.
 
+This is the main repository containing the smart contracts and orchestration logic. Backend, frontend, and mobile applications are maintained in this monorepo for simpler development and unified deployment.
+
 ---
 
 ## 🚀 The Mission
@@ -16,7 +18,7 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 
 - **Smart Escrow:** Secure funds holding using cNGN/stablecoins on the Stellar network.
 - **Dynamic Loss Sharing:** Negotiable risk-sharing ratios (e.g., 50/50, 70/30) hardcoded into every trade to handle transit accidents or theft.
-- **Proof-of-Delivery (PoD):** A mandatory video-based verification protocol involving the buyer and the driver to confirm the state of goods.
+- **Proof-of-Delivery (PoD):** An optional video-based verification protocol involving the buyer and the driver to confirm the state of goods. Video evidence can be submitted and stored on IPFS for dispute resolution.
 - **Volatility Protection:** Utilizes Stellar Path Payments to allow users to pay in local currency (NGN) while locking value in cNGN.
 - **Automated Settlement:** A flat 1% platform fee is automatically deducted upon successful trade completion.
 
@@ -28,24 +30,44 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 - **Wallet Connection:** [Freighter](https://www.freighter.app/) / [Albedo](https://albedo.link/)
 - **Storage:** IPFS (via Pinata) for decentralized storage of video evidence.
 - **Database:** Supabase (Off-chain metadata, driver logs, and user profiles).
+- **Observability:** OpenTelemetry distributed tracing with correlation IDs for end-to-end request tracking.
 
 ## 🧪 Local Environments (Folder-Based)
 
 - `frontend/` → Next.js app environment (UI + wallet + Supabase/Pinata client integration)
 - `backend/` → Node.js/TypeScript API environment (Supabase + Pinata + integration endpoints)
+- `mobile/` → React Native Expo environment (mobile wallet, notification, and trade UX)
 - `contracts/` → Rust/Soroban smart contract environment
 
 ### Frontend setup
 
 1. `cd frontend`
 2. `cp .env.example .env.local`
-3. `npm run dev`
+3. `npm install`
+4. `npm run dev`
 
 ### Backend setup
 
 1. `cd backend`
 2. `cp .env.example .env`
-3. `npm run dev`
+3. `cp .env.tracing.example .env.tracing` (for distributed tracing configuration)
+4. `npm install`
+5. `npm run dev`
+
+### Mobile setup
+
+1. `cd mobile`
+2. `cp .env.example .env.local`
+3. `npm install`
+4. `npm start`
+
+### Backend API docs
+
+- Source of truth: `backend/src/docs/openapi.yaml`
+- Dev Swagger UI: `http://localhost:4000/api/docs`
+- JSON export: `http://localhost:4000/api/docs/openapi.json`
+
+The backend writes `backend/src/docs/openapi.json` from the YAML spec in non-production runs so reviewers can inspect either format.
 
 ### Contracts setup
 
@@ -56,8 +78,14 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 
 Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
 
-- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build` in `frontend/`
+- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
 - **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
+- **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobil
+Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
+
+- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
+- **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
+- **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobile/`
 - **Contracts Required Gate**: `cargo test` in `contracts/amana_escrow/`
 
 Path-aware execution is enabled to avoid unnecessary runtime. If a stack has no changed files, the gate reports a skip-note and passes.
@@ -89,23 +117,47 @@ For the protected branch (`main`), set these required status checks:
 
 ### Phase 1: The Vault (MVP)
 
-- [ ] Develop core Soroban contract logic (`deposit`, `release`, `refund`).
-- [ ] Implement basic Next.js UI for trade creation.
+- [x] Develop core Soroban contract logic (`deposit`, `release`, `refund`).
+- [x] Implement basic Next.js UI for trade creation.
 
 ### Phase 2: The Agreement Engine
 
-- [ ] Integrate `Loss_Ratio` variables into the smart contract.
-- [ ] Build the "Mediator" dashboard for dispute resolution.
+- [x] Integrate `Loss_Ratio` variables into the smart contract.
+- [x] Build the "Mediator" dashboard for dispute resolution.
 
 ### Phase 3: Evidence & Logistics
 
-- [ ] IPFS integration for video evidence uploads.
-- [ ] Driver manifest logging and tracking interface.
+- [x] IPFS integration for video evidence uploads.
+- [x] Driver manifest logging and tracking interface.
 
 ### Phase 4: Mainnet & Scale
 
 - [ ] Public pilot program with regional agricultural cooperatives.
-- [ ] Implementation of a "Trust Score" reputation system.
+- [x] Implementation of a "Trust Score" reputation system.
+
+---
+
+## 🔍 Distributed Tracing
+
+Amana includes comprehensive distributed tracing with OpenTelemetry for end-to-end request visibility and faster incident triage.
+
+### Features
+
+- **Correlation IDs**: Unique identifiers spanning frontend-backend requests
+- **Request Tracing**: Complete request lifecycle tracking
+- **Service Integration**: Automatic tracing for external services (IPFS, Stellar)
+- **Observability**: Jaeger, Zipkin, and Prometheus integration
+
+### Quick Start
+
+1. Configure tracing environment variables (see `backend/.env.tracing.example`)
+2. Start Jaeger for trace visualization: `docker run -p 16686:16686 jaegertracing/all-in-one`
+3. View traces at `http://localhost:16686`
+4. Check metrics at `http://localhost:9464/metrics`
+
+### Documentation
+
+See [DISTRIBUTED_TRACING_GUIDE.md](./DISTRIBUTED_TRACING_GUIDE.md) for detailed setup and usage instructions.
 
 ---
 
@@ -122,3 +174,5 @@ Amana is an open-source project aimed at improving food security and trade effic
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+
+// setting up and starting out

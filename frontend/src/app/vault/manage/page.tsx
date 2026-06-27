@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -350,6 +350,7 @@ export default function VaultManagePage() {
   const [activeTab, setActiveTab] = useState<"active" | "all">("active");
   const [modal, setModal] = useState<ActionModal>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const submittingRef = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [disputeReason, setDisputeReason] = useState("");
@@ -378,6 +379,7 @@ export default function VaultManagePage() {
   }, [token]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isAuthenticated && token) void fetchData();
   }, [isAuthenticated, token, fetchData]);
 
@@ -401,7 +403,8 @@ export default function VaultManagePage() {
 
   // Actions
   async function handleConfirm() {
-    if (!modal || !token) return;
+    if (submittingRef.current || !modal || !token) return;
+    submittingRef.current = true;
     setActionBusy(true);
     setActionError(null);
     try {
@@ -433,6 +436,7 @@ export default function VaultManagePage() {
             : "Action failed";
       setActionError(msg);
     } finally {
+      submittingRef.current = false;
       setActionBusy(false);
     }
   }
@@ -609,6 +613,12 @@ export default function VaultManagePage() {
                   </div>
                 </div>
 
+                {parseFloat(walletBalance?.balance ?? "0") === 0 && (
+                  <div className="rounded-lg border border-status-warning/20 bg-status-warning/10 px-4 py-3 text-sm text-status-warning flex items-center justify-between">
+                    <span>No available balance. Fund your wallet before creating a payment.</span>
+                  </div>
+                )}
+
                 {loading && trades.length === 0 ? (
                   <div className="rounded-2xl border border-border-default bg-card overflow-hidden">
                     {Array.from({ length: 4 }).map((_, i) => (
@@ -717,6 +727,7 @@ export default function VaultManagePage() {
                                 label="Deposit"
                                 variant="gold"
                                 onClick={() => openModal("deposit", trade)}
+                                disabled={parseFloat(walletBalance?.balance ?? "0") === 0}
                               />
                             )}
                             {canRelease && (

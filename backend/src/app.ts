@@ -1,18 +1,43 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
-import { errorHandler } from "./errors/errorHandler";
+import { errorHandler } from './middleware/errorHandler';
+import { correlationIdMiddleware } from './middleware/correlationId.middleware';
+import { tracingMiddleware } from './middleware/tracing.middleware';
 import loggerMiddleware, { appLogger } from './middleware/logger';
 import { requestIdMiddleware } from "./middleware/requestId";
 import { authRoutes } from "./routes/auth.routes";
 import { walletRoutes } from "./routes/wallet.routes";
 import { createTradeRouter } from "./routes/trade.routes";
+import { createTradeTemplateRouter } from "./routes/trade.template.routes";
+import { createTradeWatchlistRouter } from "./routes/trade.watchlist.routes";
+import { createTradeEvidenceRouter } from "./routes/trade.evidence.routes";
+import { createTradeExportRouter } from "./routes/trade.export.routes";
+import { createEscrowReleaseRouter } from "./routes/escrow.release.routes";
+import { createEscrowScheduleRouter } from "./routes/escrow.schedule.routes";
+import { createTradeManifestRouter } from "./routes/trade.manifest.routes";
 import { createManifestRouter } from "./routes/manifest.routes";
+import { createTradeNotesRouter } from "./routes/trade.notes.routes";
 import { createEvidenceRouter } from "./routes/evidence.routes";
 import { createAuditTrailRouter } from "./routes/auditTrail.routes";
 import { createGoalsRouter } from "./routes/goals.routes";
 import { createHealthRouter } from "./routes/health.routes";
+import { createHealthDetailRouter } from "./routes/health.detail.routes";
+import { createNotificationPreferencesRouter } from "./routes/notifications.preferences.routes";
+import { createNotificationsRouter } from "./routes/notifications.inapp.routes";
+import { disputeRoutes } from "./routes/dispute.routes";
+import { disputeCategoryRoutes } from "./routes/disputeCategory.routes";
+import { createTreasuryRouter } from "./routes/treasury.routes";
 import userRoutes from "./routes/user.routes";
+import reputationRoutes from "./routes/reputation.routes";
+import { stellarFeesRoutes } from "./routes/stellar.fees";
+import { stellarTxStatusRoutes } from "./routes/stellar.tx.status";
+import { stellarAssetRoutes } from "./routes/stellar.asset";
+import { stellarAccountBalanceRoutes } from "./routes/stellar.account.balance";
+import { stellarAccountCreateRoutes } from "./routes/stellar.account.create";
+import { createContractStateRouter } from "./routes/contract.state.routes";
+import { webhooksRoutes } from "./routes/webhooks.routes";
+import { env } from "./config/env";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
  *  Value should be a comma-separated list of allowed origins, e.g.:
@@ -20,10 +45,10 @@ import userRoutes from "./routes/user.routes";
  *  Leave empty in development to allow all origins.
  */
 function buildCorsOptions(): cors.CorsOptions {
-  const raw = process.env.CORS_ORIGINS ?? '';
+  const raw = process.env.CORS_ORIGINS ?? env.CORS_ORIGINS ?? '';
   const allowlist = raw
     .split(',')
-    .map((o) => o.trim())
+    .map((o: string) => o.trim())
     .filter(Boolean);
 
   if (allowlist.length === 0) {
@@ -45,8 +70,9 @@ function buildCorsOptions(): cors.CorsOptions {
 export function createApp(): express.Application {
   const app = express();
 
-  // Request ID for correlation
-  app.use(requestIdMiddleware);
+  if (env.TRUST_PROXY) {
+    app.set('trust proxy', 1);
+  }
 
   // Security headers
   app.use(
@@ -79,19 +105,39 @@ export function createApp(): express.Application {
   // Body size limits: 100 KB for JSON, 5 MB for URL-encoded (covers file references)
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+
+  // Correlation ID must be registered before the logger so every log line
+  // produced by pino-http already carries the tracing IDs.
+  app.use(correlationIdMiddleware);
+  // OpenTelemetry tracing middleware - integrates with correlation IDs
+  app.use(tracingMiddleware);
   app.use(loggerMiddleware);
 
   // Enhanced health check with deep introspection
   app.use("/health", createHealthRouter());
+  app.use("/health", createHealthDetailRouter());
 
   app.use("/auth", authRoutes);
   app.use("/wallet", walletRoutes);
   app.use("/users", userRoutes);
+  app.use("/users", reputationRoutes);
+  app.use(createNotificationPreferencesRouter());
+  app.use(createNotificationsRouter());
 
-  const tradeRouter = createTradeRouter();
-  app.use("/trades", tradeRouter);
+  // These literal routes must precede the generic /trades/:id handler.
+  app.use("/trades", createTradeExportRouter());
+  app.use("/trades", createTradeTemplateRouter());
+  app.use("/trades", createTradeWatchlistRouter());
+  app.use("/trades", createTradeEvidenceRouter());
+  app.use("/trades", createEscrowReleaseRouter());
+  app.use("/trades", createEscrowScheduleRouter());
+  app.use("/trades", createTradeRouter());
+
+  // Notes: POST /trades/:id/notes and GET /trades/:id/notes
+  app.use("/trades", createTradeNotesRouter());
 
   // Manifest: POST /trades/:id/manifest
+  app.use("/trades/:id/manifest", createTradeManifestRouter());
   app.use("/trades/:id/manifest", createManifestRouter());
 
   // Evidence: GET /trades/:id/evidence and GET /evidence/:cid/stream
@@ -103,8 +149,61 @@ export function createApp(): express.Application {
   // Goals analytics: GET /goals
   app.use("/goals", createGoalsRouter());
 
+  // Disputes: GET /disputes
+  app.use("/disputes", disputeRoutes);
+
+  // Dispute categories: CRUD /dispute-categories
+  app.use("/dispute-categories", disputeCategoryRoutes);
+
+  // Stellar network endpoints
+  app.use("/stellar/fees", stellarFeesRoutes);
+  app.use("/stellar/tx", stellarTxStatusRoutes);
+  app.use("/stellar/assets", stellarAssetRoutes);
+  app.use("/stellar/account", stellarAccountCreateRoutes);
+  app.use("/stellar/account", stellarAccountBalanceRoutes);
+  app.use("/contract", createContractStateRouter());
+
+  // Treasury management
+  app.use("/treasury", createTreasuryRouter());
+
+  // Webhooks: CRUD /webhooks
+  app.use("/webhooks", webhooksRoutes);
+
+  // Error handler is registered last so it catches errors from all routes,
+  // including any routes added to the app after createApp() returns.
+  // We achieve this by re-registering it whenever a new route/middleware is added.
+  const _originalUse = app.use.bind(app);
+  const _originalGet = (app as any).get.bind(app);
+
+  function reRegisterErrorHandler() {
+    // Remove the existing error handler layer and re-add it at the end.
+    // Express 5 exposes the router via app.router (lazy getter).
+    const router = (app as any).router;
+    if (!router) return;
+    const stack: any[] = router.stack;
+    // Find last occurrence of the error handler layer (scan from end)
+    let errIdx = -1;
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (stack[i].handle === errorHandler) { errIdx = i; break; }
+    }
+    if (errIdx !== -1) stack.splice(errIdx, 1);
+    _originalUse(errorHandler);
+  }
+
+  (app as any).use = function (...args: any[]) {
+    const result = _originalUse(...args);
+    reRegisterErrorHandler();
+    return result;
+  };
+
+  (app as any).get = function (...args: any[]) {
+    const result = _originalGet(...args);
+    reRegisterErrorHandler();
+    return result;
+  };
+
+  // Initial registration
   app.use(errorHandler);
+
   return app;
 }
-
-

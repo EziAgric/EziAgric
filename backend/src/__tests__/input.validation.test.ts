@@ -15,7 +15,17 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 jest.mock("../services/contract.service");
 jest.mock("../services/trade.service");
 jest.mock("../services/manifest.service");
-jest.mock("../services/auth.service");
+jest.mock("../services/auth.service", () => {
+  return {
+    AuthService: {
+      validateToken: jest.fn(async (token: string) => {
+        const jwt = require("jsonwebtoken");
+        return jwt.decode(token);
+      }),
+      isTokenRevoked: jest.fn().mockResolvedValue(false),
+    },
+  };
+});
 
 import { ContractService } from "../services/contract.service";
 import { TradeService } from "../services/trade.service";
@@ -23,7 +33,7 @@ import { ManifestService } from "../services/manifest.service";
 import { AuthService } from "../services/auth.service";
 import { tradeRoutes } from "../routes/trade.routes";
 import { createManifestRouter } from "../routes/manifest.routes";
-import { errorHandler } from "../errors/errorHandler";
+import { errorHandler } from "../middleware/errorHandler";
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -71,6 +81,9 @@ beforeAll(() => {
   process.env.JWT_SECRET = JWT_SECRET;
   process.env.JWT_ISSUER = JWT_ISSUER;
   process.env.JWT_AUDIENCE = JWT_AUDIENCE;
+});
+
+beforeEach(() => {
   jest.spyOn(AuthService, "isTokenRevoked").mockResolvedValue(false);
 });
 

@@ -7,6 +7,19 @@ import {
 import { EventType, ParsedEvent } from "../types/events";
 import { dispatchEvent } from "./eventHandlers";
 import { appLogger } from "../middleware/logger";
+import {
+  CircuitBreaker,
+  CircuitBreakerOpenError,
+} from "../lib/circuitBreaker";
+
+type OutboxStatus = "PENDING" | "RETRYING" | "PROCESSED" | "DEAD_LETTER";
+
+type OutboxRecord = {
+  id: number;
+  status: OutboxStatus;
+  attempts: number;
+  nextAttemptAt: Date;
+};
 
 /**
  * Check whether a `ProcessedEvent` record already exists for the given composite key.
@@ -18,7 +31,7 @@ export async function isAlreadyProcessed(
   prisma: PrismaClient,
   key: { ledgerSequence: number; contractId: string; eventId: string }
 ): Promise<boolean> {
-  const existing = await (prisma as any).processedEvent.findUnique({
+  const existing = await prisma.processedEvent.findUnique({
     where: {
       ledgerSequence_contractId_eventId: key,
     },
@@ -30,7 +43,10 @@ export async function isAlreadyProcessed(
  * Returns true if the error is a Prisma unique-constraint violation (P2002).
  */
 export function isPrismaUniqueConstraintError(err: unknown): boolean {
-  return (err as any)?.code === "P2002";
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002"
+  );
 }
 
 /**
@@ -49,7 +65,7 @@ export async function processEventAtomically(
   try {
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await handler(tx, event);
-      await (tx as any).processedEvent.create({
+      await tx.processedEvent.create({
         data: {
           ledgerSequence: event.ledgerSequence,
           contractId: event.contractId,
@@ -84,12 +100,18 @@ export class EventListenerService {
   private running: boolean = false;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private currentBackoffMs: number;
+  private stellarCircuit: CircuitBreaker;
 
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
     this.config = getEventListenerConfig();
     this.server = new StellarSdk.rpc.Server(this.config.rpcUrl);
     this.currentBackoffMs = this.config.backoffInitialMs;
+    this.stellarCircuit = new CircuitBreaker("stellar-rpc", {
+      failureThreshold: 3,
+      successThreshold: 2,
+      cooldownMs: 30_000,
+    });
   }
 
   /** Boot the polling loop. Loads recent processed ledgers from DB into memory. */
@@ -98,7 +120,7 @@ export class EventListenerService {
     this.running = true;
 
     // Hydrate in-memory set from DB on startup
-    const recentEvents = await (this.prisma as any).processedEvent.findMany({
+    const recentEvents = await this.prisma.processedEvent.findMany({
       orderBy: { ledgerSequence: "desc" },
       take: this.config.processedLedgersCacheSize,
     });
@@ -143,16 +165,18 @@ export class EventListenerService {
     try {
       const startLedger = this.lastLedger > 0 ? this.lastLedger + 1 : undefined;
 
-      const response = await this.server.getEvents({
-        startLedger,
-        filters: [
-          {
-            type: "contract",
-            contractIds: [this.config.contractId],
-          },
-        ],
-        limit: 100,
-      } as StellarSdk.rpc.Server.GetEventsRequest);
+      const response = await this.stellarCircuit.call(() =>
+        this.server.getEvents({
+          startLedger,
+          filters: [
+            {
+              type: "contract",
+              contractIds: [this.config.contractId],
+            },
+          ],
+          limit: 100,
+        } as StellarSdk.rpc.Server.GetEventsRequest),
+      );
 
       if (response.events && response.events.length > 0) {
         for (const rawEvent of response.events) {
@@ -163,8 +187,13 @@ export class EventListenerService {
       this.resetBackoff();
       this.scheduleNextPoll(this.config.pollIntervalMs);
     } catch (error) {
-      appLogger.error({ error }, "[EventListener] Poll failed");
-      this.handleBackoff();
+      if (error instanceof CircuitBreakerOpenError) {
+        appLogger.warn({}, "[EventListener] Circuit breaker open — skipping poll");
+        this.scheduleNextPoll(this.stellarCircuit.cooldownMsValue);
+      } else {
+        appLogger.error({ error }, "[EventListener] Poll failed");
+        this.handleBackoff();
+      }
     }
   }
 
@@ -185,8 +214,36 @@ export class EventListenerService {
       return;
     }
 
+    if (!this.supportsOutboxPersistence()) {
+      try {
+        await processEventAtomically(this.prisma, parsed, dispatchEvent);
+        this.processedEvents.add(cacheKey);
+        this.evictOldEvents();
+        if (ledgerSequence > this.lastLedger) {
+          this.lastLedger = ledgerSequence;
+        }
+        appLogger.debug(
+          {
+            eventType: parsed.eventType,
+            tradeId: parsed.tradeId,
+            ledger: ledgerSequence,
+          },
+          "[EventListener] Processed event",
+        );
+      } catch (error) {
+        appLogger.error({ error, eventId }, "[EventListener] Failed to process event");
+        throw error;
+      }
+      return;
+    }
+
+    const outbox = await this.ensureOutboxRecord(parsed);
+    if (!this.isOutboxReadyForAttempt(outbox)) {
+      return;
+    }
+
     try {
-      await processEventAtomically(this.prisma, parsed, dispatchEvent);
+      await this.processOutboxEventAtomically(outbox.id, parsed);
       this.processedEvents.add(cacheKey);
       this.evictOldEvents();
       if (ledgerSequence > this.lastLedger) {
@@ -201,8 +258,149 @@ export class EventListenerService {
         "[EventListener] Processed event",
       );
     } catch (error) {
-      appLogger.error({ error, eventId }, "[EventListener] Failed to process event");
-      throw error;
+      await this.recordOutboxFailure(outbox, error);
+      appLogger.error({ error, eventId }, "[EventListener] Failed to process event; scheduled for retry");
+    }
+  }
+
+  private supportsOutboxPersistence(): boolean {
+    // If the Prisma client was generated with a `chainEventOutbox` model,
+    // it will be available on the client. Use feature-detection rather than
+    // unsafe casts.
+    const outbox = (this.prisma as unknown as Record<string, unknown>)[
+      "chainEventOutbox"
+    ];
+    return Boolean(outbox && typeof (outbox as any).findUnique === "function");
+  }
+
+  private async ensureOutboxRecord(event: ParsedEvent): Promise<OutboxRecord> {
+    const key = {
+      ledgerSequence: event.ledgerSequence,
+      contractId: event.contractId,
+      eventId: event.eventId,
+    };
+
+    // Atomic upsert: concurrent poll cycles racing on the same event all get
+    // back the single canonical record without a non-atomic check-then-create.
+    const record = await this.prisma.chainEventOutbox.upsert({
+      where: { ledgerSequence_contractId_eventId: key },
+      create: {
+        ledgerSequence: event.ledgerSequence,
+        contractId: event.contractId,
+        eventId: event.eventId,
+        eventType: event.eventType,
+        tradeId: event.tradeId,
+        payload: event.data as Prisma.JsonObject,
+        status: "PENDING",
+      },
+      update: {},
+      select: {
+        id: true,
+        status: true,
+        attempts: true,
+        nextAttemptAt: true,
+      },
+    });
+    return record as OutboxRecord;
+  }
+
+  private isOutboxReadyForAttempt(outbox: OutboxRecord): boolean {
+    if (outbox.status === "PROCESSED") {
+      return false;
+    }
+    if (outbox.status === "DEAD_LETTER") {
+      appLogger.warn({ outboxId: outbox.id }, "[EventListener] Skipping dead-letter event");
+      return false;
+    }
+    const now = Date.now();
+    if (new Date(outbox.nextAttemptAt).getTime() > now) {
+      return false;
+    }
+    return true;
+  }
+
+  private async processOutboxEventAtomically(outboxId: number, event: ParsedEvent): Promise<void> {
+    try {
+      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // Re-read status inside the transaction: if a concurrent worker already
+        // committed PROCESSED, skip dispatch to prevent duplicate event handling.
+        const current = await tx.chainEventOutbox.findUnique({
+          where: { id: outboxId },
+          select: { status: true },
+        });
+        if (current?.status === "PROCESSED") {
+          return;
+        }
+
+        await dispatchEvent(tx, event);
+        await tx.processedEvent.create({
+          data: {
+            ledgerSequence: event.ledgerSequence,
+            contractId: event.contractId,
+            eventId: event.eventId,
+          },
+        });
+        await tx.chainEventOutbox.update({
+          where: { id: outboxId },
+          data: {
+            status: "PROCESSED",
+            attempts: { increment: 1 },
+            nextAttemptAt: new Date(),
+            lastError: null,
+            deadLetteredAt: null,
+            processedAt: new Date(),
+          },
+        });
+      });
+    } catch (error) {
+      if (!isPrismaUniqueConstraintError(error)) {
+        throw error;
+      }
+      await this.prisma.chainEventOutbox.update({
+        where: { id: outboxId },
+        data: {
+          status: "PROCESSED",
+          nextAttemptAt: new Date(),
+          lastError: null,
+          deadLetteredAt: null,
+          processedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  private computeRetryDelay(attemptNumber: number): number {
+    const exponent = Math.max(attemptNumber - 1, 0);
+    const baseDelay = this.config.backoffInitialMs * Math.pow(2, exponent);
+    return Math.min(baseDelay, this.config.backoffMaxMs);
+  }
+
+  private async recordOutboxFailure(outbox: OutboxRecord, error: unknown): Promise<void> {
+    const nextAttempts = outbox.attempts + 1;
+    const canRetry = nextAttempts < this.config.outboxMaxAttempts;
+    const retryDelayMs = this.computeRetryDelay(nextAttempts);
+    const now = Date.now();
+    const message = error instanceof Error ? error.message : String(error);
+
+    await this.prisma.chainEventOutbox.update({
+      where: { id: outbox.id },
+      data: {
+        attempts: nextAttempts,
+        status: canRetry ? "RETRYING" : "DEAD_LETTER",
+        nextAttemptAt: canRetry ? new Date(now + retryDelayMs) : new Date(now),
+        lastError: message.slice(0, 2000),
+        deadLetteredAt: canRetry ? null : new Date(now),
+      },
+    });
+
+    if (!canRetry) {
+      appLogger.error(
+        {
+          outboxId: outbox.id,
+          attempts: nextAttempts,
+        },
+        "[EventListener] Event moved to dead-letter state",
+      );
     }
   }
 
@@ -231,6 +429,15 @@ export class EventListenerService {
       const data: Record<string, unknown> = {};
       if (rawEvent.value) {
         data.raw = rawEvent.value;
+        // Extract map entries into named fields for easy handler access
+        const val = rawEvent.value as unknown as { type?: string; value?: Array<{ key: { value: string }; val: { value: unknown } }> };
+        if (val?.type === "map" && Array.isArray(val.value)) {
+          for (const entry of val.value) {
+            if (entry?.key?.value) {
+              data[entry.key.value] = entry.val?.value;
+            }
+          }
+        }
       }
 
       return {
@@ -313,13 +520,23 @@ export class EventListenerService {
   }
 
 
+  /** Parse ledger sequence from a processed-event cache key (`ledger:contract:eventId`). */
+  private ledgerFromProcessedEventKey(key: string): number {
+    const segment = key.split(":")[0];
+    if (segment === undefined || segment === "") {
+      return -1;
+    }
+    const ledger = parseInt(segment, 10);
+    return Number.isFinite(ledger) ? ledger : -1;
+  }
+
   /** Evict oldest events from in-memory set when it exceeds the cache limit. */
   private evictOldEvents(): void {
     if (this.processedEvents.size <= this.config.processedLedgersCacheSize) return;
 
     const sorted = Array.from(this.processedEvents).sort((a, b) => {
-      const ledgerA = parseInt(a.split(":")[0], 10);
-      const ledgerB = parseInt(b.split(":")[0], 10);
+      const ledgerA = this.ledgerFromProcessedEventKey(a);
+      const ledgerB = this.ledgerFromProcessedEventKey(b);
       return ledgerA - ledgerB;
     });
     const toRemove = sorted.length - this.config.processedLedgersCacheSize;

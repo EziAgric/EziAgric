@@ -1,5 +1,6 @@
 import { authApi } from "./api/auth";
 import { ApiError } from "./api/client";
+import { disputesApi } from "./api/disputes";
 import { getApiBaseUrl, getStellarNetworkPassphrase, getStellarRpcUrl } from "./api/env";
 import { searchApi } from "./api/search";
 import { tradesApi } from "./api/trades";
@@ -10,6 +11,8 @@ export type {
   CreateTradeRequest,
   CreateTradeResponse,
   DepositResponse,
+  DisputeListResponse,
+  DisputeResponse,
   EvidenceRecord,
   EvidenceResponse,
   PathPaymentQuote,

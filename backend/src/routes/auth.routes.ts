@@ -1,58 +1,61 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { StrKey } from '@stellar/stellar-sdk';
-import jwt from 'jsonwebtoken';
 import { AuthService } from '../services/auth.service';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { AuthRequest } from '../services/auth.service';
+import { RATE_LIMIT_CONFIG } from '../config/rateLimit';
+import { createIpRateLimiter } from '../lib/rateLimit';
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 requests per windowMs
-  message: 'Too many challenges/verify attempts, try again later.',
-});
+const authLimiter = createIpRateLimiter(RATE_LIMIT_CONFIG.auth);
+const refreshLimiter = createIpRateLimiter(RATE_LIMIT_CONFIG.authRefresh);
 
 const router = Router();
 
 const challengeSchema = z.object({
-  walletAddress: z.string().refine((val) => StrKey.isValidEd25519PublicKey(val), {
+  walletAddress: z.string().refine((val: string) => StrKey.isValidEd25519PublicKey(val), {
     message: 'Invalid Stellar public key',
   }),
 });
 
-router.post('/challenge', limiter, async (req, res) => {
+function isZodError(err: unknown): err is { errors: unknown[] } {
+  return err instanceof z.ZodError;
+}
+
+function handleAuthError(err: unknown, isVerify: boolean) {
+  if (isZodError(err)) {
+    return { status: 400, error: err.errors };
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return { status: isVerify ? 401 : 400, error: message };
+}
+
+router.post('/challenge', authLimiter, async (req, res) => {
   try {
     const { walletAddress } = challengeSchema.parse(req.body);
     const challenge = await AuthService.generateChallenge(walletAddress);
     res.json({ challenge });
-  } catch (err: any) {
-    if (err.name === 'ZodError') {
-      res.status(400).json({ error: err.errors });
-    } else {
-      res.status(400).json({ error: err.message });
-    }
+  } catch (err: unknown) {
+    const { status, error } = handleAuthError(err, false);
+    res.status(status).json({ error });
   }
 });
 
 const verifySchema = z.object({
-  walletAddress: z.string().refine((val) => StrKey.isValidEd25519PublicKey(val), {
+  walletAddress: z.string().refine((val: string) => StrKey.isValidEd25519PublicKey(val), {
     message: 'Invalid Stellar public key',
   }),
   signedChallenge: z.string(),
 });
 
-router.post('/verify', limiter, async (req, res) => {
+router.post('/verify', authLimiter, async (req, res) => {
   try {
     const { walletAddress, signedChallenge } = verifySchema.parse(req.body);
     const token = await AuthService.verifySignatureAndIssueJWT(walletAddress, signedChallenge);
     res.json({ token });
-  } catch (err: any) {
-    if (err.name === 'ZodError') {
-      res.status(400).json({ error: err.errors });
-    } else {
-      res.status(401).json({ error: err.message });
-    }
+  } catch (err: unknown) {
+    const { status, error } = handleAuthError(err, true);
+    res.status(status).json({ error });
   }
 });
 
@@ -64,12 +67,12 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res) => {
       await AuthService.revokeToken(jti, exp);
     }
     res.json({ message: 'Logged out successfully' });
-  } catch (err: any) {
+  } catch (_err: unknown) { // eslint-disable-line @typescript-eslint/no-unused-vars
     res.status(500).json({ error: 'Logout failed' });
   }
 });
 
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', refreshLimiter, async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -78,8 +81,9 @@ router.post('/refresh', async (req, res) => {
     const token = authHeader.split(' ')[1];
     const newToken = await AuthService.refreshToken(token);
     res.json({ token: newToken });
-  } catch (err: any) {
-    res.status(401).json({ error: err.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(401).json({ error: msg });
   }
 });
 
@@ -88,4 +92,3 @@ router.get('/validate', authMiddleware, (req: AuthRequest, res) => {
 });
 
 export { router as authRoutes };
-

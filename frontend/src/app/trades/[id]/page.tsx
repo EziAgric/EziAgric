@@ -174,7 +174,6 @@ export default function TradeDetailPage() {
         </div>
       )}
 
-      {/* Error state */}
       {error && !loading && (
         <div className="rounded-lg border border-status-danger/20 bg-red-500/10 px-4 py-3 text-center">
           <p className="text-status-danger text-sm">{error}</p>
@@ -339,7 +338,7 @@ export default function TradeDetailPage() {
 
       {/* Not found */}
       {!loading && !error && !trade && (
-        <div className="rounded-lg border border-border-default bg-bg-card p-8 text-center">
+        <div className="rounded-lg border border-border-default bg-bg-card dark:bg-surface-1 p-8 text-center">
           <p className="text-text-muted">Trade not found</p>
         </div>
       )}

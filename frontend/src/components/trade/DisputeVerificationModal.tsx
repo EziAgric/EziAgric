@@ -48,10 +48,12 @@ export function DisputeVerificationModal({
   const [ipfsHash, setIpfsHash] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStep("upload");
       setIpfsHash(null);
       setTxHash(null);
@@ -61,13 +63,23 @@ export function DisputeVerificationModal({
 
   // Lock body scroll when open
   useEffect(() => {
-    document.body.style.overflow = isOpen ? "hidden" : "unset";
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+      const firstButton = document.querySelector<HTMLButtonElement>(
+        '[role="dialog"] button:not([disabled])',
+      );
+      firstButton?.focus();
+    } else {
+      document.body.style.overflow = "unset";
+    }
     return () => {
       document.body.style.overflow = "unset";
     };
   }, [isOpen]);
 
   const signAndSubmit = async (xdr: string, actionLabel: string) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setStep("signing");
     setErrorMsg(null);
 
@@ -106,6 +118,8 @@ export function DisputeVerificationModal({
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setStep("error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -246,7 +260,8 @@ export function DisputeVerificationModal({
                     </button>
                     <button
                       onClick={handleConfirmAccept}
-                      className="flex-1 py-3 rounded-xl text-sm font-semibold bg-gold text-text-inverse hover:bg-gold-hover transition-colors"
+                      disabled={isSubmitting}
+                      className="flex-1 py-3 rounded-xl text-sm font-semibold bg-gold text-text-inverse hover:bg-gold-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       Sign &amp; Release Funds
                     </button>
@@ -294,7 +309,8 @@ export function DisputeVerificationModal({
                     </button>
                     <button
                       onClick={handleConfirmDispute}
-                      className="flex-1 py-3 rounded-xl text-sm font-semibold bg-status-danger text-white hover:opacity-90 transition-opacity"
+                      disabled={isSubmitting}
+                      className="flex-1 py-3 rounded-xl text-sm font-semibold bg-status-danger text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
                     >
                       Sign &amp; Raise Dispute
                     </button>

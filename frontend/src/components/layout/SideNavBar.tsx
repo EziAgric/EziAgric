@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/Button";
+import { NavLink } from "@/components/ui/Navigation";
 
 export interface SideNavBarProps {
   activePath: string;
@@ -9,6 +11,7 @@ export interface SideNavBarProps {
   onConnectWallet: () => void;
   collapsed?: boolean;
   walletAddress?: string | null;
+  onClose?: () => void;
 }
 
 interface NavItem {
@@ -112,15 +115,16 @@ export function SideNavBar({
   onConnectWallet,
   collapsed = false,
   walletAddress,
+  onClose,
 }: SideNavBarProps) {
   return (
     <aside
       className={`${
         collapsed ? "w-20" : "w-64"
-      } flex-shrink-0 bg-card border-r border-border-default flex flex-col min-h-screen`}
+      } flex-shrink-0 bg-surface-1 border-r border-border-default shadow-elev-1 flex flex-col min-h-screen`}
       aria-label="Primary sidebar"
     >
-      <div className="h-16 px-4 border-b border-border-default flex items-center">
+      <div className="h-16 px-4 border-b border-border-default flex items-center justify-between">
         <Link href="/dashboard" className="flex items-center gap-3">
           <span className="w-8 h-8 rounded-lg bg-gold-muted border border-gold/30 flex items-center justify-center text-gold">
             <svg
@@ -137,6 +141,22 @@ export function SideNavBar({
             <span className="text-text-primary text-lg font-semibold">Amana</span>
           )}
         </Link>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-all"
+            aria-label="Close menu"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fillRule="evenodd"
+                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        )}
       </div>
 
       <nav
@@ -144,30 +164,24 @@ export function SideNavBar({
         role="navigation"
         aria-label="Main navigation"
       >
-        <ul className="space-y-1">
+        <ul className="space-y-1 px-2">
           {NAV_ITEMS.map((item) => {
             const isActive =
               activePath === item.href || activePath.startsWith(`${item.href}/`);
 
             return (
               <li key={item.href} role="none">
-                <Link
+                <NavLink
                   href={item.href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`flex items-center ${
-                    collapsed ? "justify-center px-2" : "px-4"
-                  } py-3 border-l-4 transition-all ${
-                    isActive
-                      ? "border-l-gold bg-elevated text-gold"
-                      : "border-transparent text-text-secondary hover:text-text-primary hover:bg-white/5 focus-visible:outline-offset-2 focus-visible:outline-gold"
-                  }`}
+                  isActive={isActive}
                   title={collapsed ? item.label : undefined}
+                  className={`${collapsed ? "justify-center px-2 py-3" : "flex items-center px-4 py-3"}`}
                 >
                   <span className="w-5 h-5 flex items-center justify-center">
                     {item.icon}
                   </span>
                   {!collapsed && <span className="ml-3 text-sm">{item.label}</span>}
-                </Link>
+                </NavLink>
               </li>
             );
           })}
@@ -177,7 +191,7 @@ export function SideNavBar({
       <div className="p-4 border-t border-border-default">
         {isConnected ? (
           <div
-            className={`rounded-lg bg-bg-elevated border border-border-default ${
+            className={`rounded-lg bg-surface-2 border border-border-raised ${
               collapsed ? "px-2 py-3 text-center" : "px-3 py-3"
             }`}
           >
@@ -189,15 +203,14 @@ export function SideNavBar({
             </p>
           </div>
         ) : (
-          <button
+          <Button
             type="button"
             onClick={onConnectWallet}
-            className={`w-full rounded-lg bg-gold text-text-inverse text-sm font-semibold hover:bg-gold-hover transition-colors ${
-              collapsed ? "px-2 py-2.5" : "px-3 py-2.5"
-            }`}
+            variant="primary"
+            className={collapsed ? "px-2 py-2.5" : "px-3 py-2.5"}
           >
             {collapsed ? "Link" : "Connect Wallet"}
-          </button>
+          </Button>
         )}
       </div>
     </aside>

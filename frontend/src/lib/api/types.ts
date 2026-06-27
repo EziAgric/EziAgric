@@ -16,6 +16,8 @@ export interface TradeResponse {
   status: string;
   createdAt: string;
   updatedAt: string;
+  eta?: string;
+  carrier?: string;
 }
 
 export interface TradeListResponse {
@@ -70,6 +72,19 @@ export interface CreateTradeResponse {
 }
 
 export interface DepositResponse {
+  unsignedXdr: string;
+}
+
+export interface SubmitManifestRequest {
+  driverName: string;
+  driverIdNumber: string;
+  vehicleRegistration: string;
+  routeDescription: string;
+  expectedDeliveryAt: string;
+}
+
+export interface SubmitManifestResponse {
+  manifestId: number;
   unsignedXdr: string;
 }
 

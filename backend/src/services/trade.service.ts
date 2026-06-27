@@ -2,9 +2,25 @@ import crypto from "crypto";
 import { Prisma, PrismaClient, Trade, TradeStatus, DisputeStatus } from "@prisma/client";
 import { prisma as defaultPrisma } from "../lib/db";
 import { ContractService } from "./contract.service";
+import { appLogger } from "../middleware/logger";
+import { TracingHelper } from "../config/tracing";
+
+function parseAdminPubkeys(): Set<string> {
+  const raw = process.env.ADMIN_STELLAR_PUBKEYS ?? "";
+  return new Set(
+    raw
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
 
 function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function sanitizeLogField(value: string, maxLength = 200): string {
+  return String(value).replace(/[\r\n\t]/g, "_").slice(0, maxLength);
 }
 
 export interface CreatePendingTradeInput {
@@ -23,7 +39,8 @@ export type TradeListFilters = {
   sort?: string;
 };
 
-type TradeDatabase = Pick<PrismaClient, "trade">;
+type TradeDatabase = Pick<PrismaClient, "trade" | "dispute" | "disputeCategory"> &
+  Partial<Pick<PrismaClient, "userWatchlist">>;
 
 export class TradeAccessDeniedError extends Error {
   constructor() {
@@ -40,6 +57,15 @@ export class DisputeTradeStatusError extends Error {
   }
 }
 
+export class DisputeCategoryValidationError extends Error {
+  status = 400;
+
+  constructor(category: string | number) {
+    super(`Invalid dispute category: ${category}`);
+    this.name = "DisputeCategoryValidationError";
+  }
+}
+
 export class TradeService {
   constructor(
     private readonly prisma: TradeDatabase = defaultPrisma,
@@ -47,6 +73,20 @@ export class TradeService {
   ) { }
 
   async createPendingTrade(input: CreatePendingTradeInput): Promise<Trade> {
+    appLogger.info({
+      requestId: undefined, // Will be filled by context if available
+      userId: sanitizeLogField(input.buyerAddress),
+      paymentId: sanitizeLogField(input.tradeId),
+      provider: "stellar",
+      status: "authorization_started",
+      timestamp: new Date().toISOString()
+    }, "Payment authorization started");
+
+    TracingHelper.addEvent("authorization_started", {
+      paymentId: sanitizeLogField(input.tradeId),
+      userId: sanitizeLogField(input.buyerAddress)
+    });
+
     return this.prisma.trade.create({
       data: {
         ...input,
@@ -65,6 +105,51 @@ export class TradeService {
       OR: [{ buyerAddress: address }, { sellerAddress: address }],
       ...(filters.status ? { status: filters.status } : {}),
     };
+
+    const watchlist = this.prisma.userWatchlist;
+    if (watchlist) {
+      // Prisma cannot order a relation by whether it belongs to *this* caller.
+      // Fetch the caller's indexed bookmarks first, then query only the
+      // remaining trades for the rest of the page. This keeps watched trades at
+      // the top without incorrectly promoting trades watched by other users.
+      const [entries, total] = await Promise.all([
+        watchlist.findMany({
+          where: { userAddress: address.toLowerCase() },
+          include: { trade: true },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        }),
+        this.prisma.trade.count({ where }),
+      ]);
+      const watched = entries
+        .map((entry) => entry.trade)
+        .filter((trade) =>
+          !filters.status || trade.status === filters.status,
+        );
+      const watchedIds = watched.map((trade) => trade.tradeId);
+      const watchedPage = watched.slice(skip, skip + limit);
+      const remainingSlots = limit - watchedPage.length;
+      const remainingSkip = Math.max(0, skip - watched.length);
+      const unwatchlisted = remainingSlots > 0
+        ? await this.prisma.trade.findMany({
+          where: watchedIds.length > 0
+            ? { AND: [where, { NOT: { tradeId: { in: watchedIds } } }] }
+            : where,
+          orderBy,
+          skip: remainingSkip,
+          take: remainingSlots,
+        })
+        : [];
+
+      return {
+        items: [...watchedPage, ...unwatchlisted],
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        },
+      };
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.trade.findMany({
@@ -105,7 +190,12 @@ export class TradeService {
       return null;
     }
 
-    if (trade.buyerAddress !== callerAddress && trade.sellerAddress !== callerAddress) {
+    const caller = callerAddress.toLowerCase();
+    if (
+      trade.buyerAddress.toLowerCase() !== caller &&
+      trade.sellerAddress.toLowerCase() !== caller &&
+      !parseAdminPubkeys().has(caller)
+    ) {
       throw new TradeAccessDeniedError();
     }
 
@@ -176,7 +266,13 @@ export class TradeService {
     return [{ [field]: direction }, { id: direction }];
   }
 
-  async initiateDispute(id: string, callerAddress: string, reason: string, category: string) {
+  async initiateDispute(
+    id: string,
+    callerAddress: string,
+    reason: string,
+    category: string,
+    categoryId?: number,
+  ) {
     const trade = await this.getTradeById(id, callerAddress);
     if (!trade) {
       throw new Error("Trade not found");
@@ -192,6 +288,7 @@ export class TradeService {
       throw new DisputeTradeStatusError(trade.status);
     }
 
+    const resolvedCategoryId = await this.resolveDisputeCategoryId(category, categoryId);
     const reasonHash = sha256(reason);
 
     // Build contract transaction
@@ -205,15 +302,50 @@ export class TradeService {
 
     // Create DB record
     // We store the plaintext reason for human review.
-    await (this.prisma as PrismaClient).dispute.create({
+    await this.prisma.dispute.create({
       data: {
         tradeId: trade.tradeId,
         initiator: callerAddress,
         reason,
         status: DisputeStatus.OPEN,
+        categoryId: resolvedCategoryId,
       },
     });
 
     return { unsignedXdr };
   }
+
+  private async resolveDisputeCategoryId(category: string, categoryId?: number): Promise<number> {
+    if (categoryId !== undefined) {
+      const categoryRecord = await this.prisma.disputeCategory.findFirst({
+        where: { id: categoryId, isActive: true },
+        select: { id: true },
+      });
+
+      if (!categoryRecord) {
+        throw new DisputeCategoryValidationError(categoryId);
+      }
+
+      return categoryRecord.id;
+    }
+
+    const normalizedCategory = category.trim();
+    if (!normalizedCategory) {
+      throw new DisputeCategoryValidationError(category);
+    }
+
+    const categoryRecord = await this.prisma.disputeCategory.findFirst({
+      where: { name: normalizedCategory, isActive: true },
+      select: { id: true },
+    });
+
+    if (!categoryRecord) {
+      throw new DisputeCategoryValidationError(normalizedCategory);
+    }
+
+    return categoryRecord.id;
+  }
+
+  /** Alias for listUserTrades — used by trade.controller.test.ts */
+  listTrades = this.listUserTrades.bind(this);
 }

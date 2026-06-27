@@ -35,6 +35,13 @@ enum GoalStatus {
   CANCELLED
 }
 
+enum ChainEventSyncStatus {
+  PENDING
+  RETRYING
+  PROCESSED
+  DEAD_LETTER
+}
+
 /// User model representing a participant in the Amana platform
 /// - walletAddress: Stellar wallet address (stored as lowercase for consistency)
 /// - displayName: User's display name
@@ -53,6 +60,14 @@ model User {
   initiatedDisputes Dispute[]      @relation("initiator")
   vaults          Vault[]
   goals           Goal[]
+  tradeTemplates  TradeTemplate[]
+  watchlist       UserWatchlist[]
+  refreshTokens   RefreshToken[]
+  wallets         UserWallet[]
+  webhooks        Webhook[]
+  webhookSubscriptions WebhookSubscription[]
+  notifications   InAppNotification[]
+  notificationPreference NotificationPreference?
 
   @@index([walletAddress])
 }
@@ -74,6 +89,12 @@ model Trade {
   /// Monotonic optimistic concurrency counter for status transitions.
   version       Int         @default(0)
   status        TradeStatus @default(CREATED)
+  /// Canonical timestamp set once when the trade transitions to FUNDED.
+  fundedAt      DateTime?
+  /// Canonical timestamp set once when the trade transitions to DELIVERED.
+  deliveredAt   DateTime?
+  /// Canonical timestamp set once when the trade transitions to COMPLETED.
+  completedAt   DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -83,11 +104,67 @@ model Trade {
   dispute       Dispute?
   manifest      DeliveryManifest?
   evidence      TradeEvidence[]
+  notes           TradeNote[]
+  watchlistEntries UserWatchlist[]
+  releaseMilestones EscrowReleaseMilestone[]
 
   @@index([tradeId])
   @@index([buyerAddress])
   @@index([sellerAddress])
   @@index([status])
+}
+
+/// TradeTemplate stores a user's reusable trade terms. The buyer is always the
+/// authenticated user at creation time, so it is intentionally not persisted.
+model TradeTemplate {
+  id              Int      @id @default(autoincrement())
+  userAddress     String   @db.VarChar(255)
+  name            String   @db.VarChar(100)
+  sellerAddress   String   @db.VarChar(255)
+  amountUsdc      String   @db.VarChar(100)
+  buyerLossBps    Int      @default(5000)
+  sellerLossBps   Int      @default(5000)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userAddress], references: [walletAddress], onDelete: Cascade)
+
+  @@unique([userAddress, name])
+  @@index([userAddress, createdAt])
+}
+
+/// UserWatchlist is a user-scoped bookmark. The composite unique constraint
+/// makes adding the same trade idempotent and prevents duplicate favorites.
+model UserWatchlist {
+  id          Int      @id @default(autoincrement())
+  userAddress String   @db.VarChar(255)
+  tradeId     String   @db.VarChar(255)
+  createdAt   DateTime @default(now())
+
+  user  User  @relation(fields: [userAddress], references: [walletAddress], onDelete: Cascade)
+  trade Trade @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
+
+  @@unique([userAddress, tradeId])
+  @@index([userAddress, createdAt])
+  @@index([tradeId])
+}
+
+/// DisputeCategory model for classifying disputes
+/// - name: Human-readable category name (unique)
+/// - description: Optional description of the category
+model DisputeCategory {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(100)
+  description String?   @db.Text
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  disputes    Dispute[]
+
+  @@index([name])
+  @@index([isActive])
 }
 
 /// Dispute model representing a dispute on a trade
@@ -96,23 +173,29 @@ model Trade {
 /// - reason: Reason for the dispute
 /// - status: Current status of the dispute
 /// - resolvedAt: Timestamp when the dispute was resolved
+/// - categoryId: Optional reference to a DisputeCategory
 model Dispute {
-  id           Int           @id @default(autoincrement())
-  tradeId      String        @unique @db.VarChar(255)
-  initiator    String        @db.VarChar(255)
-  reason       String        @db.Text
-  status       DisputeStatus @default(OPEN)
+  id           Int              @id @default(autoincrement())
+  tradeId      String           @unique @db.VarChar(255)
+  initiator    String           @db.VarChar(255)
+  reason       String           @db.Text
+  status       DisputeStatus    @default(OPEN)
+  /// Monotonic optimistic concurrency counter for status transitions.
+  version      Int              @default(0)
   resolvedAt   DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  categoryId   Int?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   // Relations
-  trade        Trade         @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
-  initiatorUser User         @relation("initiator", fields: [initiator], references: [walletAddress])
+  trade        Trade            @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
+  initiatorUser User            @relation("initiator", fields: [initiator], references: [walletAddress])
+  category     DisputeCategory? @relation(fields: [categoryId], references: [id])
 
   @@index([tradeId])
   @@index([initiator])
   @@index([status])
+  @@index([categoryId])
 }
 
 /// DeliveryManifest — submitted by the seller before shipping.
@@ -171,6 +254,29 @@ model ProcessedEvent {
   @@index([ledgerSequence])
 }
 
+/// ChainEventOutbox model for durable event processing state and retries
+model ChainEventOutbox {
+  id              Int                  @id @default(autoincrement())
+  ledgerSequence  Int
+  contractId      String               @db.VarChar(255)
+  eventId         String               @db.VarChar(255)
+  eventType       String               @db.VarChar(100)
+  tradeId         String               @db.VarChar(255)
+  payload         Json
+  status          ChainEventSyncStatus @default(PENDING)
+  attempts        Int                  @default(0)
+  nextAttemptAt   DateTime             @default(now())
+  lastError       String?              @db.Text
+  deadLetteredAt  DateTime?
+  processedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([ledgerSequence, contractId, eventId])
+  @@index([status, nextAttemptAt])
+  @@index([ledgerSequence])
+}
+
 /// Vault model representing a savings vault on Soroban
 /// - vaultId: Unique identifier from blockchain
 /// - ownerAddress: Wallet address of vault owner (lowercase)
@@ -220,4 +326,164 @@ model Goal {
   @@index([vaultId])
   @@index([userId])
   @@index([status])
+}
+
+/// RefreshToken model for tracking active sessions and preventing reuse
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique @db.VarChar(255)
+  jti       String   @unique @db.VarChar(255)
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([jti])
+}
+
+model UserWallet {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  walletAddress String   @db.VarChar(255)
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, walletAddress])
+  @@index([userId])
+  @@index([walletAddress])
+}
+
+/// Webhook model representing a registered webhook endpoint owned by a user
+/// - url: The target URL to which webhook payloads are delivered
+/// - description: Optional human-readable label
+/// - isActive: Whether the webhook is currently accepting deliveries
+model Webhook {
+  id          Int      @id @default(autoincrement())
+  userAddress String   @db.VarChar(255)
+  url         String   @db.VarChar(2048)
+  description String?  @db.VarChar(255)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user             User                    @relation(fields: [userAddress], references: [walletAddress], onDelete: Cascade)
+  deliveryAttempts WebhookDeliveryAttempt[]
+
+  @@index([userAddress, createdAt])
+}
+
+/// WebhookDeliveryAttempt records a single delivery attempt for a webhook
+/// - timestamp: When the delivery was attempted
+/// - status: Outcome of the delivery (e.g. "success", "failure")
+/// - statusCode: HTTP status code returned by the target
+/// - responseBody: Response body from the target (if any)
+model WebhookDeliveryAttempt {
+  id           Int      @id @default(autoincrement())
+  webhookId    Int
+  timestamp    DateTime @default(now())
+  status       String   @db.VarChar(50)
+  statusCode   Int
+  responseBody String?  @db.Text
+
+  // Relations
+  webhook      Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, timestamp])
+}
+
+/// WebhookSubscription stores event subscription endpoints owned by a user.
+model WebhookSubscription {
+  id          Int      @id @default(autoincrement())
+  url         String   @db.VarChar(500)
+  events      String[]
+  secretHash  String   @db.VarChar(64)
+  isActive    Boolean  @default(true)
+  userId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+/// InAppNotification represents an in-app notification for a user
+/// - type: Category of notification (e.g. "trade_update", "dispute", "system")
+/// - isRead: Whether the notification has been read
+/// - metadata: Optional JSON payload with additional context
+model InAppNotification {
+  id          Int      @id @default(autoincrement())
+  userAddress String   @db.VarChar(255)
+  title       String   @db.VarChar(255)
+  message     String   @db.Text
+  type        String   @db.VarChar(50)
+  isRead      Boolean  @default(false)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userAddress], references: [walletAddress], onDelete: Cascade)
+
+  @@index([userAddress, isRead, createdAt])
+}
+
+/// NotificationPreference stores a user's trade notification channel choices.
+/// The JSON payload is keyed by event type, with values like ["email", "push"].
+model NotificationPreference {
+  id          Int      @id @default(autoincrement())
+  userAddress String   @unique @db.VarChar(255)
+  preferences Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userAddress], references: [walletAddress], onDelete: Cascade)
+
+  @@index([userAddress])
+}
+
+/// TradeNote — private encrypted notes attached to a trade by a buyer or seller.
+/// Each note is encrypted at rest with AES-256-GCM. Only the author can decrypt
+/// their own notes. Notes are limited to 2000 characters of plaintext.
+model TradeNote {
+  id          Int      @id @default(autoincrement())
+  tradeId     String   @db.VarChar(255)
+  authorAddress String @db.VarChar(255)
+  /// AES-256-GCM encrypted note content (base64-encoded iv + ciphertext + tag)
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  trade Trade @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
+
+  @@index([tradeId, authorAddress, createdAt])
+  @@index([tradeId, createdAt])
+  @@index([authorAddress])
+}
+
+/// EscrowReleaseMilestone represents one pre-defined partial release point.
+/// releasedAt is set after the matching on-chain release event is confirmed.
+model EscrowReleaseMilestone {
+  id             Int       @id @default(autoincrement())
+  tradeId        String    @db.VarChar(255)
+  milestoneIndex Int
+  amountUsdc     String    @db.VarChar(100)
+  dueAt          DateTime
+  conditionHash  String?   @db.VarChar(255)
+  releasedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  trade          Trade     @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
+
+  @@unique([tradeId, milestoneIndex])
+  @@index([tradeId, dueAt])
+  @@index([tradeId, releasedAt])
 }
