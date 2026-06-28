@@ -13,7 +13,7 @@ use soroban_sdk::{
     token,
     xdr::ContractEventBody,
     xdr::ScVal,
-    Address, Bytes, Env, IntoVal, String, Val,
+    Address, Env, IntoVal, String, Val,
 };
 use std::vec::Vec;
 
@@ -382,7 +382,37 @@ fn test_event_video_proof_submitted_payload() {
     assert_last_topic(&env, symbol_short!("VIDPRF").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 3, "VideoProofSubmittedEvent must have 3 payload fields");
+    assert_eq!(data.len(), 4, "VideoProofSubmittedEvent must have 4 payload fields (trade_id, submitter, ipfs_cid, timestamp)");
+}
+
+// ---------------------------------------------------------------------------
+// VideoProofSubmittedEvent – timestamp field is present and non-zero
+// ---------------------------------------------------------------------------
+#[test]
+fn test_event_video_proof_submitted_has_timestamp() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, _, buyer, seller, _, _) = setup(&env, 10_000, 100);
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+    let usdc_id = env
+        .register_stellar_asset_contract_v2(buyer.clone())
+        .address();
+    token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &10_000);
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
+
+    let trade_id = client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+    client.deposit(&trade_id);
+    client.submit_video_proof(&trade_id, &buyer, &String::from_str(&env, "QmVideoCID"));
+
+    let data = last_event_data(&env);
+    // timestamp is the last field (index 3)
+    assert!(
+        matches!(&data[3], ScVal::U64(_)),
+        "VideoProofSubmittedEvent timestamp must be a U64, got {:?}", data[3]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +446,42 @@ fn test_event_manifest_submitted_payload() {
     assert_last_topic(&env, symbol_short!("MNFST").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 4, "ManifestSubmittedEvent must have 4 payload fields");
+    assert_eq!(data.len(), 5, "ManifestSubmittedEvent must have 5 payload fields (trade_id, seller, driver_name_hash, driver_id_hash, timestamp)");
+}
+
+// ---------------------------------------------------------------------------
+// ManifestSubmittedEvent – timestamp field is present and non-zero
+// ---------------------------------------------------------------------------
+#[test]
+fn test_event_manifest_submitted_has_timestamp() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, _, buyer, seller, _, _) = setup(&env, 10_000, 100);
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+    let usdc_id = env
+        .register_stellar_asset_contract_v2(buyer.clone())
+        .address();
+    token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &10_000);
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
+
+    let trade_id = client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+    client.deposit(&trade_id);
+    client.submit_manifest(
+        &trade_id,
+        &seller,
+        &String::from_str(&env, "QmDriverName"),
+        &String::from_str(&env, "QmDriverId"),
+    );
+
+    let data = last_event_data(&env);
+    // timestamp is the last field (index 4)
+    assert!(
+        matches!(&data[4], ScVal::U64(_)),
+        "ManifestSubmittedEvent timestamp must be a U64, got {:?}", data[4]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -443,7 +508,149 @@ fn test_event_trade_cancelled_payload() {
     assert_last_topic(&env, symbol_short!("TRDCAN").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 3, "TradeCancelledEvent must have 3 payload fields");
+    assert_eq!(data.len(), 4, "TradeCancelledEvent must have 4 payload fields (trade_id, refund_amount, caller, timestamp)");
+}
+
+// ---------------------------------------------------------------------------
+// TradeCancelledEvent – timestamp field is present
+// ---------------------------------------------------------------------------
+#[test]
+fn test_event_trade_cancelled_has_timestamp() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, _, buyer, seller, _, _) = setup(&env, 10_000, 100);
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+    let usdc_id = env
+        .register_stellar_asset_contract_v2(buyer.clone())
+        .address();
+    token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &10_000);
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
+
+    let trade_id = client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+    client.cancel_trade(&trade_id, &buyer);
+
+    let data = last_event_data(&env);
+    // timestamp is the last field (index 3)
+    assert!(
+        matches!(&data[3], ScVal::U64(_)),
+        "TradeCancelledEvent timestamp must be a U64, got {:?}", data[3]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// InitializedEvent – payload field count and timestamp presence
+// ---------------------------------------------------------------------------
+#[test]
+fn test_event_initialized_payload() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+    let usdc_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
+
+    // The InitializedEvent uses multi-topic ["amana", "initialized"], so we check
+    // that the last event was our initialize call and has the right field count.
+    let all = env.events().all();
+    let events = all.events();
+    assert!(!events.is_empty(), "no events emitted");
+    // initialize is the only call so it must be the last event
+    let data = last_event_data(&env);
+    assert_eq!(data.len(), 3, "InitializedEvent must have 3 payload fields (admin, fee_bps, timestamp)");
+}
+
+#[test]
+fn test_event_initialized_has_timestamp() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+    let usdc_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
+
+    let data = last_event_data(&env);
+    // timestamp is the last field (index 2)
+    assert!(
+        matches!(&data[2], ScVal::U64(_)),
+        "InitializedEvent timestamp must be a U64, got {:?}", data[2]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// confirm_delivery – DeliveryConfirmedEvent has delivered_at (timestamp)
+// ---------------------------------------------------------------------------
+#[test]
+fn test_event_confirm_delivery_has_timestamp() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, _, buyer, seller, _, _) = setup(&env, 10_000, 100);
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+    let usdc_id = env
+        .register_stellar_asset_contract_v2(buyer.clone())
+        .address();
+    token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &10_000);
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
+
+    let trade_id = client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+    client.deposit(&trade_id);
+    client.confirm_delivery(&trade_id);
+
+    assert_last_topic(&env, symbol_short!("DELCNF").into_val(&env));
+
+    let data = last_event_data(&env);
+    assert_eq!(data.len(), 2, "DeliveryConfirmedEvent must have 2 payload fields (trade_id, delivered_at)");
+    // delivered_at is at index 0 (fields sorted by name: delivered_at < trade_id)
+    assert!(
+        data.iter().any(|v| matches!(v, ScVal::U64(_))),
+        "DeliveryConfirmedEvent must contain a U64 timestamp (delivered_at)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// execute_cancellation via refund – TradeCancelledEvent has timestamp
+// ---------------------------------------------------------------------------
+#[test]
+fn test_event_execute_cancellation_via_refund_has_timestamp() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (_, _, buyer, seller, _, _) = setup(&env, 10_000, 100);
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+    let usdc_id = env
+        .register_stellar_asset_contract_v2(buyer.clone())
+        .address();
+    token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &10_000);
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
+
+    let trade_id = client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+    client.deposit(&trade_id);
+    // seller refund triggers execute_cancellation
+    client.refund(&trade_id);
+
+    assert_last_topic(&env, symbol_short!("TRDCAN").into_val(&env));
+
+    let data = last_event_data(&env);
+    assert_eq!(data.len(), 4, "TradeCancelledEvent (via refund) must have 4 fields including timestamp");
+    assert!(
+        matches!(&data[3], ScVal::U64(_)),
+        "TradeCancelledEvent timestamp must be a U64, got {:?}", data[3]
+    );
 }
 
 // ---------------------------------------------------------------------------

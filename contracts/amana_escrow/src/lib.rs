@@ -61,6 +61,7 @@ fn checked_loss_amount(total: i128, loss_bps: i128, seller_loss_bps: u32) -> i12
 pub struct InitializedEvent {
     pub admin: Address,
     pub fee_bps: u32,
+    pub timestamp: u64,
 }
 
 #[contractevent(topics = ["TRDCRT"])]
@@ -85,6 +86,7 @@ pub struct TradeCancelledEvent {
     pub trade_id: u64,
     pub refund_amount: i128,
     pub caller: Address,
+    pub timestamp: u64,
 }
 
 #[contractevent(topics = ["TCNBYR"])]
@@ -159,6 +161,7 @@ pub struct VideoProofSubmittedEvent {
     pub trade_id: u64,
     pub submitter: Address,
     pub ipfs_cid: String,
+    pub timestamp: u64,
 }
 
 /// Emitted when a trade's expiry deadline is reached and a refund is claimed.
@@ -178,6 +181,7 @@ pub struct ManifestSubmittedEvent {
     pub seller: Address,
     pub driver_name_hash: String,
     pub driver_id_hash: String,
+    pub timestamp: u64,
 }
 
 /// Emitted when a mediator address is added to the registry by the admin.
@@ -455,7 +459,7 @@ impl EscrowContract {
             .instance()
             .set(&DataKey::SchemaVersion, &CURRENT_SCHEMA_VERSION);
         Self::bump_instance_ttl(&env);
-        InitializedEvent { admin, fee_bps }.publish(&env);
+        InitializedEvent { admin, fee_bps, timestamp: env.ledger().timestamp() }.publish(&env);
     }
 
     /// Register a single legacy mediator address. Only the admin may call this.
@@ -1113,6 +1117,7 @@ impl EscrowContract {
             trade_id: trade.trade_id,
             refund_amount,
             caller,
+            timestamp: env.ledger().timestamp(),
         }
         .publish(env);
     }
@@ -1577,6 +1582,7 @@ impl EscrowContract {
             trade_id,
             submitter,
             ipfs_cid,
+            timestamp: now,
         }
         .publish(&env);
     }
@@ -1639,6 +1645,7 @@ impl EscrowContract {
             seller,
             driver_name_hash,
             driver_id_hash,
+            timestamp: env.ledger().timestamp(),
         }
         .publish(&env);
     }
@@ -3223,7 +3230,7 @@ mod test {
         let token_mint = token::StellarAssetClient::new(env, &usdc_id);
         token_mint.mint(&buyer, &amount);
         let trade_id =
-            client.create_trade(&buyer, &seller, &amount, &buyer_loss_bps, &seller_loss_bps);
+            client.create_trade(&buyer, &seller, &amount, &buyer_loss_bps, &seller_loss_bps, &None);
         client.deposit(&trade_id);
         let reason = soroban_sdk::String::from_str(env, "QmInvariantTest");
         client.initiate_dispute(&trade_id, &buyer, &reason);
@@ -3830,7 +3837,7 @@ mod test {
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
-        client.initialize(&admin, &usdc_id, &treasury, &100);
+        client.initialize(&admin, &usdc_id, &treasury, &100, &usdc_id);
         let amount = 10_000_i128;
         let token_client = token::StellarAssetClient::new(&env, &usdc_id);
         token_client.mint(&buyer, &amount);
@@ -6025,7 +6032,7 @@ mod property_tests {
             let seller_loss_bps = 10_000 - buyer_loss_bps;
 
             let trade_id =
-                client.create_trade(&buyer, &seller, &amount, &buyer_loss_bps, &seller_loss_bps);
+                client.create_trade(&buyer, &seller, &amount, &buyer_loss_bps, &seller_loss_bps, &None);
             client.deposit(&trade_id);
             client.initiate_dispute(&trade_id, &buyer, &String::from_str(&env, "reason"));
 
@@ -6300,6 +6307,7 @@ mod property_tests {
             &case.amount,
             &case.buyer_loss_bps,
             &case.seller_loss_bps,
+            &None,
         );
 
         match case.route % 4 {
@@ -6385,6 +6393,7 @@ mod property_tests {
             &case.amount,
             &case.buyer_loss_bps,
             &case.seller_loss_bps,
+            &None,
         );
 
         let rejected = match case.route % 4 {
@@ -7190,7 +7199,7 @@ mod fee_and_evidence_tests {
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
         // fee_bps = 0 so fee is also zero
-        client.initialize(&admin, &usdc_id, &treasury, &0);
+        client.initialize(&admin, &usdc_id, &treasury, &0, &usdc_id);
         let amount = 10_000_i128;
         let token_client = token::StellarAssetClient::new(&env, &usdc_id);
         token_client.mint(&buyer, &amount);
