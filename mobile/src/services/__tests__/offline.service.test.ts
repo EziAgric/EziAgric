@@ -1,3 +1,4 @@
+/* eslint-disable no-undef, @typescript-eslint/no-explicit-any */
 import { offlineService } from '../offline.service';
 import * as SQLite from 'expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
