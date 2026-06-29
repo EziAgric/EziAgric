@@ -1,4 +1,4 @@
-import { offlineService, initDb } from '../offline.service';
+import { offlineService } from '../offline.service';
 import * as SQLite from 'expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
 import { AppState } from 'react-native';
@@ -46,7 +46,7 @@ jest.mock('react-native', () => {
   const mockListeners = new Set<(mockStatus: string) => void>();
   return {
     AppState: {
-      addEventListener: jest.fn((event: string, cb: (mockStatus: string) => void) => {
+      addEventListener: jest.fn((_event: string, cb: (mockStatus: string) => void) => {
         mockListeners.add(cb);
         return {
           remove: jest.fn(() => mockListeners.delete(cb)),
