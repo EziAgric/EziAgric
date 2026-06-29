@@ -4,9 +4,10 @@ import { ReleaseSequenceCard } from '../ReleaseSequenceCard';
 
 // Mock the BentoCard component
 jest.mock('@/components/ui/BentoCard', () => ({
-    BentoCard: ({ children, title, glowVariant, className }: { children: React.ReactNode, title?: string, icon?: React.ReactNode, glowVariant?: string, className?: string }) => (
+    BentoCard: ({ children, title, icon, glowVariant, className }: { children: React.ReactNode, title?: string, icon?: React.ReactNode, glowVariant?: string, className?: string }) => (
         <div data-testid="bento-card" data-title={title} data-glow={glowVariant} className={className}>
             {title && <h3>{title}</h3>}
+            {icon}
             {children}
         </div>
     ),
