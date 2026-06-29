@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { WalletAddressBadge } from "../WalletAddressBadge";
 
 describe("WalletAddressBadge", () => {
@@ -27,15 +27,30 @@ describe("WalletAddressBadge", () => {
     );
   });
 
-  it("triggers clipboard write on copy click", () => {
-    const writeText = jest.fn();
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("triggers clipboard write on copy click", async () => {
+    jest.useFakeTimers();
+    const writeText = jest.fn().mockResolvedValue(undefined);
     Object.assign(navigator, {
       clipboard: { writeText },
     });
 
-    render(<WalletAddressBadge address={address} showCopy showExplorer={false} />);
+    const { container } = render(<WalletAddressBadge address={address} showCopy showExplorer={false} />);
     fireEvent.click(screen.getByLabelText("Copy wallet address"));
 
     expect(writeText).toHaveBeenCalledWith(address);
+
+    // Wait for the checkmark to appear in the UI (copied = true)
+    await waitFor(() => {
+      expect(container.querySelector(".text-emerald")).toBeInTheDocument();
+    });
+
+    // Fast-forward the timeout (copied = false) to prevent state updates after the test completes
+    act(() => {
+      jest.runAllTimers();
+    });
   });
 });

@@ -69,8 +69,11 @@ jest.mock('next/navigation', () => ({
 
 const TestWrapper = ({ initialData, children }: { initialData?: Partial<TradeData>; children: React.ReactNode }) => {
     const { update } = useTrade();
+    const initialized = React.useRef(false);
+
     React.useEffect(() => {
-        if (initialData) {
+        if (initialData && !initialized.current) {
+            initialized.current = true;
             update(initialData);
         }
     }, [initialData, update]);
