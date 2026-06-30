@@ -1,7 +1,7 @@
 import { PactV3, MatchersV3 } from '@pact-foundation/pact';
 import { tradesApi } from '@/lib/api/trades';
 
-const { like, eachLike, term, iso8601DateTimeWithMillis } = MatchersV3;
+const { like, eachLike, term, datetime } = MatchersV3;
 
 describe('Trades API Pact Consumer Tests', () => {
   const provider = new PactV3({
@@ -264,8 +264,8 @@ describe('Trades API Pact Consumer Tests', () => {
             buyerLossBps: 5000,
             sellerLossBps: 5000,
             status: 'CREATED',
-            createdAt: iso8601DateTimeWithMillis(),
-            updatedAt: iso8601DateTimeWithMillis(),
+            createdAt: datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2026-01-01T00:00:00.000Z'),
+            updatedAt: datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2026-01-01T00:00:00.000Z'),
           },
         });
 
@@ -313,8 +313,8 @@ describe('Trades API Pact Consumer Tests', () => {
               buyerLossBps: 5000,
               sellerLossBps: 5000,
               status: 'CREATED',
-              createdAt: iso8601DateTimeWithMillis(),
-              updatedAt: iso8601DateTimeWithMillis(),
+              createdAt: datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2026-01-01T00:00:00.000Z'),
+              updatedAt: datetime("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2026-01-01T00:00:00.000Z'),
             }),
             pagination: {
               page: 1,
