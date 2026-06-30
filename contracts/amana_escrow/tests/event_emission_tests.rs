@@ -8,12 +8,11 @@ extern crate std;
 
 use amana_escrow::{EscrowContract, EscrowContractClient};
 use soroban_sdk::{
-    symbol_short,
+    Address, Env, IntoVal, String, Val, symbol_short,
     testutils::{Address as _, Events as _},
     token,
     xdr::ContractEventBody,
     xdr::ScVal,
-    Address, Bytes, Env, IntoVal, String, Val,
 };
 use std::vec::Vec;
 
@@ -67,7 +66,7 @@ fn last_event_data(env: &Env) -> Vec<soroban_sdk::xdr::ScVal> {
                     vals.push(entry.val.clone());
                 }
                 vals
-            },
+            }
             soroban_sdk::xdr::ScVal::Vec(Some(fields)) => fields.to_vec(),
             other => panic!("expected ScVal::Map or ScVal::Vec for event data, got {other:?}"),
         },
@@ -110,7 +109,11 @@ fn test_event_trade_created_payload() {
     assert_last_topic(&env, symbol_short!("TRDCRT").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 4, "TradeCreatedEvent must have 4 payload fields");
+    assert_eq!(
+        data.len(),
+        4,
+        "TradeCreatedEvent must have 4 payload fields"
+    );
 
     // trade_id: u64
     assert!(
@@ -180,7 +183,11 @@ fn test_event_funds_released_payload_integrity() {
     assert_last_topic(&env, symbol_short!("RELSD").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 3, "FundsReleasedEvent must have 3 payload fields");
+    assert_eq!(
+        data.len(),
+        3,
+        "FundsReleasedEvent must have 3 payload fields"
+    );
 
     // seller_amount + fee_amount should equal 10_000
     let seller_amount = match &data[1] {
@@ -224,7 +231,11 @@ fn test_event_dispute_initiated_payload() {
     assert_last_topic(&env, symbol_short!("DISINI").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 3, "DisputeInitiatedEvent must have 3 payload fields");
+    assert_eq!(
+        data.len(),
+        3,
+        "DisputeInitiatedEvent must have 3 payload fields"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +260,11 @@ fn test_event_mediator_added_payload() {
     assert_last_topic(&env, symbol_short!("MEDADD").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 1, "MediatorAddedEvent must have 1 payload field");
+    assert_eq!(
+        data.len(),
+        1,
+        "MediatorAddedEvent must have 1 payload field"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +290,11 @@ fn test_event_mediator_removed_payload() {
     assert_last_topic(&env, symbol_short!("MEDREM").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 1, "MediatorRemovedEvent must have 1 payload field");
+    assert_eq!(
+        data.len(),
+        1,
+        "MediatorRemovedEvent must have 1 payload field"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +372,11 @@ fn test_dispute_lifecycle_event_sequence() {
     assert_last_topic(&env, symbol_short!("DISRES").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 4, "DisputeResolvedEvent must have 4 payload fields");
+    assert_eq!(
+        data.len(),
+        4,
+        "DisputeResolvedEvent must have 4 payload fields"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +405,11 @@ fn test_event_video_proof_submitted_payload() {
     assert_last_topic(&env, symbol_short!("VIDPRF").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 3, "VideoProofSubmittedEvent must have 3 payload fields");
+    assert_eq!(
+        data.len(),
+        3,
+        "VideoProofSubmittedEvent must have 3 payload fields"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +443,11 @@ fn test_event_manifest_submitted_payload() {
     assert_last_topic(&env, symbol_short!("MNFST").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 4, "ManifestSubmittedEvent must have 4 payload fields");
+    assert_eq!(
+        data.len(),
+        4,
+        "ManifestSubmittedEvent must have 4 payload fields"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -443,7 +474,11 @@ fn test_event_trade_cancelled_payload() {
     assert_last_topic(&env, symbol_short!("TRDCAN").into_val(&env));
 
     let data = last_event_data(&env);
-    assert_eq!(data.len(), 3, "TradeCancelledEvent must have 3 payload fields");
+    assert_eq!(
+        data.len(),
+        3,
+        "TradeCancelledEvent must have 3 payload fields"
+    );
 }
 
 // ---------------------------------------------------------------------------
