@@ -105,7 +105,7 @@ export async function scheduleLocalNotification(
   body: string,
   data?: NotificationData,
 ): Promise<string> {
-  const { identifier } = await Notifications.scheduleNotificationAsync({
+  const identifier = await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
