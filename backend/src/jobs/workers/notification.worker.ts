@@ -2,6 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { appLogger } from '../../middleware/logger';
 import { createQueueConnection, NotificationJobData } from '../queue';
 import { prisma } from '../../lib/db';
+import type { Prisma } from '@prisma/client';
 
 export function createNotificationWorker(): Worker<NotificationJobData> {
   return new Worker<NotificationJobData>(
@@ -17,7 +18,7 @@ export function createNotificationWorker(): Worker<NotificationJobData> {
             title,
             message,
             type,
-            metadata: metadata ?? {},
+            metadata: (metadata ?? {}) as Prisma.InputJsonValue,
           },
         });
       } else {

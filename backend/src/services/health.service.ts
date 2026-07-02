@@ -39,7 +39,7 @@ interface HealthCheckResponse {
 
 interface HealthDatabase {
   $queryRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]>;
-  processedLedger: {
+  processedEvent: {
     findFirst(args?: {
       orderBy?: { ledgerSequence?: "asc" | "desc" };
       take?: number;
@@ -114,7 +114,7 @@ export class HealthService {
     const maxLagSeconds = 15;
 
     try {
-      const latestLedger = await this.prisma.processedLedger.findFirst({
+      const latestLedger = await this.prisma.processedEvent.findFirst({
         orderBy: { ledgerSequence: "desc" },
         take: 1,
       });
@@ -365,7 +365,7 @@ export class HealthService {
 
     let latestLedger: { ledgerSequence: number; processedAt: Date } | null = null;
     try {
-      latestLedger = await this.prisma.processedLedger.findFirst({
+      latestLedger = await this.prisma.processedEvent.findFirst({
         orderBy: { ledgerSequence: "desc" },
         take: 1,
       });
