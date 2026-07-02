@@ -61,6 +61,7 @@ fn checked_loss_amount(total: i128, loss_bps: i128, seller_loss_bps: u32) -> i12
 pub struct InitializedEvent {
     pub admin: Address,
     pub fee_bps: u32,
+    pub timestamp: u64,
 }
 
 #[contractevent(topics = ["TRDCRT"])]
@@ -85,6 +86,7 @@ pub struct TradeCancelledEvent {
     pub trade_id: u64,
     pub refund_amount: i128,
     pub caller: Address,
+    pub timestamp: u64,
 }
 
 #[contractevent(topics = ["TCNBYR"])]
@@ -159,6 +161,7 @@ pub struct VideoProofSubmittedEvent {
     pub trade_id: u64,
     pub submitter: Address,
     pub ipfs_cid: String,
+    pub timestamp: u64,
 }
 
 /// Emitted when a trade's expiry deadline is reached and a refund is claimed.
@@ -187,6 +190,7 @@ pub struct ManifestSubmittedEvent {
     pub seller: Address,
     pub driver_name_hash: String,
     pub driver_id_hash: String,
+    pub timestamp: u64,
 }
 
 /// Emitted when a mediator address is added to the registry by the admin.
@@ -475,7 +479,7 @@ impl EscrowContract {
             .instance()
             .set(&DataKey::SchemaVersion, &CURRENT_SCHEMA_VERSION);
         Self::bump_instance_ttl(&env);
-        InitializedEvent { admin, fee_bps }.publish(&env);
+        InitializedEvent { admin, fee_bps, timestamp: env.ledger().timestamp() }.publish(&env);
     }
 
     /// Register a single legacy mediator address. Only the admin may call this.
@@ -1259,6 +1263,7 @@ impl EscrowContract {
             trade_id: trade.trade_id,
             refund_amount,
             caller,
+            timestamp: env.ledger().timestamp(),
         }
         .publish(env);
     }
@@ -1727,6 +1732,7 @@ impl EscrowContract {
             trade_id,
             submitter,
             ipfs_cid,
+            timestamp: now,
         }
         .publish(&env);
     }
@@ -1789,6 +1795,7 @@ impl EscrowContract {
             seller,
             driver_name_hash,
             driver_id_hash,
+            timestamp: env.ledger().timestamp(),
         }
         .publish(&env);
     }
