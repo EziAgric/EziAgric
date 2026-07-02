@@ -14,3 +14,5 @@ if (typeof globalThis.TextEncoder === 'undefined') {
   globalThis.TextEncoder = util.TextEncoder;
   globalThis.TextDecoder = util.TextDecoder;
 }
+
+import { configureAxe } from "jest-axe";
