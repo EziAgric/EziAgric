@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types/navigation';
-import type { TradeStatus } from '../types/trade';
+import type { Trade, TradeStatus } from '../types/trade';
 import { useTradeStore } from '../stores/tradeStore';
 
 type Props = StackScreenProps<RootStackParamList, 'TradeDetail'>;
@@ -53,7 +53,7 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
   );
 }
 
-function ContractCard({ trade }: { trade: NonNullable<ReturnType<typeof useTradeStore>['currentTrade']> }) {
+function ContractCard({ trade }: { trade: Trade }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Contract</Text>
@@ -66,7 +66,7 @@ function ContractCard({ trade }: { trade: NonNullable<ReturnType<typeof useTrade
   );
 }
 
-function TradeTimeline({ trade }: { trade: NonNullable<ReturnType<typeof useTradeStore>['currentTrade']> }) {
+function TradeTimeline({ trade }: { trade: Trade }) {
   const statusOrder: TradeStatus[] = ['PENDING', 'FUNDED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED'];
   const currentIdx = statusOrder.indexOf(trade.status);
 

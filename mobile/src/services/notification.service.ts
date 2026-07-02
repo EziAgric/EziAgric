@@ -39,7 +39,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
     await SecureStore.setItemAsync(PUSH_TOKEN_KEY, pushToken);
     return pushToken;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -47,7 +47,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
 export async function getStoredPushToken(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(PUSH_TOKEN_KEY);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -70,7 +70,7 @@ export async function storePushTokenOnBackend(
     );
 
     return response.ok;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -105,7 +105,7 @@ export async function scheduleLocalNotification(
   body: string,
   data?: NotificationData,
 ): Promise<string> {
-  const { identifier } = await Notifications.scheduleNotificationAsync({
+  const identifier = await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,

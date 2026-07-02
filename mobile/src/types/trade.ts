@@ -16,6 +16,11 @@ export interface Trade {
   status: TradeStatus;
   createdAt?: string;
   updatedAt?: string;
+  buyerLossBps?: number;
+  sellerLossBps?: number;
+  commodity?: string;
+  quantity?: string;
+  unit?: string;
 }
 
 export interface TradeListResult {
