@@ -17,6 +17,19 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/__tests__/**", "src/services/__tests__/**", "src/config/__tests__/**"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
+    files: ["src/config/tracing.ts"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
     ignores: ["dist/**", "node_modules/**", "coverage/**"],
   },
 );

@@ -162,7 +162,7 @@ describe('Push protection patterns (inline regex — mirrors workflow script)', 
   const PATTERNS = {
     stellarSecretKey:    /\bS[A-Z2-7]{55}\b/,
     privateKeyPem:       /-----BEGIN (EC |OPENSSH |RSA )?PRIVATE KEY-----/,
-    postgresWithPassword: /postgresql:\/\/[^:]+:[^@$\{]{4,}@/,
+    postgresWithPassword: /postgresql:\/\/[^:]+:[^@${]{4,}@/,
     jwtToken:            /ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/,
   };
 

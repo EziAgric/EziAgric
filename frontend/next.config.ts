@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
         : false,
   },
   experimental: {
-    optimizePackageImports: ["lucide-react", "@stellar/stellar-sdk"],
+    optimizePackageImports: ["@stellar/stellar-sdk"],
   },
   turbopack: {},
 };

@@ -54,7 +54,7 @@ export function correlationIdMiddleware(
 export function isValidId(value: string | undefined): value is string {
   if (!value || typeof value !== "string") return false;
   if (value.length > 128) return false;
-  return /^[\w\-]+$/.test(value);
+  return /^[\w-]+$/.test(value);
 }
 
 /**

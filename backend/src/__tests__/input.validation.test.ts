@@ -180,7 +180,7 @@ describe("Stellar address validation", () => {
     const res = await request(app)
       .post("/trades")
       .set("Authorization", `Bearer ${buyerToken}`)
-      .send({ ...validPayload, sellerAddress: 12345678901234567890 });
+      .send({ ...validPayload, sellerAddress: "12345678901234567890" });
     expect(res.status).toBe(400);
   });
 

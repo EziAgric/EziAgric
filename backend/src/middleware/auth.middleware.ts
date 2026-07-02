@@ -18,12 +18,12 @@ export const authMiddleware = async (
 
   if (error) {
     // Recognise AppError structurally (not just via `instanceof`) so a failed
-    // authorization preserves its real status code and message instead of being
+    // authorization preserves its real status code and details instead of being
     // collapsed into a generic 401 when the prototype chain doesn't line up.
     if (isAppError(error)) {
       res.status(error.statusCode).json({
         code: error.code,
-        error: error.message,
+        error: "Unauthorized",
         details: error.details,
       });
       return;

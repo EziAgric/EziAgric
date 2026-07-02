@@ -522,6 +522,11 @@ export default function AssetsPage() {
     if (isAuthenticated && token) void fetchData();
   }, [isAuthenticated, token, fetchData]);
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [search, statusFilter]);
   // Filter trades client-side
   const filteredTrades = useMemo(() => {
     let result = allTrades;
