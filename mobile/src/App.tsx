@@ -1,28 +1,20 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+import { NavigationContainerRef } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View } from 'react-native';
 
-import type { RootStackParamList } from './types/navigation';
 import { useAuthStore } from './stores/authStore';
 import {
   registerForPushNotifications,
   storePushTokenOnBackend,
   setupNotificationListeners,
   checkNotificationPermissions,
-  type NotificationData,
 } from './services/notification.service';
-import WalletConnectScreen from './screens/WalletConnectScreen';
-import TradeListScreen from './screens/TradeListScreen';
-import TradeDetailScreen from './screens/TradeDetailScreen';
-import CreateTradeScreen from './screens/CreateTradeScreen';
-import EvidenceCaptureScreen from './screens/EvidenceCaptureScreen';
-import VaultDashboard from './screens/VaultDashboard';
-
-const Stack = createStackNavigator<RootStackParamList>();
+import type { RootStackParamList } from './types/navigation';
+import { AppNavigator } from './navigation/AppNavigator';
+import type { NotificationData } from './services/notification.service';
 
 export default function App() {
   const { getToken, token } = useAuthStore();
@@ -52,7 +44,6 @@ export default function App() {
       if (data.tradeId && navigationRef.current) {
         navigationRef.current.navigate('TradeDetail', { tradeId: data.tradeId });
       } else if (data.screen && navigationRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         navigationRef.current.navigate(data.screen as any);
       }
     });
@@ -71,19 +62,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <NavigationContainer ref={navigationRef}>
-          <Stack.Navigator
-            initialRouteName={token ? 'TradeList' : 'WalletConnect'}
-            screenOptions={{ headerShown: false }}
-          >
-            <Stack.Screen name="WalletConnect" component={WalletConnectScreen} />
-            <Stack.Screen name="TradeList" component={TradeListScreen} />
-            <Stack.Screen name="TradeDetail" component={TradeDetailScreen} />
-            <Stack.Screen name="CreateTrade" component={CreateTradeScreen} />
-            <Stack.Screen name="EvidenceCapture" component={EvidenceCaptureScreen} />
-            <Stack.Screen name="VaultDashboard" component={VaultDashboard} />
-          </Stack.Navigator>
-        </NavigationContainer>
+        <AppNavigator isAuthenticated={!!token} />
         <StatusBar style="dark" />
       </SafeAreaProvider>
     </GestureHandlerRootView>
