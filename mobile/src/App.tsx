@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -27,7 +27,7 @@ const Stack = createStackNavigator<RootStackParamList>();
 export default function App() {
   const { getToken, token } = useAuthStore();
   const [bootstrapped, setBootstrapped] = useState(false);
-  const navigationRef = useRef<any>(null);
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList> | null>(null);
 
   useEffect(() => {
     getToken().finally(() => setBootstrapped(true));
@@ -52,6 +52,7 @@ export default function App() {
       if (data.tradeId && navigationRef.current) {
         navigationRef.current.navigate('TradeDetail', { tradeId: data.tradeId });
       } else if (data.screen && navigationRef.current) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         navigationRef.current.navigate(data.screen as any);
       }
     });
