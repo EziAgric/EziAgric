@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "test": "jest --config jest.config.js --forceExit --detectOpenHandles",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "postinstall": "npx prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
