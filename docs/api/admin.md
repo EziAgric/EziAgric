@@ -13,6 +13,54 @@ There is no separate "admin login" - the same challenge/verify flow in
 [overview.md](./overview.md#authentication) applies; admin status is purely
 a function of which wallet signed in.
 
+## Admin Audit Trail
+
+Every privileged admin action is recorded in the application logs with an
+`audit: true` marker for structured log querying. Each audit entry includes:
+
+| Field | Description |
+|---|---|
+| `audit` | Always `true` for audit events — filter with `audit=true` in your log aggregator |
+| `eventType` | Machine-readable event name (e.g., `FEATURE_FLAG_UPDATED`, `BATCH_TRADE_STATUS_UPDATE`, `TREASURY_WITHDRAWAL`) |
+| `adminAddress` | Stellar public key of the admin who performed the action (normalized) |
+| `timestamp` | ISO-8601 timestamp of when the action was performed |
+
+### How admin identity flows through the system
+
+1. `authMiddleware` validates the JWT token and attaches the decoded payload
+   (including `walletAddress` and `sub`) to `req.user`.
+2. `adminMiddleware` checks the wallet address against the
+   `ADMIN_STELLAR_PUBKEYS` allowlist. If allowed, it sets
+   `req.user.isAdmin = true` on the request context.
+3. Downstream route handlers and controllers read `req.user.walletAddress`
+   (and the `isAdmin` flag) to record the invoking admin's identity in audit
+   log entries.
+
+### Audited admin actions
+
+| Action | Event Type | Route |
+|---|---|---|
+| Modify a feature flag | `FEATURE_FLAG_UPDATED` | `PATCH /admin/features/:name` |
+| Batch trade status update | `BATCH_TRADE_STATUS_UPDATE` | `POST /admin/trades/batch/status` |
+| Treasury withdrawal | `TREASURY_WITHDRAWAL` | `POST /treasury/withdraw` |
+
+### Example audit log entry
+
+```json
+{
+  "audit": true,
+  "eventType": "FEATURE_FLAG_UPDATED",
+  "featureName": "new-checkout",
+  "enabled": true,
+  "rolloutPercentage": 25,
+  "adminAddress": "gadmin...",
+  "timestamp": "2026-07-27T10:30:00.000Z"
+}
+```
+
+Operators can query for all admin actions in a time window and trace every
+privileged change back to the specific admin who performed it.
+
 ## Treasury
 
 The treasury holds funds swept from resolved/expired escrow contracts.

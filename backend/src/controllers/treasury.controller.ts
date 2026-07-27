@@ -36,6 +36,20 @@ export class TreasuryController {
       }
 
       const result = await this.treasuryService.withdraw(destination, amount, callerAddress);
+
+      // Admin audit: record which admin initiated a treasury withdrawal
+      appLogger.info(
+        {
+          audit: true,
+          eventType: "TREASURY_WITHDRAWAL",
+          destination,
+          amount,
+          adminAddress: req.user?.walletAddress,
+          timestamp: new Date().toISOString(),
+        },
+        `[AdminAudit] Treasury withdrawal of ${amount} to ${destination} by ${req.user?.walletAddress}`,
+      );
+
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof Error && error.message === "Only admin can withdraw treasury funds") {

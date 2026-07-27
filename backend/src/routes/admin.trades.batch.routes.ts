@@ -6,6 +6,7 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
+import { appLogger } from "../middleware/logger";
 
 const tradeStatusUpdateSchema = z.object({
   tradeId: z.string().min(1, "tradeId is required"),
@@ -80,6 +81,23 @@ export function createAdminTradeBatchRouter(prisma: PrismaClient = defaultPrisma
             succeeded.push(trade.tradeId);
           }
         }
+
+        // Admin audit: record which admin performed batch trade status updates
+        // Log before responding so the audit record isn't lost if the response write fails.
+        appLogger.info(
+          {
+            audit: true,
+            eventType: "BATCH_TRADE_STATUS_UPDATE",
+            totalUpdates: updates.length,
+            succeededCount: succeeded.length,
+            failedCount: failed.length,
+            succeeded: succeeded,
+            failed: failed.map((f) => ({ tradeId: f.tradeId, reason: f.reason })),
+            adminAddress: req.user?.walletAddress,
+            timestamp: new Date().toISOString(),
+          },
+          `[AdminAudit] Batch trade status update: ${succeeded.length} succeeded, ${failed.length} failed by ${req.user?.walletAddress}`,
+        );
 
         res.status(200).json({ succeeded, failed });
       } catch (error) {
