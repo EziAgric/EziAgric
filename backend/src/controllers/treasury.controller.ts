@@ -24,7 +24,11 @@ export class TreasuryController {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const { destination, amount } = req.body as { destination?: unknown; amount?: unknown };
+      const { destination, amount, note } = req.body as {
+        destination?: unknown;
+        amount?: unknown;
+        note?: unknown;
+      };
       if (!destination || typeof destination !== "string") {
         return res.status(400).json({ error: "Destination address is required" });
       }
@@ -34,8 +38,20 @@ export class TreasuryController {
       if (!amount || typeof amount !== "string") {
         return res.status(400).json({ error: "Amount is required" });
       }
+      if (note !== undefined && typeof note !== "string") {
+        return res.status(400).json({ error: "Note must be a string" });
+      }
+      if (typeof note === "string" && note.length > 2000) {
+        return res.status(400).json({ error: "Note must be 2000 characters or fewer" });
+      }
 
-      const result = await this.treasuryService.withdraw(destination, amount, callerAddress);
+      const trimmedNote = typeof note === "string" ? note.trim() : undefined;
+      const result = await this.treasuryService.withdraw(
+        destination,
+        amount,
+        callerAddress,
+        trimmedNote ? trimmedNote : undefined,
+      );
       return res.status(200).json(result);
     } catch (error) {
       if (error instanceof Error && error.message === "Only admin can withdraw treasury funds") {

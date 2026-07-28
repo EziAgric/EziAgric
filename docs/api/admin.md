@@ -31,11 +31,22 @@ asset.
 ```
 
 `POST /treasury/withdraw` - builds an unsigned withdrawal transaction moving
-funds out of the treasury.
+funds out of the treasury (e.g. a clawback of funds swept from an
+expired/resolved escrow).
 
 ```json
-{ "destination": "GBBB...C4", "amount": "1000.0000000" }
+{
+  "destination": "GBBB...C4",
+  "amount": "1000.0000000",
+  "note": "Reclaiming funds from expired escrow per ticket OPS-42"
+}
 ```
+
+`note` is optional but strongly recommended for compliance: it's a free-text
+reason/justification (max 2000 chars) captured alongside the caller's wallet
+address in the `AdminActionAudit` table for every withdrawal, so ops/legal can
+later answer "why was this clawback performed." Omitting it still succeeds,
+but leaves the audit record's `note` column empty.
 
 Response: `{ "unsignedXdr": "..." }`. As with trade transactions, the caller
 still signs and submits this themselves - the backend never holds a signing
