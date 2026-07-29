@@ -6,6 +6,7 @@ import { createAdminContractRouter } from "../routes/admin.contract.routes";
 import { AuthService } from "../services/auth.service";
 import { errorHandler } from "../middleware/errorHandler";
 import { ContractService } from "../services/contract.service";
+import { correlationIdMiddleware } from "../middleware/correlationId.middleware";
 
 jest.mock("../services/auth.service", () => ({
   AuthService: {
@@ -29,6 +30,7 @@ const mockContractService = {
 
 const app = express();
 app.use(express.json());
+app.use(correlationIdMiddleware);
 app.use("/", createAdminContractRouter(mockContractService));
 app.use(errorHandler);
 
@@ -162,6 +164,7 @@ describe("Admin Contract Maintenance Routes", () => {
       expect(mockContractService.buildAddMediatorTx).toHaveBeenCalledWith({
         adminAddress,
         mediatorAddress,
+        trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
     });
 
@@ -177,6 +180,7 @@ describe("Admin Contract Maintenance Routes", () => {
       expect(mockContractService.buildRemoveMediatorTx).toHaveBeenCalledWith({
         adminAddress,
         mediatorAddress,
+        trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
     });
 
@@ -193,6 +197,7 @@ describe("Admin Contract Maintenance Routes", () => {
       expect(mockContractService.buildUpdateFeeBpsTx).toHaveBeenCalledWith({
         adminAddress,
         feeBps: 250,
+        trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
     });
   });

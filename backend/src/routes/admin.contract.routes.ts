@@ -4,6 +4,7 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
+import { traceContextFrom } from "../middleware/correlationId.middleware";
 import { ContractService } from "../services/contract.service";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
@@ -40,6 +41,7 @@ export function createAdminContractRouter(contractService: ContractService = new
         const result = await contractService.buildAddMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
         res.status(200).json(result);
       } catch (error) {
@@ -60,6 +62,7 @@ export function createAdminContractRouter(contractService: ContractService = new
         const result = await contractService.buildRemoveMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
         res.status(200).json(result);
       } catch (error) {
@@ -80,6 +83,7 @@ export function createAdminContractRouter(contractService: ContractService = new
         const result = await contractService.buildUpdateFeeBpsTx({
           adminAddress,
           feeBps,
+          trace: traceContextFrom(req),
         });
         res.status(200).json(result);
       } catch (error) {
