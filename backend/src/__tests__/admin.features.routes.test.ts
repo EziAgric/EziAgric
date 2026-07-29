@@ -34,9 +34,13 @@ const mockFeatureFlagService = featureFlagService as unknown as {
   setFlag: jest.Mock;
 };
 
+const mockPrisma = {
+  adminActionAudit: { create: jest.fn().mockResolvedValue({}) },
+};
+
 const app = express();
 app.use(express.json());
-app.use("/", createAdminFeaturesRouter());
+app.use("/", createAdminFeaturesRouter(mockPrisma as never));
 app.use(errorHandler);
 
 describe("Admin Features Routes", () => {
@@ -129,6 +133,14 @@ describe("Admin Features Routes", () => {
       expect(res.body).toEqual({
         name: "new-checkout",
         flag: { enabled: true, rolloutPercentage: 25, updatedAt: "t" },
+      });
+      expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+        data: {
+          action: "UPDATE_FEATURE_FLAG",
+          actorAddress: adminAddress,
+          targetReference: "new-checkout",
+          note: JSON.stringify({ enabled: true, rolloutPercentage: 25 }),
+        },
       });
     });
 

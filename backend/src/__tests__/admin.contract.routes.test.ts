@@ -27,10 +27,19 @@ const mockContractService = {
   buildUpdateFeeBpsTx: jest.Mock;
 };
 
+const mockPrisma = {
+  adminActionAudit: { create: jest.fn().mockResolvedValue({}) },
+};
+
 const app = express();
 app.use(express.json());
-app.use("/", createAdminContractRouter(mockContractService));
+app.use("/", createAdminContractRouter(mockContractService, mockPrisma as never));
 app.use(errorHandler);
+
+const timeoutApp = express();
+timeoutApp.use(express.json());
+timeoutApp.use("/", createAdminContractRouter(mockContractService, mockPrisma as never, 30));
+timeoutApp.use(errorHandler);
 
 describe("Admin Contract Maintenance Routes", () => {
   const adminAddress = StellarSdk.Keypair.random().publicKey();
@@ -163,6 +172,9 @@ describe("Admin Contract Maintenance Routes", () => {
         adminAddress,
         mediatorAddress,
       });
+      expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+        data: { action: "ADD_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
+      });
     });
 
     it("builds an unsigned remove-mediator transaction for an admin caller", async () => {
@@ -177,6 +189,9 @@ describe("Admin Contract Maintenance Routes", () => {
       expect(mockContractService.buildRemoveMediatorTx).toHaveBeenCalledWith({
         adminAddress,
         mediatorAddress,
+      });
+      expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+        data: { action: "REMOVE_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
       });
     });
 
@@ -194,6 +209,39 @@ describe("Admin Contract Maintenance Routes", () => {
         adminAddress,
         feeBps: 250,
       });
+      expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+        data: { action: "UPDATE_FEE_BPS", actorAddress: adminAddress, targetReference: "250" },
+      });
+    });
+  });
+
+  describe("timeout handling (issue #10)", () => {
+    it("responds 504 when the Soroban client hangs past the configured timeout", async () => {
+      mockContractService.buildAddMediatorTx.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ unsignedXdr: "too-late" }), 200)),
+      );
+
+      const res = await request(timeoutApp)
+        .post("/admin/contract/mediators")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ mediatorAddress });
+
+      expect(res.status).toBe(504);
+      expect(res.body).toEqual(
+        expect.objectContaining({ code: "ADMIN_OPERATION_TIMEOUT" }),
+      );
+    });
+
+    it("does not time out when the Soroban client responds promptly", async () => {
+      mockContractService.buildUpdateFeeBpsTx.mockResolvedValue({ unsignedXdr: "unsigned-fee" });
+
+      const res = await request(timeoutApp)
+        .patch("/admin/contract/fee")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ feeBps: 100 });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ unsignedXdr: "unsigned-fee" });
     });
   });
 });

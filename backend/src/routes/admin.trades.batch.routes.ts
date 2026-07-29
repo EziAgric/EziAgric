@@ -84,6 +84,15 @@ export function createAdminTradeBatchRouter(prisma: PrismaClient = defaultPrisma
           }
         }
 
+        await prisma.adminActionAudit.create({
+          data: {
+            action: "TRADE_BATCH_STATUS_UPDATE",
+            actorAddress: req.user!.walletAddress,
+            targetReference: `${succeeded.length}/${updates.length} succeeded`,
+            note: JSON.stringify({ succeeded, failed }),
+          },
+        });
+
         res.status(200).json({ succeeded, failed });
       } catch (error) {
         next(error);
