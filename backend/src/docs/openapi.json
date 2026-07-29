@@ -296,6 +296,93 @@
           ]
         }
       },
+      "StreamStatus": {
+        "type": "string",
+        "description": "Lifecycle state of a vested token stream. ACTIVE and SUSPENDED are live\nstates an admin may terminate from; TERMINATED and COMPLETED are terminal.",
+        "enum": [
+          "ACTIVE",
+          "SUSPENDED",
+          "TERMINATED",
+          "COMPLETED"
+        ]
+      },
+      "StreamTerminateRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Operator-supplied reason, stored on the stream and in the admin audit log."
+          },
+          "unsignedTxXdr": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Base64 unsigned Soroban transaction XDR for the on-chain terminate\ncall. When present it is signed with the admin key and returned as\n`signedTxXdr`; when absent only the backend transition is performed."
+          }
+        },
+        "example": {
+          "reason": "Recipient offboarded"
+        }
+      },
+      "StreamTerminateResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StreamStatus"
+          },
+          "previousStatus": {
+            "$ref": "#/components/schemas/StreamStatus"
+          },
+          "terminatedBy": {
+            "type": "string",
+            "description": "Wallet address of the admin who terminated the stream."
+          },
+          "terminatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "signedTxXdr": {
+            "type": "string",
+            "nullable": true,
+            "description": "Signed transaction XDR; null when no unsigned XDR was supplied."
+          },
+          "unclaimed": {
+            "type": "string",
+            "description": "Unclaimed vested amount at the moment of termination."
+          },
+          "reversible": {
+            "type": "boolean",
+            "description": "Always false \u2014 termination cannot be undone."
+          }
+        },
+        "required": [
+          "streamId",
+          "status",
+          "previousStatus",
+          "terminatedBy",
+          "terminatedAt",
+          "reversible"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "status": "TERMINATED",
+          "previousStatus": "ACTIVE",
+          "terminatedBy": "GADMIN000000000000000000000000000000000000000000000000",
+          "terminatedAt": "2026-07-30T12:00:00.000Z",
+          "reason": "Recipient offboarded",
+          "signedTxXdr": null,
+          "unclaimed": "7500",
+          "reversible": false
+        }
+      },
       "AuthChallengeRequest": {
         "type": "object",
         "properties": {
@@ -1329,6 +1416,79 @@
     }
   },
   "paths": {
+    "/api/admin/streams/{id}/terminate": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Terminate a stream (admin only)",
+        "description": "Permanently terminates a vested token stream. Admin only.\n\nThe stream's state is validated before anything is signed or written:\nan unknown stream is a `404`, and a stream already in a terminal state\n(`TERMINATED`, `COMPLETED`) is a `409` rather than a silent no-op, so a\ndouble-submit is visible to the operator instead of producing a second\naudit record for one real action.\n\nSupplying `unsignedTxXdr` signs the on-chain terminate call with the\nconfigured admin key and returns the signed XDR for submission; the\nresulting on-chain event is ingested by the event listener. Omitting it\nperforms the backend state transition only. Every successful\ntermination writes an `AdminActionAudit` record (`STREAM_TERMINATE`).\n\nTermination is irreversible \u2014 `reversible` is always `false`.\nError code references: `NOT_FOUND`, `DOMAIN_ERROR`, `VALIDATION_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamTerminateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream terminated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTerminateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "409": {
+            "description": "Stream is not in a state that can be terminated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
