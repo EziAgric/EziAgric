@@ -9,6 +9,7 @@ import { withCircuitBreaker, CircuitBreaker, getCircuitBreaker } from "../lib/ci
 import { appLogger } from "../middleware/logger";
 import { TracingHelper } from "../config/tracing";
 import { TOKEN_CONFIG } from "../config/token";
+import { env } from "../config/env";
 import {
   classifySubmissionError,
   recordTransactionSubmission,
@@ -49,6 +50,14 @@ export interface ContractTradeState {
   sellerLossBps?: number;
   expiresAt?: string | null;
   [key: string]: unknown;
+}
+
+function parseBackoffMs(csv: string): number[] {
+  const values = csv
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  return values.length > 0 ? values : [1000, 2000, 4000, 8000];
 }
 
 export function classifyStellarError(error: unknown): ClassifiedStellarError {
@@ -406,6 +415,27 @@ public async getAccountBalance(publicKey: string, assetCode: string = TOKEN_CONF
   }
 
   public async submitTransaction(signedXdr: string): Promise<rpc.Api.SendTransactionResponse> {
+    return retryAsync(
+      () => this.submitTransactionOnce(signedXdr),
+      {
+        maxRetries: env.SOROBAN_SUBMIT_MAX_RETRIES,
+        backoffMs: parseBackoffMs(env.SOROBAN_SUBMIT_BACKOFF_MS),
+        shouldRetry: (error) => classifyStellarError(error).isRetryable,
+        onRetry: (error, retryCount, delayMs) => {
+          appLogger.warn(
+            {
+              retryCount,
+              delayMs,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Retrying Soroban transaction submission after transient failure",
+          );
+        },
+      },
+    );
+  }
+
+  private async submitTransactionOnce(signedXdr: string): Promise<rpc.Api.SendTransactionResponse> {
     return withCircuitBreaker(async () => {
       return TracingHelper.withSpan(
       "stellar.submit_transaction",

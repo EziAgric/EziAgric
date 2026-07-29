@@ -27,6 +27,9 @@
       "name": "Trades"
     },
     {
+      "name": "Disputes"
+    },
+    {
       "name": "Dispute Categories"
     },
     {
@@ -59,6 +62,16 @@
         "name": "id",
         "required": true,
         "description": "Trade identifier used by the backend route layer.",
+        "schema": {
+          "type": "string"
+        },
+        "example": 4294967297
+      },
+      "DisputeIdPath": {
+        "in": "path",
+        "name": "id",
+        "required": true,
+        "description": "Trade identifier for the dispute.",
         "schema": {
           "type": "string"
         },
@@ -413,12 +426,24 @@
               },
               "indexer": {
                 "$ref": "#/components/schemas/HealthIndicator"
+              },
+              "stellar": {
+                "$ref": "#/components/schemas/HealthIndicator"
+              },
+              "ipfs": {
+                "$ref": "#/components/schemas/HealthIndicator"
+              },
+              "config": {
+                "$ref": "#/components/schemas/HealthIndicator"
               }
             },
             "required": [
               "database",
+              "indexer",
+              "stellar",
+              "ipfs",
               "redis",
-              "indexer"
+              "config"
             ]
           },
           "details": {
@@ -436,13 +461,28 @@
               "lastProcessedLedger": {
                 "type": "integer",
                 "nullable": true
+              },
+              "stellarNetwork": {
+                "type": "string"
+              },
+              "ipfsGateway": {
+                "type": "string"
+              },
+              "missingEnvVars": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
               "databaseLatency",
               "redisLatency",
               "indexerLagSeconds",
-              "lastProcessedLedger"
+              "lastProcessedLedger",
+              "stellarNetwork",
+              "ipfsGateway",
+              "missingEnvVars"
             ]
           }
         },
@@ -763,6 +803,126 @@
         "required": [
           "items"
         ]
+      },
+      "DisputeResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "tradeId": {
+            "type": "string"
+          },
+          "initiator": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "UNDER_REVIEW",
+              "RESOLVED",
+              "CLOSED"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "trade": {
+            "type": "object",
+            "properties": {
+              "buyerAddress": {
+                "type": "string"
+              },
+              "sellerAddress": {
+                "type": "string"
+              },
+              "amountUsdc": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tradeId",
+          "initiator",
+          "reason",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "trade"
+        ]
+      },
+      "DisputeListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisputeResponse"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "totalPages": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "page",
+              "limit",
+              "total",
+              "totalPages"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "pagination"
+        ]
+      },
+      "DisputeTransitionRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNDER_REVIEW",
+              "RESOLVED",
+              "CLOSED"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "example": {
+          "status": "UNDER_REVIEW"
+        }
       },
       "DisputeCategoryMutationRequest": {
         "type": "object",
@@ -1175,7 +1335,7 @@
           "Health"
         ],
         "summary": "Run a comprehensive health check",
-        "description": "Returns composite health state for database and indexer dependencies.\nError code references: `INFRA_ERROR`, `INTERNAL_ERROR`.",
+        "description": "Returns composite health state for database, Redis cache, and indexer dependencies.\nError code references: `INFRA_ERROR`, `INTERNAL_ERROR`.",
         "responses": {
           "200": {
             "description": "Service is healthy or degraded but still responding.",
@@ -1890,6 +2050,168 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/disputes": {
+      "get": {
+        "tags": [
+          "Disputes"
+        ],
+        "summary": "List disputes for mediators",
+        "description": "Returns paginated list of disputes accessible to the authenticated mediator.\nError code references: `AUTH_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "UNDER_REVIEW",
+                "RESOLVED",
+                "CLOSED"
+              ]
+            },
+            "description": "Filter by dispute status"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Page number for pagination"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            },
+            "description": "Number of items per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dispute list returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisputeListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "description": "Caller is not a mediator.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/disputes/{id}/transition": {
+      "post": {
+        "tags": [
+          "Disputes"
+        ],
+        "summary": "Transition dispute status",
+        "description": "Mediator-only endpoint to transition a dispute to a new status.\nValid transitions: OPEN → UNDER_REVIEW → RESOLVED/CLOSED\nError code references: `AUTH_ERROR`, `DISPUTE_NOT_FOUND`, `DISPUTE_STATUS_TRANSITION_INVALID`, `DISPUTE_STATUS_CONFLICT`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DisputeIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisputeTransitionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dispute status transitioned successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisputeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "description": "Caller is not a mediator.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Dispute not found for the trade.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Dispute was modified by another user (optimistic concurrency conflict).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -2828,6 +3150,62 @@
         }
       }
     },
+    "/api/admin/auth/claims": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Inspect the caller's parsed admin JWT claims",
+        "description": "Diagnostic endpoint returning the sanitized JWT claims the backend\nparsed from the caller's bearer token (wallet address, token id,\nissuer/audience, issued/expiry timestamps), so an admin can verify\nexactly what the server sees without decoding the token by hand.\nRaw fields not meaningful to display (`sub`, `nbf`) are omitted.\nError code references: `AUTH_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sanitized admin JWT claims.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "walletAddress": {
+                      "type": "string"
+                    },
+                    "tokenId": {
+                      "type": "string"
+                    },
+                    "issuedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "issuer": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "audience": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
     "/treasury/balance": {
       "get": {
         "tags": [
@@ -2974,6 +3352,171 @@
           },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/contract/mediators": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Register a mediator on the escrow contract",
+        "description": "Builds an unsigned Soroban transaction that adds `mediatorAddress` to the\non-chain mediator registry (`add_mediator`), previously only doable via the\n`soroban contract invoke` CLI. Admin-only; the caller's wallet is the\ntransaction source/signer. As with other admin transaction endpoints, the\nbackend never holds a signing key — the caller signs and submits the\nreturned XDR themselves.\nError code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mediatorAddress": {
+                    "type": "string",
+                    "description": "Stellar public key to register as a mediator."
+                  }
+                },
+                "required": [
+                  "mediatorAddress"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Add-mediator transaction built.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsignedXdrResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/contract/mediators/{address}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Revoke a mediator on the escrow contract",
+        "description": "Builds an unsigned Soroban transaction that removes `address` from the\non-chain mediator registry (`remove_mediator`). Admin-only; the caller's\nwallet is the transaction source/signer.\nError code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "description": "Stellar public key to remove from the mediator registry.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Remove-mediator transaction built.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsignedXdrResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/contract/fee": {
+      "patch": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Update the escrow contract platform fee rate",
+        "description": "Builds an unsigned Soroban transaction that updates the platform fee\n(`update_fee_bps`). The contract itself enforces the fee stays within its\nconfigured [MIN_FEE_BPS, MAX_FEE_BPS] bounds; this endpoint additionally\nrejects out-of-range values before building a transaction. Admin-only;\nthe caller's wallet is the transaction source/signer.\nError code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "feeBps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": "New platform fee rate in basis points."
+                  }
+                },
+                "required": [
+                  "feeBps"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fee-update transaction built.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsignedXdrResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"

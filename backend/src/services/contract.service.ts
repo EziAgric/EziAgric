@@ -430,6 +430,97 @@ export class ContractService {
     return { unsignedXdr: prepared.toXDR() };
   }
 
+  /**
+   * Builds an unsigned Soroban XDR for `add_mediator(mediator_address)`.
+   * Admin-only contract call; `adminAddress` is the source/signing account.
+   */
+  public async buildAddMediatorTx(input: {
+    adminAddress: string;
+    mediatorAddress: string;
+  }): Promise<{ unsignedXdr: string }> {
+    if (!this.contractId) throw new Error("CONTRACT_ID is not configured");
+
+    const account = await getRpcAccount(this.rpcServer, input.adminAddress);
+    const contract = new StellarSdk.Contract(this.contractId);
+
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          "add_mediator",
+          StellarSdk.Address.fromString(input.mediatorAddress).toScVal(),
+        ),
+      )
+      .setTimeout(DEFAULT_TIMEOUT_SECONDS)
+      .build();
+
+    const prepared = await prepareRpcTransaction(this.rpcServer, transaction);
+    return { unsignedXdr: prepared.toXDR() };
+  }
+
+  /**
+   * Builds an unsigned Soroban XDR for `remove_mediator(mediator_address)`.
+   * Admin-only contract call; `adminAddress` is the source/signing account.
+   */
+  public async buildRemoveMediatorTx(input: {
+    adminAddress: string;
+    mediatorAddress: string;
+  }): Promise<{ unsignedXdr: string }> {
+    if (!this.contractId) throw new Error("CONTRACT_ID is not configured");
+
+    const account = await getRpcAccount(this.rpcServer, input.adminAddress);
+    const contract = new StellarSdk.Contract(this.contractId);
+
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          "remove_mediator",
+          StellarSdk.Address.fromString(input.mediatorAddress).toScVal(),
+        ),
+      )
+      .setTimeout(DEFAULT_TIMEOUT_SECONDS)
+      .build();
+
+    const prepared = await prepareRpcTransaction(this.rpcServer, transaction);
+    return { unsignedXdr: prepared.toXDR() };
+  }
+
+  /**
+   * Builds an unsigned Soroban XDR for `update_fee_bps(new_fee_bps)`.
+   * Admin-only contract call; `adminAddress` is the source/signing account.
+   * Contract enforces `new_fee_bps` in [MIN_FEE_BPS, MAX_FEE_BPS] on-chain.
+   */
+  public async buildUpdateFeeBpsTx(input: {
+    adminAddress: string;
+    feeBps: number;
+  }): Promise<{ unsignedXdr: string }> {
+    if (!this.contractId) throw new Error("CONTRACT_ID is not configured");
+
+    const account = await getRpcAccount(this.rpcServer, input.adminAddress);
+    const contract = new StellarSdk.Contract(this.contractId);
+
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        contract.call(
+          "update_fee_bps",
+          StellarSdk.nativeToScVal(input.feeBps, { type: "u32" }),
+        ),
+      )
+      .setTimeout(DEFAULT_TIMEOUT_SECONDS)
+      .build();
+
+    const prepared = await prepareRpcTransaction(this.rpcServer, transaction);
+    return { unsignedXdr: prepared.toXDR() };
+  }
+
   private toContractAmount(amount: string): bigint {
     const [wholePart, fractionPart = ""] = amount.split(".");
     const paddedFraction = `${fractionPart}${"0".repeat(Number(TOKEN_DECIMALS))}`.slice(
