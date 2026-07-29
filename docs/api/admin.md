@@ -52,6 +52,37 @@ Response: `{ "unsignedXdr": "..." }`. As with trade transactions, the caller
 still signs and submits this themselves - the backend never holds a signing
 key for the treasury.
 
+## Admin action audit history
+
+`GET /admin/audit` - lists compliance-audit records of admin-initiated actions
+(e.g. treasury withdrawals/clawbacks) from the `AdminActionAudit` table,
+newest first. Backs the admin action history panel in the frontend.
+
+**Query params**
+
+| Param | Required | Notes |
+|---|---|---|
+| `page` | no | 1-indexed page number, defaults to `1` |
+| `limit` | no | Page size, defaults to `20`, capped at `100` |
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": 42,
+      "action": "TREASURY_WITHDRAW",
+      "actorAddress": "GADMIN...",
+      "targetReference": "GBBB...C4",
+      "note": "Reclaiming funds from expired escrow per ticket OPS-42",
+      "createdAt": "2026-07-05T12:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
 ## Batch trade status updates
 
 `POST /admin/trades/batch/status`

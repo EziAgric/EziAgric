@@ -144,6 +144,10 @@ export function trackApiFailure(endpoint: string, status: number, metadata: Anal
 export function trackAuthEvent(step: string, status: "started" | "success" | "failed", metadata: AnalyticsPayload = {}): void {
   trackEvent("auth_event", { step, status, ...scrubProperties(metadata) });
 }
+
+export function trackAdminEvent(action: string, status: "viewed" | "success" | "failed", metadata: AnalyticsPayload = {}): void {
+  trackEvent("admin_action", { action, status, ...scrubProperties(metadata) });
+}
 /**
  * Privacy-Safe Analytics Utility
  *
