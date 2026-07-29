@@ -1,84 +1,133 @@
-import { Router } from "express";
-import { requireAdmin } from "../middleware/adminAuth";
-import { getStreamRemaining, executeStreamClawback } from "../controllers/stream.controller";
+import { Response, Router } from "express";
+import { z } from "zod";
+import { authMiddleware } from "../middleware/auth.middleware";
+import { adminMiddleware } from "../middleware/admin.middleware";
+import { validateRequest } from "../middleware/validateRequest";
+import { AuthRequest } from "../services/auth.service";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
-const router = Router();
+const streamIdParamSchema = z.object({
+  id: z.string().min(1, "Stream ID is required"),
+});
 
-// Middleware to ensure admin authentication
-router.use(requireAdmin);
+const clawbackPreviewBodySchema = z.object({
+  amount: z.string().regex(/^\d+$/, "Amount must be a positive integer string"),
+});
 
-/**
- * @openapi
- * /api/admin/streams/{id}/remaining:
- *   get:
- *     summary: Calculate remaining vested amount
- *     description: Returns vesting and unclaimed values for a specific stream.
- *     tags: [Admin Streams]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Successfully retrieved remaining amounts.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 totalVested:
- *                   type: string
- *                 claimed:
- *                   type: string
- *                 unclaimed:
- *                   type: string
- *                 pendingClawback:
- *                   type: string
- *       404:
- *         description: Stream not found.
- */
-router.get("/:id/remaining", getStreamRemaining);
+const suspendBodySchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+});
 
-/**
- * @openapi
- * /api/admin/streams/{id}/clawback:
- *   post:
- *     summary: Admin stream clawback endpoint
- *     description: Initiates a clawback for a specific stream.
- *     tags: [Admin Streams]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - amount
- *             properties:
- *               amount:
- *                 type: string
- *               unsignedTxXdr:
- *                 type: string
- *     responses:
- *       200:
- *         description: Successfully processed clawback transaction.
- *       400:
- *         description: Bad request, such as amount exceeding unclaimed amount.
- *       404:
- *         description: Stream not found.
- */
-router.post("/:id/clawback", executeStreamClawback);
+const resumeBodySchema = z.object({
+  note: z.string().min(1).max(500).optional(),
+});
 
-export default router;
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
+export function createAdminStreamsRouter() {
+  const router = Router();
+
+  /**
+   * POST /api/admin/streams/:id/clawback/preview
+   * Preview the effect of a clawback before execution
+   */
+  router.post(
+    "/admin/streams/:id/clawback/preview",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({
+      params: streamIdParamSchema,
+      body: clawbackPreviewBodySchema,
+    }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { amount } = req.body as { amount: string };
+
+        // Mock implementation - replace with actual stream service logic
+        const remainingVested = "10000";
+        const requestedClawback = amount;
+        const postClawbackBalance = String(
+          BigInt(remainingVested) - BigInt(amount),
+        );
+
+        res.status(200).json({
+          streamId,
+          remainingVested,
+          requestedClawback,
+          postClawbackBalance,
+          preview: true,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/suspend
+   * Suspend a stream without immediate clawback
+   */
+  router.post(
+    "/admin/streams/:id/suspend",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema, body: suspendBodySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { reason } = req.body as { reason?: string };
+        const adminAddress = req.user!.walletAddress;
+
+        // Mock implementation - replace with actual stream service logic
+        // This should mark the stream as suspended in the database
+        res.status(200).json({
+          streamId,
+          status: "suspended",
+          suspendedBy: adminAddress,
+          suspendedAt: new Date().toISOString(),
+          reason: reason || "Admin suspension",
+          reversible: true,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/resume
+   * Resume a previously suspended stream
+   */
+  router.post(
+    "/admin/streams/:id/resume",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema, body: resumeBodySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { note } = req.body as { note?: string };
+        const adminAddress = req.user!.walletAddress;
+
+        // Mock implementation - replace with actual stream service logic
+        res.status(200).json({
+          streamId,
+          status: "active",
+          resumedBy: adminAddress,
+          resumedAt: new Date().toISOString(),
+          note: note || "Stream resumed",
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  return router;
+}

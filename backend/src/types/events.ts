@@ -13,7 +13,7 @@ export enum EventType {
   FundsReleased = "FundsReleased",
   DisputeInitiated = "DisputeInitiated",
   DisputeResolved = "DisputeResolved",
-  StreamClawback = "stream_clawback",
+  StreamClawback = "StreamClawback",
 }
 
 /** Mapping from EventType to the resulting TradeStatus */

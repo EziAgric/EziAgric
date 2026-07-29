@@ -6,22 +6,24 @@ import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { featureFlagService } from "../services/feature-flags.service";
-import { prisma as defaultPrisma } from "../lib/db";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
 const updateFlagBodySchema = z.object({
   enabled: z.boolean(),
   rolloutPercentage: z.number().min(0).max(100).optional(),
 });
 
-export function createAdminFeaturesRouter(
-  prisma: Pick<PrismaClient, "adminActionAudit"> = defaultPrisma,
-) {
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
+export function createAdminFeaturesRouter() {
   const router = Router();
 
   router.get(
     "/api/admin/features",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     async (_req: AuthRequest, res: Response, next) => {
       try {
         const flags = await featureFlagService.listFlags();
@@ -36,6 +38,7 @@ export function createAdminFeaturesRouter(
     "/api/admin/features/:name",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ body: updateFlagBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -45,14 +48,9 @@ export function createAdminFeaturesRouter(
           rolloutPercentage?: number;
         };
 
-        const flag = await featureFlagService.setFlag(name, { enabled, rolloutPercentage });
-        await prisma.adminActionAudit.create({
-          data: {
-            action: "UPDATE_FEATURE_FLAG",
-            actorAddress: req.user!.walletAddress,
-            targetReference: name,
-            note: JSON.stringify({ enabled, rolloutPercentage: rolloutPercentage ?? null }),
-          },
+        const flag = await featureFlagService.setFlag(name, {
+          enabled,
+          rolloutPercentage,
         });
         res.status(200).json({ name, flag });
       } catch (error) {

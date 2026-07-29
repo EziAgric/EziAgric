@@ -7,8 +7,8 @@ import { adminTimeoutMiddleware } from "../middleware/adminTimeout.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { ContractService } from "../services/contract.service";
-import { prisma as defaultPrisma } from "../lib/db";
-import { env } from "../config/env";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 const stellarAddress = z
@@ -29,10 +29,10 @@ const updateFeeBodySchema = z.object({
   feeBps: z.number().int().min(1).max(500),
 });
 
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
 export function createAdminContractRouter(
   contractService: ContractService = new ContractService(),
-  prisma: Pick<PrismaClient, "adminActionAudit"> = defaultPrisma,
-  timeoutMs: number = env.ADMIN_ROUTE_TIMEOUT_MS,
 ) {
   const router = Router();
 
@@ -40,7 +40,7 @@ export function createAdminContractRouter(
     "/api/admin/contract/mediators",
     authMiddleware,
     adminMiddleware,
-    adminTimeoutMiddleware(timeoutMs),
+    adminRateLimit,
     validateRequest({ body: addMediatorBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -66,7 +66,7 @@ export function createAdminContractRouter(
     "/api/admin/contract/mediators/:address",
     authMiddleware,
     adminMiddleware,
-    adminTimeoutMiddleware(timeoutMs),
+    adminRateLimit,
     validateRequest({ params: mediatorAddressParamSchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -92,7 +92,7 @@ export function createAdminContractRouter(
     "/api/admin/contract/fee",
     authMiddleware,
     adminMiddleware,
-    adminTimeoutMiddleware(timeoutMs),
+    adminRateLimit,
     validateRequest({ body: updateFeeBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {

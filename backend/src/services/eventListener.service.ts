@@ -7,10 +7,7 @@ import {
 import { EventType, ParsedEvent } from "../types/events";
 import { dispatchEvent } from "./eventHandlers";
 import { appLogger } from "../middleware/logger";
-import {
-  CircuitBreaker,
-  CircuitBreakerOpenError,
-} from "../lib/circuitBreaker";
+import { CircuitBreaker, CircuitBreakerOpenError } from "../lib/circuitBreaker";
 
 type OutboxStatus = "PENDING" | "RETRYING" | "PROCESSED" | "DEAD_LETTER";
 
@@ -29,7 +26,7 @@ type OutboxRecord = {
  */
 export async function isAlreadyProcessed(
   prisma: PrismaClient,
-  key: { ledgerSequence: number; contractId: string; eventId: string }
+  key: { ledgerSequence: number; contractId: string; eventId: string },
 ): Promise<boolean> {
   const existing = await prisma.processedEvent.findUnique({
     where: {
@@ -44,8 +41,7 @@ export async function isAlreadyProcessed(
  */
 export function isPrismaUniqueConstraintError(err: unknown): boolean {
   return (
-    err instanceof Prisma.PrismaClientKnownRequestError &&
-    err.code === "P2002"
+    err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002"
   );
 }
 
@@ -60,7 +56,7 @@ export function isPrismaUniqueConstraintError(err: unknown): boolean {
 export async function processEventAtomically(
   prisma: PrismaClient,
   event: ParsedEvent,
-  handler: (tx: Prisma.TransactionClient, event: ParsedEvent) => Promise<void>
+  handler: (tx: Prisma.TransactionClient, event: ParsedEvent) => Promise<void>,
 ): Promise<void> {
   try {
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -75,7 +71,10 @@ export async function processEventAtomically(
     });
   } catch (err) {
     if (isPrismaUniqueConstraintError(err)) {
-      appLogger.debug({ eventId: event.eventId }, "[EventListener] Duplicate insert ignored");
+      appLogger.debug(
+        { eventId: event.eventId },
+        "[EventListener] Duplicate insert ignored",
+      );
       return;
     }
     throw err;
@@ -188,7 +187,10 @@ export class EventListenerService {
       this.scheduleNextPoll(this.config.pollIntervalMs);
     } catch (error) {
       if (error instanceof CircuitBreakerOpenError) {
-        appLogger.warn({}, "[EventListener] Circuit breaker open — skipping poll");
+        appLogger.warn(
+          {},
+          "[EventListener] Circuit breaker open — skipping poll",
+        );
         this.scheduleNextPoll(this.stellarCircuit.cooldownMsValue);
       } else {
         appLogger.error({ error }, "[EventListener] Poll failed");
@@ -198,7 +200,9 @@ export class EventListenerService {
   }
 
   /** Parse a single raw Soroban event and dispatch to the appropriate handler. */
-  async processEvent(rawEvent: StellarSdk.rpc.Api.EventResponse): Promise<void> {
+  async processEvent(
+    rawEvent: StellarSdk.rpc.Api.EventResponse,
+  ): Promise<void> {
     const parsed = this.parseEvent(rawEvent);
     if (!parsed) return;
 
@@ -209,7 +213,13 @@ export class EventListenerService {
     if (this.processedEvents.has(cacheKey)) return;
 
     // Durable path: DB check (survives restarts)
-    if (await isAlreadyProcessed(this.prisma, { ledgerSequence, contractId, eventId })) {
+    if (
+      await isAlreadyProcessed(this.prisma, {
+        ledgerSequence,
+        contractId,
+        eventId,
+      })
+    ) {
       this.processedEvents.add(cacheKey);
       return;
     }
@@ -231,7 +241,10 @@ export class EventListenerService {
           "[EventListener] Processed event",
         );
       } catch (error) {
-        appLogger.error({ error, eventId }, "[EventListener] Failed to process event");
+        appLogger.error(
+          { error, eventId },
+          "[EventListener] Failed to process event",
+        );
         throw error;
       }
       return;
@@ -259,7 +272,10 @@ export class EventListenerService {
       );
     } catch (error) {
       await this.recordOutboxFailure(outbox, error);
-      appLogger.error({ error, eventId }, "[EventListener] Failed to process event; scheduled for retry");
+      appLogger.error(
+        { error, eventId },
+        "[EventListener] Failed to process event; scheduled for retry",
+      );
     }
   }
 
@@ -309,7 +325,10 @@ export class EventListenerService {
       return false;
     }
     if (outbox.status === "DEAD_LETTER") {
-      appLogger.warn({ outboxId: outbox.id }, "[EventListener] Skipping dead-letter event");
+      appLogger.warn(
+        { outboxId: outbox.id },
+        "[EventListener] Skipping dead-letter event",
+      );
       return false;
     }
     const now = Date.now();
@@ -319,7 +338,10 @@ export class EventListenerService {
     return true;
   }
 
-  private async processOutboxEventAtomically(outboxId: number, event: ParsedEvent): Promise<void> {
+  private async processOutboxEventAtomically(
+    outboxId: number,
+    event: ParsedEvent,
+  ): Promise<void> {
     try {
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Re-read status inside the transaction: if a concurrent worker already
@@ -375,7 +397,10 @@ export class EventListenerService {
     return Math.min(baseDelay, this.config.backoffMaxMs);
   }
 
-  private async recordOutboxFailure(outbox: OutboxRecord, error: unknown): Promise<void> {
+  private async recordOutboxFailure(
+    outbox: OutboxRecord,
+    error: unknown,
+  ): Promise<void> {
     const nextAttempts = outbox.attempts + 1;
     const canRetry = nextAttempts < this.config.outboxMaxAttempts;
     const retryDelayMs = this.computeRetryDelay(nextAttempts);
@@ -430,7 +455,10 @@ export class EventListenerService {
       if (rawEvent.value) {
         data.raw = rawEvent.value;
         // Extract map entries into named fields for easy handler access
-        const val = rawEvent.value as unknown as { type?: string; value?: Array<{ key: { value: string }; val: { value: unknown } }> };
+        const val = rawEvent.value as unknown as {
+          type?: string;
+          value?: Array<{ key: { value: string }; val: { value: unknown } }>;
+        };
         if (val?.type === "map" && Array.isArray(val.value)) {
           for (const entry of val.value) {
             if (entry?.key?.value) {
@@ -490,6 +518,8 @@ export class EventListenerService {
       dispute_initiated: EventType.DisputeInitiated,
       DisputeResolved: EventType.DisputeResolved,
       dispute_resolved: EventType.DisputeResolved,
+      StreamClawback: EventType.StreamClawback,
+      stream_clawback: EventType.StreamClawback,
     };
     return mapping[symbol] ?? null;
   }
@@ -519,7 +549,6 @@ export class EventListenerService {
     this.currentBackoffMs = this.config.backoffInitialMs;
   }
 
-
   /** Parse ledger sequence from a processed-event cache key (`ledger:contract:eventId`). */
   private ledgerFromProcessedEventKey(key: string): number {
     const segment = key.split(":")[0];
@@ -532,7 +561,8 @@ export class EventListenerService {
 
   /** Evict oldest events from in-memory set when it exceeds the cache limit. */
   private evictOldEvents(): void {
-    if (this.processedEvents.size <= this.config.processedLedgersCacheSize) return;
+    if (this.processedEvents.size <= this.config.processedLedgersCacheSize)
+      return;
 
     const sorted = Array.from(this.processedEvents).sort((a, b) => {
       const ledgerA = this.ledgerFromProcessedEventKey(a);
