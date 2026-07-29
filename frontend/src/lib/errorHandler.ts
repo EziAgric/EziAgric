@@ -233,6 +233,23 @@ export function isAuthError(error: ApiError | Error): boolean {
 }
 
 /**
+ * Check if an error is a permission/forbidden error (HTTP 403), as opposed to
+ * an expired-session error (401). Handles both the structured error envelope
+ * and the legacy `{ error: "Forbidden: admin access required" }` shape
+ * returned by `adminMiddleware` (see docs/api/errors.md).
+ */
+export function isForbiddenError(error: ApiError | Error): boolean {
+  if (error instanceof ApiError) {
+    const backendError = parseBackendError(error);
+    if (backendError) {
+      return backendError.code === BackendErrorCode.TRADE_ACCESS_DENIED;
+    }
+    return error.status === 403;
+  }
+  return false;
+}
+
+/**
  * Check if an error is a validation error
  */
 export function isValidationError(error: ApiError | Error): boolean {
