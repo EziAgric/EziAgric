@@ -1,10 +1,15 @@
+import { PrismaClient } from "@prisma/client";
 import { Response, Router } from "express";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
+import { adminTimeoutMiddleware } from "../middleware/adminTimeout.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
+import { traceContextFrom } from "../middleware/correlationId.middleware";
 import { ContractService } from "../services/contract.service";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 const stellarAddress = z
@@ -25,13 +30,18 @@ const updateFeeBodySchema = z.object({
   feeBps: z.number().int().min(1).max(500),
 });
 
-export function createAdminContractRouter(contractService: ContractService = new ContractService()) {
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
+export function createAdminContractRouter(
+  contractService: ContractService = new ContractService(),
+) {
   const router = Router();
 
   router.post(
-    "/admin/contract/mediators",
+    "/api/admin/contract/mediators",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ body: addMediatorBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -40,7 +50,13 @@ export function createAdminContractRouter(contractService: ContractService = new
         const result = await contractService.buildAddMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
+        if (res.headersSent) return;
+        await prisma.adminActionAudit.create({
+          data: { action: "ADD_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
+        });
+        if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
         next(error);
@@ -49,9 +65,10 @@ export function createAdminContractRouter(contractService: ContractService = new
   );
 
   router.delete(
-    "/admin/contract/mediators/:address",
+    "/api/admin/contract/mediators/:address",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ params: mediatorAddressParamSchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -60,7 +77,13 @@ export function createAdminContractRouter(contractService: ContractService = new
         const result = await contractService.buildRemoveMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
+        if (res.headersSent) return;
+        await prisma.adminActionAudit.create({
+          data: { action: "REMOVE_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
+        });
+        if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
         next(error);
@@ -69,9 +92,10 @@ export function createAdminContractRouter(contractService: ContractService = new
   );
 
   router.patch(
-    "/admin/contract/fee",
+    "/api/admin/contract/fee",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ body: updateFeeBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -80,7 +104,13 @@ export function createAdminContractRouter(contractService: ContractService = new
         const result = await contractService.buildUpdateFeeBpsTx({
           adminAddress,
           feeBps,
+          trace: traceContextFrom(req),
         });
+        if (res.headersSent) return;
+        await prisma.adminActionAudit.create({
+          data: { action: "UPDATE_FEE_BPS", actorAddress: adminAddress, targetReference: String(feeBps) },
+        });
+        if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
         next(error);

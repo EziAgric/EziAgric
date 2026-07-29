@@ -13,10 +13,11 @@ export enum EventType {
   FundsReleased = "FundsReleased",
   DisputeInitiated = "DisputeInitiated",
   DisputeResolved = "DisputeResolved",
+  StreamClawback = "StreamClawback",
 }
 
 /** Mapping from EventType to the resulting TradeStatus */
-export const EVENT_TO_STATUS: Record<EventType, TradeStatus> = {
+export const EVENT_TO_STATUS: Partial<Record<EventType, TradeStatus>> = {
   [EventType.TradeCreated]: TradeStatus.CREATED,
   [EventType.TradeFunded]: TradeStatus.FUNDED,
   [EventType.DeliveryConfirmed]: TradeStatus.DELIVERED,

@@ -4,6 +4,8 @@ import { env } from "../config/env";
 import { withRpcMetrics } from "../lib/metrics";
 import { retryAsync } from "../lib/retry";
 import { TOKEN_BASE, TOKEN_DECIMALS } from "../config/token";
+import { TraceContext } from "../middleware/correlationId.middleware";
+import { appLogger } from "../middleware/logger";
 
 const DEFAULT_RPC_URL = "https://soroban-testnet.stellar.org";
 const DEFAULT_TIMEOUT_SECONDS = 300;
@@ -431,14 +433,42 @@ export class ContractService {
   }
 
   /**
+   * Log an admin Soroban call with its tracing IDs, so a single admin request
+   * can be followed from the HTTP log line through to the contract invocation
+   * it produced (#21).
+   */
+  private logAdminSorobanCall(
+    contractFunction: string,
+    trace: TraceContext | undefined,
+    details: Record<string, unknown>,
+  ): void {
+    appLogger.info(
+      {
+        contractFunction,
+        contractId: this.contractId,
+        correlationId: trace?.correlationId,
+        requestId: trace?.requestId,
+        ...details,
+      },
+      "admin_soroban_call",
+    );
+  }
+
+  /**
    * Builds an unsigned Soroban XDR for `add_mediator(mediator_address)`.
    * Admin-only contract call; `adminAddress` is the source/signing account.
    */
   public async buildAddMediatorTx(input: {
     adminAddress: string;
     mediatorAddress: string;
+    trace?: TraceContext;
   }): Promise<{ unsignedXdr: string }> {
     if (!this.contractId) throw new Error("CONTRACT_ID is not configured");
+
+    this.logAdminSorobanCall("add_mediator", input.trace, {
+      adminAddress: input.adminAddress,
+      mediatorAddress: input.mediatorAddress,
+    });
 
     const account = await getRpcAccount(this.rpcServer, input.adminAddress);
     const contract = new StellarSdk.Contract(this.contractId);
@@ -467,8 +497,14 @@ export class ContractService {
   public async buildRemoveMediatorTx(input: {
     adminAddress: string;
     mediatorAddress: string;
+    trace?: TraceContext;
   }): Promise<{ unsignedXdr: string }> {
     if (!this.contractId) throw new Error("CONTRACT_ID is not configured");
+
+    this.logAdminSorobanCall("remove_mediator", input.trace, {
+      adminAddress: input.adminAddress,
+      mediatorAddress: input.mediatorAddress,
+    });
 
     const account = await getRpcAccount(this.rpcServer, input.adminAddress);
     const contract = new StellarSdk.Contract(this.contractId);
@@ -498,8 +534,14 @@ export class ContractService {
   public async buildUpdateFeeBpsTx(input: {
     adminAddress: string;
     feeBps: number;
+    trace?: TraceContext;
   }): Promise<{ unsignedXdr: string }> {
     if (!this.contractId) throw new Error("CONTRACT_ID is not configured");
+
+    this.logAdminSorobanCall("update_fee_bps", input.trace, {
+      adminAddress: input.adminAddress,
+      feeBps: input.feeBps,
+    });
 
     const account = await getRpcAccount(this.rpcServer, input.adminAddress);
     const contract = new StellarSdk.Contract(this.contractId);
