@@ -69,7 +69,7 @@ describe("Admin Contract Maintenance Routes", () => {
   describe("authorization", () => {
     it("rejects add-mediator with 401 when unauthenticated", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .send({ mediatorAddress });
       expect(res.status).toBe(401);
       expect(mockContractService.buildAddMediatorTx).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects add-mediator with 403 for a non-admin wallet", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${nonAdminToken}`)
         .send({ mediatorAddress });
       expect(res.status).toBe(403);
@@ -86,7 +86,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects remove-mediator with 403 for a non-admin wallet", async () => {
       const res = await request(app)
-        .delete(`/admin/contract/mediators/${mediatorAddress}`)
+        .delete(`/api/admin/contract/mediators/${mediatorAddress}`)
         .set("Authorization", `Bearer ${nonAdminToken}`);
       expect(res.status).toBe(403);
       expect(mockContractService.buildRemoveMediatorTx).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects fee update with 403 for a non-admin wallet", async () => {
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${nonAdminToken}`)
         .send({ feeBps: 100 });
       expect(res.status).toBe(403);
@@ -105,7 +105,7 @@ describe("Admin Contract Maintenance Routes", () => {
   describe("request validation", () => {
     it("rejects add-mediator with 400 for a malformed mediator address", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ mediatorAddress: "not-a-valid-address" });
       expect(res.status).toBe(400);
@@ -114,7 +114,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects add-mediator with 400 when mediatorAddress is missing", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({});
       expect(res.status).toBe(400);
@@ -123,7 +123,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects remove-mediator with 400 for a malformed address param", async () => {
       const res = await request(app)
-        .delete("/admin/contract/mediators/not-a-valid-address")
+        .delete("/api/admin/contract/mediators/not-a-valid-address")
         .set("Authorization", `Bearer ${adminToken}`);
       expect(res.status).toBe(400);
       expect(mockContractService.buildRemoveMediatorTx).not.toHaveBeenCalled();
@@ -131,7 +131,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects fee update with 400 when feeBps is out of range", async () => {
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ feeBps: 5000 });
       expect(res.status).toBe(400);
@@ -140,7 +140,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects fee update with 400 when feeBps is not an integer", async () => {
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ feeBps: 12.5 });
       expect(res.status).toBe(400);
@@ -153,7 +153,7 @@ describe("Admin Contract Maintenance Routes", () => {
       mockContractService.buildAddMediatorTx.mockResolvedValue({ unsignedXdr: "unsigned-add" });
 
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ mediatorAddress });
 
@@ -169,7 +169,7 @@ describe("Admin Contract Maintenance Routes", () => {
       mockContractService.buildRemoveMediatorTx.mockResolvedValue({ unsignedXdr: "unsigned-remove" });
 
       const res = await request(app)
-        .delete(`/admin/contract/mediators/${mediatorAddress}`)
+        .delete(`/api/admin/contract/mediators/${mediatorAddress}`)
         .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
@@ -184,7 +184,7 @@ describe("Admin Contract Maintenance Routes", () => {
       mockContractService.buildUpdateFeeBpsTx.mockResolvedValue({ unsignedXdr: "unsigned-fee" });
 
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ feeBps: 250 });
 

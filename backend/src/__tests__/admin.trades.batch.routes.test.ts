@@ -83,7 +83,7 @@ describe("Admin Trade Batch Route", () => {
       .mockResolvedValueOnce({ count: 1 });
 
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         updates: [
@@ -106,7 +106,7 @@ describe("Admin Trade Batch Route", () => {
       .mockResolvedValueOnce({ count: 1 });
 
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         updates: [
@@ -136,7 +136,7 @@ describe("Admin Trade Batch Route", () => {
       .mockResolvedValueOnce({ count: 0 });
 
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({
         updates: [
@@ -153,7 +153,7 @@ describe("Admin Trade Batch Route", () => {
 
   it("returns 401 without auth", async () => {
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .send({ updates: [{ tradeId: "trade-1", status: TradeStatus.CANCELLED }] });
 
     expect(res.status).toBe(401);
@@ -161,7 +161,7 @@ describe("Admin Trade Batch Route", () => {
 
   it("returns 403 for non-admin users", async () => {
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .set("Authorization", `Bearer ${nonAdminToken}`)
       .send({ updates: [{ tradeId: "trade-1", status: TradeStatus.CANCELLED }] });
 
@@ -171,7 +171,7 @@ describe("Admin Trade Batch Route", () => {
 
   it("returns 400 for empty updates array", async () => {
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ updates: [] });
 
@@ -180,7 +180,7 @@ describe("Admin Trade Batch Route", () => {
 
   it("returns 400 for invalid status value", async () => {
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ updates: [{ tradeId: "trade-1", status: "INVALID_STATUS" }] });
 
@@ -189,7 +189,7 @@ describe("Admin Trade Batch Route", () => {
 
   it("returns 400 for missing tradeId", async () => {
     const res = await request(app)
-      .post("/admin/trades/batch/status")
+      .post("/api/admin/trades/batch/status")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ updates: [{ status: TradeStatus.CANCELLED }] });
 

@@ -36,7 +36,7 @@ export function createAdminTradeBatchRouter(prisma: PrismaClient = defaultPrisma
   const router = Router();
 
   router.post(
-    "/admin/trades/batch/status",
+    "/api/admin/trades/batch/status",
     authMiddleware,
     adminMiddleware,
     createAdminQuotaMiddleware("admin.trades.batch.status", ADMIN_QUOTA_CONFIG.tradeBatchStatus),

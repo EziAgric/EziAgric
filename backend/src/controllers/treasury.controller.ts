@@ -25,32 +25,19 @@ export class TreasuryController {
       }
 
       const { destination, amount, note } = req.body as {
-        destination?: unknown;
-        amount?: unknown;
-        note?: unknown;
+        destination: string;
+        amount: string | number;
+        note?: string;
       };
-      if (!destination || typeof destination !== "string") {
-        return res.status(400).json({ error: "Destination address is required" });
-      }
-      if (!StellarSdk.StrKey.isValidEd25519PublicKey(destination)) {
-        return res.status(400).json({ error: "Invalid destination address" });
-      }
-      if (!amount || typeof amount !== "string") {
-        return res.status(400).json({ error: "Amount is required" });
-      }
-      if (note !== undefined && typeof note !== "string") {
-        return res.status(400).json({ error: "Note must be a string" });
-      }
-      if (typeof note === "string" && note.length > 2000) {
-        return res.status(400).json({ error: "Note must be 2000 characters or fewer" });
-      }
 
-      const trimmedNote = typeof note === "string" ? note.trim() : undefined;
+      // Convert amount to string for the service
+      const amountStr = typeof amount === "number" ? amount.toString() : amount;
+
       const result = await this.treasuryService.withdraw(
         destination,
-        amount,
+        amountStr,
         callerAddress,
-        trimmedNote ? trimmedNote : undefined,
+        note?.trim(),
       );
       return res.status(200).json(result);
     } catch (error) {

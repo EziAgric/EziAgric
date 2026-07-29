@@ -15,7 +15,7 @@ export function createAdminFeaturesRouter() {
   const router = Router();
 
   router.get(
-    "/admin/features",
+    "/api/admin/features",
     authMiddleware,
     adminMiddleware,
     async (_req: AuthRequest, res: Response, next) => {
@@ -29,7 +29,7 @@ export function createAdminFeaturesRouter() {
   );
 
   router.patch(
-    "/admin/features/:name",
+    "/api/admin/features/:name",
     authMiddleware,
     adminMiddleware,
     validateRequest({ body: updateFlagBodySchema }),

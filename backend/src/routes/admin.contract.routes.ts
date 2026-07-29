@@ -29,7 +29,7 @@ export function createAdminContractRouter(contractService: ContractService = new
   const router = Router();
 
   router.post(
-    "/admin/contract/mediators",
+    "/api/admin/contract/mediators",
     authMiddleware,
     adminMiddleware,
     validateRequest({ body: addMediatorBodySchema }),
@@ -49,7 +49,7 @@ export function createAdminContractRouter(contractService: ContractService = new
   );
 
   router.delete(
-    "/admin/contract/mediators/:address",
+    "/api/admin/contract/mediators/:address",
     authMiddleware,
     adminMiddleware,
     validateRequest({ params: mediatorAddressParamSchema }),
@@ -69,7 +69,7 @@ export function createAdminContractRouter(contractService: ContractService = new
   );
 
   router.patch(
-    "/admin/contract/fee",
+    "/api/admin/contract/fee",
     authMiddleware,
     adminMiddleware,
     validateRequest({ body: updateFeeBodySchema }),
