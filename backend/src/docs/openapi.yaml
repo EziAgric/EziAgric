@@ -1900,6 +1900,47 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/auth/claims:
+    get:
+      tags: [Admin]
+      summary: Inspect the caller's parsed admin JWT claims
+      description: |-
+        Diagnostic endpoint returning the sanitized JWT claims the backend
+        parsed from the caller's bearer token (wallet address, token id,
+        issuer/audience, issued/expiry timestamps), so an admin can verify
+        exactly what the server sees without decoding the token by hand.
+        Raw fields not meaningful to display (`sub`, `nbf`) are omitted.
+        Error code references: `AUTH_ERROR`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Sanitized admin JWT claims.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  walletAddress:
+                    type: string
+                  tokenId:
+                    type: string
+                  issuedAt:
+                    type: string
+                    nullable: true
+                  expiresAt:
+                    type: string
+                    nullable: true
+                  issuer:
+                    type: string
+                    nullable: true
+                  audience:
+                    type: string
+                    nullable: true
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
   /treasury/balance:
     get:
       tags: [Treasury]
@@ -1995,6 +2036,120 @@ paths:
                     type: string
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/contract/mediators:
+    post:
+      tags: [Admin]
+      summary: Register a mediator on the escrow contract
+      description: |-
+        Builds an unsigned Soroban transaction that adds `mediatorAddress` to the
+        on-chain mediator registry (`add_mediator`), previously only doable via the
+        `soroban contract invoke` CLI. Admin-only; the caller's wallet is the
+        transaction source/signer. As with other admin transaction endpoints, the
+        backend never holds a signing key — the caller signs and submits the
+        returned XDR themselves.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mediatorAddress:
+                  type: string
+                  description: Stellar public key to register as a mediator.
+              required: [mediatorAddress]
+      responses:
+        "200":
+          description: Add-mediator transaction built.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedXdrResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/contract/mediators/{address}:
+    delete:
+      tags: [Admin]
+      summary: Revoke a mediator on the escrow contract
+      description: |-
+        Builds an unsigned Soroban transaction that removes `address` from the
+        on-chain mediator registry (`remove_mediator`). Admin-only; the caller's
+        wallet is the transaction source/signer.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: address
+          in: path
+          required: true
+          description: Stellar public key to remove from the mediator registry.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Remove-mediator transaction built.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedXdrResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /admin/contract/fee:
+    patch:
+      tags: [Admin]
+      summary: Update the escrow contract platform fee rate
+      description: |-
+        Builds an unsigned Soroban transaction that updates the platform fee
+        (`update_fee_bps`). The contract itself enforces the fee stays within its
+        configured [MIN_FEE_BPS, MAX_FEE_BPS] bounds; this endpoint additionally
+        rejects out-of-range values before building a transaction. Admin-only;
+        the caller's wallet is the transaction source/signer.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                feeBps:
+                  type: integer
+                  minimum: 1
+                  maximum: 500
+                  description: New platform fee rate in basis points.
+              required: [feeBps]
+      responses:
+        "200":
+          description: Fee-update transaction built.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnsignedXdrResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "500":
           $ref: "#/components/responses/InternalError"
   /goals:

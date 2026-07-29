@@ -53,6 +53,22 @@ Payload:
 - `status`: string — `started`, `success`, or `failed`
 - `error`: string (optional) — sanitized failure reason
 
+### `admin_action`
+Used for admin-only page visits and admin-initiated actions (e.g. viewing
+the admin action history panel, treasury clawbacks). Complements
+`api_failure`, which already fires automatically for any non-2xx admin API
+response (including 403s from `adminMiddleware`).
+
+Payload:
+- `action`: string — the admin action or page name (e.g. `admin_audit_page_view`)
+- `status`: string — `viewed`, `success`, or `failed`
+- `reason`: string (optional) — failure classification, e.g. `forbidden`
+- `page`: number (optional) — pagination context
+
+No admin identity (wallet address) is included in this event's metadata;
+`actorAddress` values are redacted by the `wallet`-key scrub rule below if
+ever passed in.
+
 ## Privacy Rules
 - Redact values for keys that include `email`, `name`, `address`, `wallet`, `token`, `jwt`, `session`, `ip`, or `phone`.
 - Redact any string that matches common email, IP address, or wallet address patterns.
@@ -75,6 +91,7 @@ The analytics wrapper lives at `frontend/src/lib/analytics.ts` and exposes the f
 - `trackFailure(errorType, metadata)`
 - `trackApiFailure(endpoint, status, metadata)`
 - `trackAuthEvent(step, status, metadata)`
+- `trackAdminEvent(action, status, metadata)`
 
 Example:
 ```ts
