@@ -6,6 +6,7 @@ import { adminMiddleware } from "../middleware/admin.middleware";
 import { adminTimeoutMiddleware } from "../middleware/adminTimeout.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
+import { traceContextFrom } from "../middleware/correlationId.middleware";
 import { ContractService } from "../services/contract.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
@@ -49,6 +50,7 @@ export function createAdminContractRouter(
         const result = await contractService.buildAddMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
         await prisma.adminActionAudit.create({
@@ -75,6 +77,7 @@ export function createAdminContractRouter(
         const result = await contractService.buildRemoveMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
         await prisma.adminActionAudit.create({
@@ -101,6 +104,7 @@ export function createAdminContractRouter(
         const result = await contractService.buildUpdateFeeBpsTx({
           adminAddress,
           feeBps,
+          trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
         await prisma.adminActionAudit.create({

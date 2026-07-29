@@ -6,6 +6,7 @@ import { createAdminContractRouter } from "../routes/admin.contract.routes";
 import { AuthService } from "../services/auth.service";
 import { errorHandler } from "../middleware/errorHandler";
 import { ContractService } from "../services/contract.service";
+import { correlationIdMiddleware } from "../middleware/correlationId.middleware";
 
 jest.mock("../services/auth.service", () => ({
   AuthService: {
@@ -33,6 +34,8 @@ const mockPrisma = {
 
 const app = express();
 app.use(express.json());
+app.use(correlationIdMiddleware);
+app.use("/", createAdminContractRouter(mockContractService));
 app.use("/", createAdminContractRouter(mockContractService, mockPrisma as never));
 app.use(errorHandler);
 
@@ -171,6 +174,7 @@ describe("Admin Contract Maintenance Routes", () => {
       expect(mockContractService.buildAddMediatorTx).toHaveBeenCalledWith({
         adminAddress,
         mediatorAddress,
+        trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
       expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
         data: { action: "ADD_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
@@ -189,6 +193,7 @@ describe("Admin Contract Maintenance Routes", () => {
       expect(mockContractService.buildRemoveMediatorTx).toHaveBeenCalledWith({
         adminAddress,
         mediatorAddress,
+        trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
       expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
         data: { action: "REMOVE_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
@@ -208,6 +213,7 @@ describe("Admin Contract Maintenance Routes", () => {
       expect(mockContractService.buildUpdateFeeBpsTx).toHaveBeenCalledWith({
         adminAddress,
         feeBps: 250,
+        trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
       expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
         data: { action: "UPDATE_FEE_BPS", actorAddress: adminAddress, targetReference: "250" },
