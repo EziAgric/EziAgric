@@ -4,6 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavLink } from "@/components/ui/Navigation";
+import { Badge } from "@/components/ui/Badge";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 interface AppTopNavProps {
   onToggleSidebar?: () => void;
@@ -25,6 +27,7 @@ export function AppTopNav({
   isSidebarOpen,
 }: AppTopNavProps) {
   const pathname = usePathname();
+  const isAdmin = useIsAdmin();
 
   return (
     <header className="h-14 bg-card border-b border-border-default flex items-center px-4 lg:px-6 gap-4 lg:gap-8 flex-shrink-0">
@@ -71,6 +74,13 @@ export function AppTopNav({
 
       {/* Right side */}
       <div className="ml-auto flex items-center gap-3">
+        {/* Admin role indicator */}
+        {isAdmin && (
+          <Badge variant="locked" size="sm">
+            Admin
+          </Badge>
+        )}
+
         {/* Notification bell */}
         <button className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-elevated transition-all">
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
