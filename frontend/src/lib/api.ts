@@ -1,3 +1,4 @@
+import { adminAuditApi } from "./api/adminAudit";
 import { authApi } from "./api/auth";
 import { ApiError } from "./api/client";
 import { disputesApi } from "./api/disputes";
@@ -7,6 +8,8 @@ import { tradesApi } from "./api/trades";
 import { walletApi } from "./api/wallet";
 
 export type {
+  AdminAuditEntry,
+  AdminAuditListResponse,
   ChallengeResponse,
   CreateTradeRequest,
   CreateTradeResponse,
@@ -28,6 +31,7 @@ export type {
 
 export const api = {
   auth: authApi,
+  adminAudit: adminAuditApi,
   search: searchApi,
   trades: tradesApi,
   wallet: walletApi,

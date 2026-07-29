@@ -91,3 +91,24 @@ it('should satisfy property X', () => {
 3. **Descriptive names**: Use clear test descriptions
 4. **Accessibility**: Test ARIA attributes and semantic HTML
 5. **Coverage**: Aim for high coverage of component logic
+
+## Admin Helper Modules
+
+Admin/mediator pages keep their data-transformation and API-request-building
+logic in plain, side-effect-free helper modules so it can be unit tested
+without rendering a component tree:
+
+- `src/app/mediator/disputes/helpers.ts` — `getMediatorAddresses` (parses the
+  `NEXT_PUBLIC_MEDIATOR_WALLETS` allowlist, falling back to a dev default),
+  `isMediatorAddress`, `formatDate`, and `formatAddress` (Stellar address
+  truncation for list rows). Covered by
+  `src/app/mediator/disputes/__tests__/helpers.test.ts`.
+- `src/lib/api/disputes.ts` (`disputesApi.list`) and `src/lib/api/client.ts`
+  (`createQueryString`) — build the query string/request payload for admin
+  dispute-list fetches, omitting undefined/empty filters and always
+  forwarding the caller's auth token. Covered by
+  `src/lib/api/__tests__/disputes.test.ts` and
+  `src/lib/api/__tests__/client.test.ts`.
+
+When adding a new admin page, prefer extracting this kind of logic into a
+sibling `helpers.ts` rather than defining it inline in the page component.
