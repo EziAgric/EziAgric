@@ -74,6 +74,10 @@ const IMPLEMENTED_ROUTES = [
   "/treasury/balance",
   "/treasury/withdraw",
   "/treasury/config",
+  "/admin/contract/mediators",
+  "/admin/contract/mediators/{address}",
+  "/admin/contract/fee",
+  "/api/admin/auth/claims",
 ];
 
 describe("OpenAPI drift detection", () => {

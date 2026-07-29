@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import {
+  trackAdminEvent,
   trackApiFailure,
   trackAuthEvent,
   trackEvent,
@@ -15,6 +16,7 @@ interface AnalyticsContextValue {
   trackFailure: (errorType: string, metadata?: Record<string, unknown>) => void;
   trackApiFailure: (endpoint: string, status: number, metadata?: Record<string, unknown>) => void;
   trackAuthEvent: (step: string, status: "started" | "success" | "failed", metadata?: Record<string, unknown>) => void;
+  trackAdminEvent: (action: string, status: "viewed" | "success" | "failed", metadata?: Record<string, unknown>) => void;
 }
 
 const AnalyticsContext = createContext<AnalyticsContextValue | null>(null);
@@ -55,6 +57,13 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const trackAdminEventCallback = useCallback(
+    (action: string, status: "viewed" | "success" | "failed", metadata: Record<string, unknown> = {}) => {
+      trackAdminEvent(action, status, metadata);
+    },
+    []
+  );
+
   const value = useMemo(
     () => ({
       trackEvent: trackEventCallback,
@@ -62,8 +71,16 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
       trackFailure: trackFailureCallback,
       trackApiFailure: trackApiFailureCallback,
       trackAuthEvent: trackAuthEventCallback,
+      trackAdminEvent: trackAdminEventCallback,
     }),
-    [trackEventCallback, trackFailureCallback, trackFunnel, trackApiFailureCallback, trackAuthEventCallback]
+    [
+      trackEventCallback,
+      trackFailureCallback,
+      trackFunnel,
+      trackApiFailureCallback,
+      trackAuthEventCallback,
+      trackAdminEventCallback,
+    ]
   );
 
   return <AnalyticsContext.Provider value={value}>{children}</AnalyticsContext.Provider>;

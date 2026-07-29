@@ -4,9 +4,11 @@ import { z } from "zod";
 import { prisma as defaultPrisma } from "../lib/db";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
+import { createAdminQuotaMiddleware } from "../middleware/adminQuota.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { appLogger } from "../middleware/logger";
+import { ADMIN_QUOTA_CONFIG } from "../config/adminQuota";
 
 const tradeStatusUpdateSchema = z.object({
   tradeId: z.string().min(1, "tradeId is required"),
@@ -38,6 +40,7 @@ export function createAdminTradeBatchRouter(prisma: PrismaClient = defaultPrisma
     "/admin/trades/batch/status",
     authMiddleware,
     adminMiddleware,
+    createAdminQuotaMiddleware("admin.trades.batch.status", ADMIN_QUOTA_CONFIG.tradeBatchStatus),
     validateRequest({ body: batchStatusBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {

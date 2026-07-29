@@ -1,14 +1,18 @@
+import { PrismaClient } from "@prisma/client";
 import { StellarService } from "./stellar.service";
 import { TOKEN_CONFIG } from "../config/token";
 import { env } from "../config/env";
 import { appLogger } from "../middleware/logger";
 import { isMediatorAddress } from "../lib/accessControl";
+import { prisma as defaultPrisma } from "../lib/db";
 
 export class TreasuryService {
   private stellarService: StellarService;
+  private prisma: Pick<PrismaClient, "adminActionAudit">;
 
-  constructor() {
+  constructor(prisma: Pick<PrismaClient, "adminActionAudit"> = defaultPrisma) {
     this.stellarService = new StellarService();
+    this.prisma = prisma;
   }
 
   async getBalance(): Promise<{
@@ -33,15 +37,25 @@ export class TreasuryService {
     destination: string,
     amount: string,
     callerAddress: string,
+    note?: string,
   ): Promise<{ unsignedXdr: string }> {
     if (!this.isAdmin(callerAddress)) {
       throw new Error("Only admin can withdraw treasury funds");
     }
 
     appLogger.info(
-      { destination, amount, caller: callerAddress },
+      { destination, amount, caller: callerAddress, note },
       "Treasury withdrawal requested",
     );
+
+    await this.prisma.adminActionAudit.create({
+      data: {
+        action: "TREASURY_WITHDRAW",
+        actorAddress: callerAddress,
+        targetReference: destination,
+        note: note ?? null,
+      },
+    });
 
     return { unsignedXdr: "" };
   }
