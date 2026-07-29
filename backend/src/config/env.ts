@@ -119,6 +119,14 @@ export const envSchema = z.object({
   RATE_LIMIT_USER_MAX: z.coerce.number().int().positive().default(30),
   RATE_LIMIT_DISPUTE_WINDOW_MS: z.coerce.number().int().positive().default(60 * 60 * 1000),
   RATE_LIMIT_DISPUTE_MAX: z.coerce.number().int().positive().default(5),
+  // Admin operation quotas (high-volume/expensive operations e.g. treasury clawback, batch updates)
+  ADMIN_QUOTA_CLAWBACK_WINDOW_MS: z.coerce.number().int().positive().default(60 * 60 * 1000),
+  ADMIN_QUOTA_CLAWBACK_MAX: z.coerce.number().int().positive().default(10),
+  ADMIN_QUOTA_TRADE_BATCH_WINDOW_MS: z.coerce.number().int().positive().default(60 * 60 * 1000),
+  ADMIN_QUOTA_TRADE_BATCH_MAX: z.coerce.number().int().positive().default(20),
+  // Retry/backoff for admin Soroban transaction submission (transient RPC failures)
+  SOROBAN_SUBMIT_MAX_RETRIES: z.coerce.number().int().min(0).default(3),
+  SOROBAN_SUBMIT_BACKOFF_MS: z.string().default('1000,2000,4000,8000'),
 });
 
 export type Env = z.infer<typeof envSchema>;

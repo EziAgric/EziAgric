@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useFreighterIdentity } from "@/hooks/useFreighterIdentity";
 import { api, ApiError, DisputeResponse } from "@/lib/api";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { SkeletonList } from "@/components/ui/SkeletonList";
+import { Tabs } from "@/components/ui/Tabs";
+import { Button } from "@/components/ui/Button";
+import { getMediatorAddresses, isMediatorAddress, formatDate, formatAddress } from "./helpers";
 
 type DisputeStatus = "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "CLOSED";
 
@@ -23,8 +28,6 @@ const STATUS_STYLES: Record<string, string> = {
   CLOSED: "text-text-secondary bg-bg-elevated",
 };
 
-const DEFAULT_MEDIATOR_ADDRESSES = ["GEXAMPLEMEDIATORPUBLICKEY1"];
-
 const PAGE_SIZE = 10;
 
 export default function MediatorDisputesPage() {
@@ -37,76 +40,56 @@ export default function MediatorDisputesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const mediatorAddresses = useMemo(() => {
-    const fromEnv = (process.env.NEXT_PUBLIC_MEDIATOR_WALLETS ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+  const mediatorAddresses = useMemo(() => getMediatorAddresses(), []);
 
-    return fromEnv.length > 0 ? fromEnv : DEFAULT_MEDIATOR_ADDRESSES;
-  }, []);
+  const isMediator = isMediatorAddress(address, mediatorAddresses);
 
-  const isMediator = Boolean(address && mediatorAddresses.includes(address));
-
-  useEffect(() => {
-    async function fetchDisputes() {
-      if (!isAuthenticated || !token || !isMediator) {
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const statusParam = activeFilter === "all" ? undefined : activeFilter;
-        const response = await api.disputes.list(token, {
-          status: statusParam,
-          page,
-          limit: PAGE_SIZE,
-        });
-
-        setDisputes(response.items);
-        setTotalPages(response.pagination.totalPages);
-      } catch (err) {
-        let errorMessage = "Failed to load disputes";
-        if (err instanceof ApiError) {
-          errorMessage = err.message;
-        } else if (err instanceof Error) {
-          errorMessage = err.message;
-        }
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
+  const fetchDisputes = useCallback(async () => {
+    if (!isAuthenticated || !token || !isMediator) {
+      setLoading(false);
+      return;
     }
 
-    fetchDisputes();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const statusParam = activeFilter === "all" ? undefined : activeFilter;
+      const response = await api.disputes.list(token, {
+        status: statusParam,
+        page,
+        limit: PAGE_SIZE,
+      });
+
+      setDisputes(response.items);
+      setTotalPages(response.pagination.totalPages);
+    } catch (err) {
+      let errorMessage = "Unable to reach the server. Check your connection and try again.";
+      if (err instanceof ApiError) {
+        errorMessage = err.message;
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   }, [token, isAuthenticated, isMediator, activeFilter, page]);
+
+  useEffect(() => {
+    fetchDisputes();
+  }, [fetchDisputes]);
 
   function handleFilter(value: DisputeStatus | "all") {
     setActiveFilter(value);
     setPage(1);
   }
 
-  function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  function formatAddress(address: string) {
-    if (address.length <= 12) return address;
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  }
-
   if (!isMediator) {
     return (
-      <div className="px-6 py-8 max-w-6xl mx-auto">
+      <div className="px-6 py-8 max-w-6xl mx-auto" data-testid="mediator-disputes-page">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-text-primary mb-4">Access Restricted</h1>
+          <h1 className="text-3xl font-bold text-text-primary mb-4">Access Restricted</h1>
           <p className="text-text-secondary">
             This page is only accessible to authorized mediators.
           </p>
@@ -117,43 +100,42 @@ export default function MediatorDisputesPage() {
 
   if (loading) {
     return (
-      <div className="px-6 py-8 max-w-6xl mx-auto">
-        <div className="text-center">Loading disputes...</div>
+      <div className="px-6 py-8 max-w-6xl mx-auto" data-testid="mediator-disputes-page">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold text-text-primary">Mediator Disputes</h1>
+        </div>
+        <SkeletonList rows={PAGE_SIZE} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="px-6 py-8 max-w-6xl mx-auto">
-        <div className="text-center text-status-danger">{error}</div>
+      <div className="px-6 py-8 max-w-6xl mx-auto" data-testid="mediator-disputes-page">
+        <ErrorState
+          variant="card"
+          title="Couldn't load disputes"
+          message={error}
+          onRetry={fetchDisputes}
+        />
       </div>
     );
   }
 
   return (
-    <div className="px-6 py-8 max-w-6xl mx-auto">
+    <div className="px-6 py-8 max-w-6xl mx-auto" data-testid="mediator-disputes-page">
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-text-primary">Mediator Disputes</h1>
+        <h1 className="text-3xl font-bold text-text-primary">Mediator Disputes</h1>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2 mb-6">
-        {FILTERS.map((filter) => (
-          <button
-            key={filter.value}
-            onClick={() => handleFilter(filter.value)}
-            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-              activeFilter === filter.value
-                ? "bg-gold text-text-inverse"
-                : "bg-bg-elevated text-text-secondary hover:bg-bg-hover"
-            }`}
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        items={FILTERS}
+        activeValue={activeFilter}
+        onChange={handleFilter}
+        className="mb-6"
+      />
 
       {/* Disputes list */}
       <div className="space-y-4">
@@ -201,24 +183,26 @@ export default function MediatorDisputesPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-8">
-          <button
+        <div className="flex items-center justify-center gap-2 mt-8">
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page === 1}
-            className="px-3 py-1 rounded-md bg-bg-elevated text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed hover:bg-bg-hover transition-colors"
           >
             Previous
-          </button>
-          <span className="px-3 py-1 text-text-secondary">
+          </Button>
+          <span className="px-3 py-1 text-sm text-text-secondary">
             Page {page} of {totalPages}
           </span>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setPage(Math.min(totalPages, page + 1))}
             disabled={page === totalPages}
-            className="px-3 py-1 rounded-md bg-bg-elevated text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed hover:bg-bg-hover transition-colors"
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
     </div>

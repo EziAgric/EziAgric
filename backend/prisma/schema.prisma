@@ -468,6 +468,20 @@ model TradeNote {
   @@index([authorAddress])
 }
 
+/// AdminActionAudit — compliance record of admin-initiated actions (e.g. treasury
+/// withdrawals/clawbacks) with an optional operator-supplied reason/note.
+model AdminActionAudit {
+  id              Int      @id @default(autoincrement())
+  action          String   @db.VarChar(64)
+  actorAddress    String   @db.VarChar(255)
+  targetReference String?  @db.VarChar(255)
+  note            String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([actorAddress])
+}
+
 /// EscrowReleaseMilestone represents one pre-defined partial release point.
 /// releasedAt is set after the matching on-chain release event is confirmed.
 model EscrowReleaseMilestone {

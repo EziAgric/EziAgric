@@ -255,5 +255,53 @@ describe("StellarService network resilience", () => {
         "Transaction submission failed: unexpected crash"
       );
     });
+
+    it("retries a transient RPC failure and succeeds on the next attempt", async () => {
+      const timeoutError = new Error("socket hang up");
+      (timeoutError as any).code = "ETIMEDOUT";
+      sendTransactionMock
+        .mockRejectedValueOnce(timeoutError)
+        .mockResolvedValueOnce({ status: "PENDING", hash: "recovered-hash" });
+
+      const service = new StellarService();
+      const response = await service.submitTransaction(signedXdr);
+
+      expect(response.status).toBe("PENDING");
+      expect(response.hash).toBe("recovered-hash");
+      expect(sendTransactionMock).toHaveBeenCalledTimes(2);
+      expect(sleepMock).toHaveBeenCalledTimes(1);
+      expect(sleepMock).toHaveBeenNthCalledWith(1, 1000);
+    });
+
+    it("stops retrying and surfaces the error once the retry budget is exhausted", async () => {
+      const timeoutError = new Error("socket hang up");
+      (timeoutError as any).code = "ETIMEDOUT";
+      sendTransactionMock.mockRejectedValue(timeoutError);
+
+      const service = new StellarService();
+      await expect(service.submitTransaction(signedXdr)).rejects.toThrow(
+        "Transaction submission failed: Stellar RPC timed out — socket hang up"
+      );
+      // Initial attempt + 3 retries (default SOROBAN_SUBMIT_MAX_RETRIES)
+      expect(sendTransactionMock).toHaveBeenCalledTimes(4);
+      expect(sleepMock).toHaveBeenNthCalledWith(1, 1000);
+      expect(sleepMock).toHaveBeenNthCalledWith(2, 2000);
+      expect(sleepMock).toHaveBeenNthCalledWith(3, 4000);
+    });
+
+    it("does not retry persistent, non-transient failures like contract panics", async () => {
+      sendTransactionMock.mockResolvedValue({
+        status: "ERROR",
+        hash: "err-hash",
+        errorResult: "panic error message",
+      });
+
+      const service = new StellarService();
+      await expect(service.submitTransaction(signedXdr)).rejects.toThrow(
+        "Contract Panic: panic error message"
+      );
+      expect(sendTransactionMock).toHaveBeenCalledTimes(1);
+      expect(sleepMock).not.toHaveBeenCalled();
+    });
   });
 });

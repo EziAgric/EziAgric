@@ -79,6 +79,20 @@ Separately, outbound calls to Horizon/Stellar RPC and IPFS (in
 - The two compose: `circuitBreaker.call(() => retryAsync(() => ...))` -
   retry absorbs brief blips, the circuit breaker catches sustained
   outages that retries alone wouldn't (and shouldn't) paper over.
+- **Admin transaction submission** (`StellarService.submitTransaction`,
+  used for admin-initiated Soroban transactions such as treasury
+  clawbacks): wraps the circuit-breaker-protected submission in
+  `retryAsync`, keyed off `classifyStellarError(error).isRetryable`
+  rather than `isRetryableNetworkError` - `timeout`, `connection_refused`,
+  `rate_limited` (incl. `TRY_AGAIN_LATER`), and generic `network_error`
+  are retried; `invalid_xdr`, `contract_panic`, and `rpc_error` (a
+  definitive rejection) are not, since retrying a malformed or rejected
+  transaction just repeats the same failure. Configurable via
+  `SOROBAN_SUBMIT_MAX_RETRIES` (default `3`) and `SOROBAN_SUBMIT_BACKOFF_MS`
+  (default `1000,2000,4000,8000`, comma-separated ms) - see
+  [`.env.example`](../../backend/.env.example). Exhausting the retry
+  budget still surfaces the same error the caller would have seen without
+  retries, just after the configured number of attempts.
 
 ## Consequences
 

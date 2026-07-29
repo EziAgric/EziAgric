@@ -109,3 +109,22 @@ export interface SearchResponse {
   users: SearchResultItem[];
   contracts: SearchResultItem[];
 }
+
+export interface AdminAuditEntry {
+  id: number;
+  action: string;
+  actorAddress: string;
+  targetReference: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AdminAuditListResponse {
+  items: AdminAuditEntry[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
