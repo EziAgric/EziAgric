@@ -5,6 +5,8 @@ import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { ContractService } from "../services/contract.service";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 const stellarAddress = z
@@ -25,13 +27,18 @@ const updateFeeBodySchema = z.object({
   feeBps: z.number().int().min(1).max(500),
 });
 
-export function createAdminContractRouter(contractService: ContractService = new ContractService()) {
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
+export function createAdminContractRouter(
+  contractService: ContractService = new ContractService(),
+) {
   const router = Router();
 
   router.post(
     "/admin/contract/mediators",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ body: addMediatorBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -52,6 +59,7 @@ export function createAdminContractRouter(contractService: ContractService = new
     "/admin/contract/mediators/:address",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ params: mediatorAddressParamSchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -72,6 +80,7 @@ export function createAdminContractRouter(contractService: ContractService = new
     "/admin/contract/fee",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ body: updateFeeBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {

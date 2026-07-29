@@ -3,6 +3,8 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { AuthRequest } from "../services/auth.service";
 import { adminAuditService } from "../services/adminAudit.service";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
 function parseNumericQueryParam(value: unknown): number | undefined {
   if (typeof value !== "string" || value.trim() === "") {
@@ -12,6 +14,8 @@ function parseNumericQueryParam(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
 export function createAdminAuditRouter(): Router {
   const router = Router();
 
@@ -19,6 +23,7 @@ export function createAdminAuditRouter(): Router {
     "/admin/audit",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     async (req: AuthRequest, res: Response, next) => {
       try {
         const result = await adminAuditService.list({

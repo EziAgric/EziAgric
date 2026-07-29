@@ -5,11 +5,15 @@ import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { featureFlagService } from "../services/feature-flags.service";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
 const updateFlagBodySchema = z.object({
   enabled: z.boolean(),
   rolloutPercentage: z.number().min(0).max(100).optional(),
 });
+
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
 
 export function createAdminFeaturesRouter() {
   const router = Router();
@@ -18,6 +22,7 @@ export function createAdminFeaturesRouter() {
     "/admin/features",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     async (_req: AuthRequest, res: Response, next) => {
       try {
         const flags = await featureFlagService.listFlags();
@@ -32,6 +37,7 @@ export function createAdminFeaturesRouter() {
     "/admin/features/:name",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ body: updateFlagBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -41,7 +47,10 @@ export function createAdminFeaturesRouter() {
           rolloutPercentage?: number;
         };
 
-        const flag = await featureFlagService.setFlag(name, { enabled, rolloutPercentage });
+        const flag = await featureFlagService.setFlag(name, {
+          enabled,
+          rolloutPercentage,
+        });
         res.status(200).json({ name, flag });
       } catch (error) {
         next(error);
