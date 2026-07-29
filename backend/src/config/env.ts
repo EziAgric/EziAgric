@@ -127,6 +127,11 @@ export const envSchema = z.object({
   // Retry/backoff for admin Soroban transaction submission (transient RPC failures)
   SOROBAN_SUBMIT_MAX_RETRIES: z.coerce.number().int().min(0).default(3),
   SOROBAN_SUBMIT_BACKOFF_MS: z.string().default('1000,2000,4000,8000'),
+  // Hard wall-clock timeout (ms) for admin routes that build Soroban transactions via RPC
+  ADMIN_ROUTE_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+
+  // Required when admin routes are mounted (server-side Stellar signing key for admin ops)
+  ADMIN_SECRET_KEY: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -141,6 +146,7 @@ function buildProcessEnv(): Record<string, string | undefined> {
     processEnv.USDC_CONTRACT_ID ||= 'test-usdc-contract';
     processEnv.PINATA_API_KEY ||= 'test-pinata-api-key';
     processEnv.PINATA_SECRET ||= 'test-pinata-secret';
+    processEnv.ADMIN_SECRET_KEY ||= 'test-admin-secret-key-value';
   }
 
   return processEnv;

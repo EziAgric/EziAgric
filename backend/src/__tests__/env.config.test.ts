@@ -14,6 +14,7 @@ const VALID_BASE: EnvInput = {
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/amana',
   AMANA_ESCROW_CONTRACT_ID: 'CESCROW000000000000000000000000000000000000000000000000000',
   USDC_CONTRACT_ID: 'CUSDC0000000000000000000000000000000000000000000000000000000',
+  ADMIN_SECRET_KEY: 'a-valid-admin-secret-key',
 };
 
 function parseEnv(input: EnvInput) {
@@ -117,6 +118,21 @@ describe('env config — missing required fields', () => {
     const result = parseEnv(rest);
     expect(result.success).toBe(false);
   });
+
+  it('fails when ADMIN_SECRET_KEY is absent', () => {
+    const { ADMIN_SECRET_KEY: _, ...rest } = VALID_BASE;
+    const result = parseEnv(rest);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.errors.map((e: { path: (string | number)[] }) => e.path.join('.'));
+      expect(paths).toContain('ADMIN_SECRET_KEY');
+    }
+  });
+
+  it('fails when ADMIN_SECRET_KEY is an empty string', () => {
+    const result = parseEnv({ ...VALID_BASE, ADMIN_SECRET_KEY: '' });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('env config — invalid formats', () => {
@@ -160,6 +176,7 @@ describe('env config — optional fields absent or malformed', () => {
       DATABASE_URL: 'postgresql://localhost:5432/amana',
       AMANA_ESCROW_CONTRACT_ID: 'CESCROW',
       USDC_CONTRACT_ID: 'CUSDC',
+      ADMIN_SECRET_KEY: 'a-valid-admin-secret-key',
     };
     const result = parseEnv(minimal);
     expect(result.success).toBe(true);

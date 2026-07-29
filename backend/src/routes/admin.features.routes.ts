@@ -1,3 +1,4 @@
+import { PrismaClient } from "@prisma/client";
 import { Response, Router } from "express";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
@@ -5,13 +6,16 @@ import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { featureFlagService } from "../services/feature-flags.service";
+import { prisma as defaultPrisma } from "../lib/db";
 
 const updateFlagBodySchema = z.object({
   enabled: z.boolean(),
   rolloutPercentage: z.number().min(0).max(100).optional(),
 });
 
-export function createAdminFeaturesRouter() {
+export function createAdminFeaturesRouter(
+  prisma: Pick<PrismaClient, "adminActionAudit"> = defaultPrisma,
+) {
   const router = Router();
 
   router.get(
@@ -42,6 +46,14 @@ export function createAdminFeaturesRouter() {
         };
 
         const flag = await featureFlagService.setFlag(name, { enabled, rolloutPercentage });
+        await prisma.adminActionAudit.create({
+          data: {
+            action: "UPDATE_FEATURE_FLAG",
+            actorAddress: req.user!.walletAddress,
+            targetReference: name,
+            note: JSON.stringify({ enabled, rolloutPercentage: rolloutPercentage ?? null }),
+          },
+        });
         res.status(200).json({ name, flag });
       } catch (error) {
         next(error);

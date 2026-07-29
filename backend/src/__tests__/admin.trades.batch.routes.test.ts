@@ -22,8 +22,12 @@ const mockPrisma = {
     findFirst: jest.fn(),
     updateMany: jest.fn(),
   },
+  adminActionAudit: {
+    create: jest.fn().mockResolvedValue({}),
+  },
 } as unknown as PrismaClient & {
   trade: { findFirst: jest.Mock; updateMany: jest.Mock };
+  adminActionAudit: { create: jest.Mock };
 };
 
 const app = express();
@@ -95,6 +99,14 @@ describe("Admin Trade Batch Route", () => {
     expect(res.status).toBe(200);
     expect(res.body.succeeded).toEqual(["trade-1", "trade-2"]);
     expect(res.body.failed).toEqual([]);
+    expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+      data: {
+        action: "TRADE_BATCH_STATUS_UPDATE",
+        actorAddress: adminAddress,
+        targetReference: "2/2 succeeded",
+        note: JSON.stringify({ succeeded: ["trade-1", "trade-2"], failed: [] }),
+      },
+    });
   });
 
   it("returns partial failures when some trades are not found or transitions are invalid", async () => {
