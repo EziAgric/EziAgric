@@ -501,3 +501,39 @@ model EscrowReleaseMilestone {
   @@index([tradeId, dueAt])
   @@index([tradeId, releasedAt])
 }
+
+/// Stream model representing a vested token stream
+model Stream {
+  id              Int      @id @default(autoincrement())
+  streamId        String   @unique @db.VarChar(255)
+  recipient       String   @db.VarChar(255)
+  totalVested     String   @db.VarChar(100)
+  claimed         String   @default("0") @db.VarChar(100)
+  unclaimed       String   @default("0") @db.VarChar(100)
+  pendingClawback String   @default("0") @db.VarChar(100)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  clawbackEvents  StreamClawbackEvent[]
+
+  @@index([streamId])
+  @@index([recipient])
+}
+
+/// StreamClawbackEvent records audit events of clawbacks performed by admins
+model StreamClawbackEvent {
+  id        Int      @id @default(autoincrement())
+  streamId  String   @db.VarChar(255)
+  admin     String   @db.VarChar(255)
+  amount    String   @db.VarChar(100)
+  timestamp DateTime
+  txHash    String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+
+  stream    Stream   @relation(fields: [streamId], references: [streamId], onDelete: Cascade)
+
+  @@unique([streamId, txHash])
+  @@index([streamId])
+  @@index([admin])
+}

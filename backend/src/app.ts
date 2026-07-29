@@ -1,10 +1,10 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
-import { errorHandler } from './middleware/errorHandler';
-import { correlationIdMiddleware } from './middleware/correlationId.middleware';
-import { tracingMiddleware } from './middleware/tracing.middleware';
-import loggerMiddleware, { appLogger } from './middleware/logger';
+import { errorHandler } from "./middleware/errorHandler";
+import { correlationIdMiddleware } from "./middleware/correlationId.middleware";
+import { tracingMiddleware } from "./middleware/tracing.middleware";
+import loggerMiddleware, { appLogger } from "./middleware/logger";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { requestLoggerMiddleware } from "./middleware/request.logger.middleware";
 import { authRoutes } from "./routes/auth.routes";
@@ -41,6 +41,8 @@ import { createAdminFeaturesRouter } from "./routes/admin.features.routes";
 import { createAdminAuditRouter } from "./routes/admin.audit.routes";
 import { createAdminContractRouter } from "./routes/admin.contract.routes";
 import { createAdminAuthRouter } from "./routes/admin.auth.routes";
+import { createAdminStreamsRouter } from "./routes/admin.streams.routes";
+import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes";
 import { webhooksRoutes } from "./routes/webhooks.routes";
 import { env } from "./config/env";
 
@@ -50,9 +52,9 @@ import { env } from "./config/env";
  *  Leave empty in development to allow all origins.
  */
 function buildCorsOptions(): cors.CorsOptions {
-  const raw = process.env.CORS_ORIGINS ?? env.CORS_ORIGINS ?? '';
+  const raw = process.env.CORS_ORIGINS ?? env.CORS_ORIGINS ?? "";
   const allowlist = raw
-    .split(',')
+    .split(",")
     .map((o: string) => o.trim())
     .filter(Boolean);
 
@@ -76,7 +78,7 @@ export function createApp(): express.Application {
   const app = express();
 
   if (env.TRUST_PROXY) {
-    app.set('trust proxy', 1);
+    app.set("trust proxy", 1);
   }
 
   // Security headers
@@ -94,22 +96,22 @@ export function createApp(): express.Application {
         },
       },
       crossOriginEmbedderPolicy: true,
-      crossOriginOpenerPolicy: { policy: 'same-origin' },
-      crossOriginResourcePolicy: { policy: 'same-origin' },
-      referrerPolicy: { policy: 'no-referrer' },
+      crossOriginOpenerPolicy: { policy: "same-origin" },
+      crossOriginResourcePolicy: { policy: "same-origin" },
+      referrerPolicy: { policy: "no-referrer" },
       hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
       noSniff: true,
-      frameguard: { action: 'deny' },
+      frameguard: { action: "deny" },
       xssFilter: true,
-    })
+    }),
   );
 
   // Environment-driven CORS
   app.use(cors(buildCorsOptions()));
 
   // Body size limits: 100 KB for JSON, 5 MB for URL-encoded (covers file references)
-  app.use(express.json({ limit: '100kb' }));
-  app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+  app.use(express.json({ limit: "100kb" }));
+  app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
   // Correlation ID must be registered before the logger so every log line
   // produced by pino-http already carries the tracing IDs.
@@ -185,6 +187,12 @@ export function createApp(): express.Application {
   // Admin auth diagnostics: GET /api/admin/auth/claims
   app.use(createAdminAuthRouter());
 
+  // Admin trade batch operations: POST /admin/trades/batch/status
+  app.use(createAdminTradeBatchRouter());
+
+  // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume
+  app.use("/api", createAdminStreamsRouter());
+
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);
 
@@ -203,7 +211,10 @@ export function createApp(): express.Application {
     // Find last occurrence of the error handler layer (scan from end)
     let errIdx = -1;
     for (let i = stack.length - 1; i >= 0; i--) {
-      if (stack[i].handle === errorHandler) { errIdx = i; break; }
+      if (stack[i].handle === errorHandler) {
+        errIdx = i;
+        break;
+      }
     }
     if (errIdx !== -1) stack.splice(errIdx, 1);
     _originalUse(errorHandler);

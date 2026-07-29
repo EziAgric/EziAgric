@@ -9,6 +9,23 @@ comma-separated allowlist of Stellar public keys). This is enforced by
 2. Valid token, wallet not on the allowlist -> `403 { "error": "Forbidden: admin access required" }`
 3. Valid token, wallet on the allowlist -> request proceeds
 
+The server also requires `ADMIN_SECRET_KEY` to be set since admin routes are
+always mounted - startup fails fast with a fatal log if it's missing (see
+[`.env.example`](../../backend/.env.example)).
+
+### Request timeouts
+
+Admin routes that build a Soroban transaction (contract maintenance below)
+are wrapped in a hard wall-clock timeout so a stalled RPC call can't hang
+the request indefinitely. If the timeout elapses before a response is sent,
+the caller gets `504`:
+
+```json
+{ "code": "ADMIN_OPERATION_TIMEOUT", "error": "Admin operation timed out" }
+```
+
+Configured via `ADMIN_ROUTE_TIMEOUT_MS` (default `15000`).
+
 There is no separate "admin login" - the same challenge/verify flow in
 [overview.md](./overview.md#authentication) applies; admin status is purely
 a function of which wallet signed in.
@@ -191,7 +208,9 @@ these bounds on-chain.
 
 All three respond `200 { "unsignedXdr": "..." }` on success, `400` on
 malformed input (invalid Stellar address, out-of-range fee), `401`/`403` per
-the standard admin auth rules above.
+the standard admin auth rules above, `504` on timeout (see above). Each
+successful call is recorded in `AdminActionAudit` (`ADD_MEDIATOR`,
+`REMOVE_MEDIATOR`, `UPDATE_FEE_BPS`) alongside the caller's wallet address.
 
 ## Admin action audit history
 
@@ -262,6 +281,9 @@ and `"Concurrency conflict: trade was modified"` (another request updated
 the same trade between this request's read and write - retry the batch for
 just that trade).
 
+Each call is recorded in `AdminActionAudit` as `TRADE_BATCH_STATUS_UPDATE`,
+with the full `succeeded`/`failed` breakdown captured in the `note` column.
+
 ## Feature flags
 
 `GET /admin/features` - list every configured flag.
@@ -300,6 +322,10 @@ A flag not present in this map is treated as disabled everywhere.
   "flag": { "enabled": true, "rolloutPercentage": 25, "updatedAt": "2026-07-05T12:00:00.000Z" }
 }
 ```
+
+Each update is recorded in `AdminActionAudit` as `UPDATE_FEATURE_FLAG`, with
+the applied `enabled`/`rolloutPercentage` values captured in the `note`
+column.
 
 ### How rollout percentage gating works
 
