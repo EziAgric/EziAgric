@@ -37,7 +37,7 @@ export function createAdminContractRouter(
   const router = Router();
 
   router.post(
-    "/admin/contract/mediators",
+    "/api/admin/contract/mediators",
     authMiddleware,
     adminMiddleware,
     adminTimeoutMiddleware(timeoutMs),
@@ -63,7 +63,7 @@ export function createAdminContractRouter(
   );
 
   router.delete(
-    "/admin/contract/mediators/:address",
+    "/api/admin/contract/mediators/:address",
     authMiddleware,
     adminMiddleware,
     adminTimeoutMiddleware(timeoutMs),
@@ -89,7 +89,7 @@ export function createAdminContractRouter(
   );
 
   router.patch(
-    "/admin/contract/fee",
+    "/api/admin/contract/fee",
     authMiddleware,
     adminMiddleware,
     adminTimeoutMiddleware(timeoutMs),

@@ -76,7 +76,7 @@ describe("Admin Audit Routes", () => {
     jest.clearAllMocks();
   });
 
-  describe("GET /admin/audit", () => {
+  describe("GET /api/admin/audit", () => {
     it("returns paginated audit entries for an admin", async () => {
       mockAdminAuditService.list.mockResolvedValue({
         items: [
@@ -93,7 +93,7 @@ describe("Admin Audit Routes", () => {
       });
 
       const res = await request(app)
-        .get("/admin/audit")
+        .get("/api/admin/audit")
         .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
@@ -108,21 +108,21 @@ describe("Admin Audit Routes", () => {
       });
 
       await request(app)
-        .get("/admin/audit?page=3&limit=5")
+        .get("/api/admin/audit?page=3&limit=5")
         .set("Authorization", `Bearer ${adminToken}`);
 
       expect(mockAdminAuditService.list).toHaveBeenCalledWith({ page: 3, limit: 5 });
     });
 
     it("returns 401 without auth", async () => {
-      const res = await request(app).get("/admin/audit");
+      const res = await request(app).get("/api/admin/audit");
       expect(res.status).toBe(401);
       expect(mockAdminAuditService.list).not.toHaveBeenCalled();
     });
 
     it("returns 403 with the legacy admin-forbidden envelope for non-admin users", async () => {
       const res = await request(app)
-        .get("/admin/audit")
+        .get("/api/admin/audit")
         .set("Authorization", `Bearer ${nonAdminToken}`);
 
       expect(res.status).toBe(403);

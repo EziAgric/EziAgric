@@ -82,14 +82,14 @@ describe("Admin Features Routes", () => {
     jest.clearAllMocks();
   });
 
-  describe("GET /admin/features", () => {
+  describe("GET /api/admin/features", () => {
     it("returns the flag map for an admin", async () => {
       mockFeatureFlagService.listFlags.mockResolvedValue({
         "new-checkout": { enabled: true, updatedAt: "t" },
       });
 
       const res = await request(app)
-        .get("/admin/features")
+        .get("/api/admin/features")
         .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
@@ -99,20 +99,20 @@ describe("Admin Features Routes", () => {
     });
 
     it("returns 401 without auth", async () => {
-      const res = await request(app).get("/admin/features");
+      const res = await request(app).get("/api/admin/features");
       expect(res.status).toBe(401);
     });
 
     it("returns 403 for non-admin users", async () => {
       const res = await request(app)
-        .get("/admin/features")
+        .get("/api/admin/features")
         .set("Authorization", `Bearer ${nonAdminToken}`);
 
       expect(res.status).toBe(403);
     });
   });
 
-  describe("PATCH /admin/features/:name", () => {
+  describe("PATCH /api/admin/features/:name", () => {
     it("updates a flag as an admin", async () => {
       mockFeatureFlagService.setFlag.mockResolvedValue({
         enabled: true,
@@ -121,7 +121,7 @@ describe("Admin Features Routes", () => {
       });
 
       const res = await request(app)
-        .patch("/admin/features/new-checkout")
+        .patch("/api/admin/features/new-checkout")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ enabled: true, rolloutPercentage: 25 });
 
@@ -146,7 +146,7 @@ describe("Admin Features Routes", () => {
 
     it("rejects a rolloutPercentage outside 0-100", async () => {
       const res = await request(app)
-        .patch("/admin/features/new-checkout")
+        .patch("/api/admin/features/new-checkout")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ enabled: true, rolloutPercentage: 150 });
 
@@ -156,7 +156,7 @@ describe("Admin Features Routes", () => {
 
     it("returns 403 for non-admin users", async () => {
       const res = await request(app)
-        .patch("/admin/features/new-checkout")
+        .patch("/api/admin/features/new-checkout")
         .set("Authorization", `Bearer ${nonAdminToken}`)
         .send({ enabled: true });
 
