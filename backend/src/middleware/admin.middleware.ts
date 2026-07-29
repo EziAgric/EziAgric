@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { isMediatorAddress } from "../lib/accessControl";
 import { AuthRequest } from "../services/auth.service";
+import { AppError, ErrorCode } from "../errors/errorCodes";
 
 export const adminMiddleware = async (
   req: AuthRequest,
@@ -9,7 +10,13 @@ export const adminMiddleware = async (
 ): Promise<void> => {
   const walletAddress = req.user?.walletAddress?.trim();
   if (!walletAddress || !isMediatorAddress(walletAddress)) {
-    res.status(403).json({ error: "Forbidden: admin access required" });
+    next(
+      new AppError(
+        ErrorCode.AUTH_ERROR,
+        "Forbidden: admin access required",
+        403,
+      ),
+    );
     return;
   }
   next();
