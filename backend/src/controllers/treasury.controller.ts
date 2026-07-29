@@ -2,6 +2,7 @@ import type { Response } from "express";
 import { AuthRequest } from "../services/auth.service";
 import { TreasuryService } from "../services/treasury.service";
 import { appLogger } from "../middleware/logger";
+import { getTraceContext } from "../middleware/tracing.middleware";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 export class TreasuryController {
@@ -41,13 +42,17 @@ export class TreasuryController {
       );
 
       // Admin audit: record which admin initiated a treasury withdrawal
+      const traceCtx = getTraceContext();
       appLogger.info(
         {
           audit: true,
           eventType: "TREASURY_WITHDRAWAL",
+          actionName: "admin.treasury.withdraw",
           destination,
           amount,
           adminAddress: req.user?.walletAddress,
+          traceId: traceCtx?.traceId,
+          spanId: traceCtx?.spanId,
           timestamp: new Date().toISOString(),
         },
         `[AdminAudit] Treasury withdrawal of ${amount} to ${destination} by ${req.user?.walletAddress}`,

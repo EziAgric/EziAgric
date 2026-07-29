@@ -15,7 +15,12 @@ info:
     - `iss` must match `JWT_ISSUER` (default `amana`)
     - `aud` must match `JWT_AUDIENCE` (default `amana-api`)
     - `jti` is required and checked against the revocation denylist
-    - `nbf` must be present and not be in the future
+      (revoked tokens are rejected — replay protection)
+    - `iat` (issued-at) must be present and in the past
+    - `exp` (expires-at) is enforced: expired tokens are rejected
+      (default TTL: 86400 s / 24 h, configurable via `JWT_EXPIRES_IN`)
+    - `nbf` (not-before) must be present and not be in the future
+    - Tokens signed with algorithms other than HS256 are rejected
 
     Error code references in operation descriptions map to backend `ErrorCode` values in
     `backend/src/errors/errorCodes.ts`. Some route handlers still emit legacy `{ error }`

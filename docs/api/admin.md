@@ -39,7 +39,10 @@ Every privileged admin action is recorded in the application logs with an
 |---|---|
 | `audit` | Always `true` for audit events — filter with `audit=true` in your log aggregator |
 | `eventType` | Machine-readable event name (e.g., `FEATURE_FLAG_UPDATED`, `BATCH_TRADE_STATUS_UPDATE`, `TREASURY_WITHDRAWAL`) |
+| `actionName` | Dot-separated action identifier (e.g., `admin.features.update`, `admin.treasury.withdraw`) for filtering and alerting |
 | `adminAddress` | Stellar public key of the admin who performed the action (normalized) |
+| `traceId` | OpenTelemetry trace ID linking the audit log entry to the distributed trace span |
+| `spanId` | OpenTelemetry span ID for the specific admin request span |
 | `timestamp` | ISO-8601 timestamp of when the action was performed |
 
 ### How admin identity flows through the system
@@ -67,16 +70,36 @@ Every privileged admin action is recorded in the application logs with an
 {
   "audit": true,
   "eventType": "FEATURE_FLAG_UPDATED",
+  "actionName": "admin.features.update",
   "featureName": "new-checkout",
   "enabled": true,
   "rolloutPercentage": 25,
   "adminAddress": "gadmin...",
+  "traceId": "00000000000000000000000000000001",
+  "spanId": "0000000000000002",
   "timestamp": "2026-07-27T10:30:00.000Z"
 }
 ```
 
 Operators can query for all admin actions in a time window and trace every
 privileged change back to the specific admin who performed it.
+
+### Distributed tracing integration
+
+Every admin request is automatically instrumented with OpenTelemetry. The
+`adminMiddleware` annotates the active request span with:
+
+| Span Attribute | Value |
+|---|---|
+| `admin.action` | `"privileged"` |
+| `admin.address` | The admin's wallet address |
+| `admin.verdict` | `"granted"` or `"denied"` |
+| `is_admin` | `true` |
+
+These span attributes allow observability platforms (Jaeger, Zipkin, etc.)
+to filter and alert on all admin-level activity. The `traceId` and `spanId`
+in each audit log entry link the log back to the corresponding trace span
+for end-to-end distributed tracing.
 
 ## Auth diagnostics
 
