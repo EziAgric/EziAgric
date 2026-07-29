@@ -2,9 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { createTreasuryRouter } from "../routes/treasury.routes";
 import { AuthService } from "../services/auth.service";
-import { TreasuryService } from "../services/treasury.service";
 import { errorHandler } from "../middleware/errorHandler";
 
 jest.mock("../services/auth.service", () => ({
@@ -18,14 +16,17 @@ jest.mock("../services/auth.service", () => ({
 }));
 
 const mockTreasuryService = {
-  withdraw: jest.fn(),
-  getBalance: jest.fn(),
-  getConfig: jest.fn(),
-} as unknown as TreasuryService & {
-  withdraw: jest.Mock;
-  getBalance: jest.Mock;
-  getConfig: jest.Mock;
+  withdraw: jest.fn().mockResolvedValue({ unsignedXdr: "test-xdr" }),
+  getBalance: jest.fn().mockResolvedValue({ balance: "1000", asset: "USDC", contractId: "test" }),
+  getConfig: jest.fn().mockReturnValue({ contractId: "test", network: "public", asset: "USDC" }),
 };
+
+jest.mock("../services/treasury.service", () => ({
+  TreasuryService: jest.fn(() => mockTreasuryService),
+  treasuryService: mockTreasuryService,
+}));
+
+const { createTreasuryRouter } = require("../routes/treasury.routes");
 
 const app = express();
 app.use(express.json());
@@ -64,11 +65,7 @@ describe("Treasury Routes - POST /treasury/withdraw", () => {
   beforeEach(() => {
     jest.spyOn(AuthService, "isTokenRevoked").mockResolvedValue(false);
     jest.clearAllMocks();
-    // Reset the module to use fresh mock
-    jest.doMock("../services/treasury.service", () => ({
-      TreasuryService: jest.fn(() => mockTreasuryService),
-      treasuryService: mockTreasuryService,
-    }));
+    mockTreasuryService.withdraw.mockResolvedValue({ unsignedXdr: "test-xdr" });
   });
 
   describe("authorization", () => {
