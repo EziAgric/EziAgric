@@ -53,12 +53,14 @@ async function applyStatusTransition(
 }
 
 export async function handleTradeCreated(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const status = EVENT_TO_STATUS[EventType.TradeCreated];
+  if (!status) throw new Error("Missing status mapping");
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: (event.data.buyer as string) || "",
     sellerAddress: (event.data.seller as string) || "",
     amountUsdc: String(event.data.amount_usdc ?? "0"),
-    status: EVENT_TO_STATUS[EventType.TradeCreated],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -76,11 +78,13 @@ export async function handleTradeCreated(tx: Prisma.TransactionClient, event: Pa
 }
 
 export async function handleTradeFunded(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const status = EVENT_TO_STATUS[EventType.TradeFunded];
+  if (!status) throw new Error("Missing status mapping");
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.TradeFunded],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -105,11 +109,13 @@ export async function handleTradeFunded(tx: Prisma.TransactionClient, event: Par
 }
 
 export async function handleDeliveryConfirmed(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const status = EVENT_TO_STATUS[EventType.DeliveryConfirmed];
+  if (!status) throw new Error("Missing status mapping");
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.DeliveryConfirmed],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -124,11 +130,13 @@ export async function handleDeliveryConfirmed(tx: Prisma.TransactionClient, even
 }
 
 export async function handleFundsReleased(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const status = EVENT_TO_STATUS[EventType.FundsReleased];
+  if (!status) throw new Error("Missing status mapping");
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.FundsReleased],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -145,11 +153,13 @@ export async function handleFundsReleased(tx: Prisma.TransactionClient, event: P
 }
 
 export async function handleDisputeInitiated(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const status = EVENT_TO_STATUS[EventType.DisputeInitiated];
+  if (!status) throw new Error("Missing status mapping");
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.DisputeInitiated],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -166,11 +176,13 @@ export async function handleDisputeInitiated(tx: Prisma.TransactionClient, event
 }
 
 export async function handleDisputeResolved(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const status = EVENT_TO_STATUS[EventType.DisputeResolved];
+  if (!status) throw new Error("Missing status mapping");
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.DisputeResolved],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -186,6 +198,40 @@ export async function handleDisputeResolved(tx: Prisma.TransactionClient, event:
   webhookService.dispatch(event.tradeId, TradeStatus.COMPLETED, { ledger: event.ledgerSequence });
 }
 
+export async function handleStreamClawback(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const streamId = String(event.data.stream_id || event.data.streamId || "");
+  const admin = String(event.data.admin || "");
+  const amount = String(event.data.amount || "0");
+  
+  if (!streamId) return;
+
+  // Ensure stream exists or handle appropriately
+  const stream = await tx.stream.findUnique({ where: { streamId } });
+  if (stream) {
+    // We could update the stream's pendingClawback or unclaimed here
+    // but the issue just says persist stream_clawback events and associate them.
+  }
+
+  await tx.streamClawbackEvent.upsert({
+    where: {
+      streamId_txHash: {
+        streamId,
+        txHash: event.eventId, // Using eventId (from horizon) as proxy for txHash/dedup
+      },
+    },
+    update: {},
+    create: {
+      streamId,
+      admin,
+      amount,
+      txHash: event.eventId,
+      timestamp: new Date(),
+    }
+  });
+
+  appLogger.debug({ streamId, ledger: event.ledgerSequence }, "[EventHandler] StreamClawback");
+}
+
 /** Dispatch a parsed event to the correct handler */
 export async function dispatchEvent(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
   const handlers: Record<EventType, (t: Prisma.TransactionClient, e: ParsedEvent) => Promise<void>> = {
@@ -195,6 +241,7 @@ export async function dispatchEvent(tx: Prisma.TransactionClient, event: ParsedE
     [EventType.FundsReleased]: handleFundsReleased,
     [EventType.DisputeInitiated]: handleDisputeInitiated,
     [EventType.DisputeResolved]: handleDisputeResolved,
+    [EventType.StreamClawback]: handleStreamClawback,
   };
 
   const handler = handlers[event.eventType];
