@@ -6,6 +6,7 @@ import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { featureFlagService } from "../services/feature-flags.service";
+import { appLogger } from "../middleware/logger";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
@@ -52,6 +53,20 @@ export function createAdminFeaturesRouter() {
           enabled,
           rolloutPercentage,
         });
+
+        // Admin audit: record which admin changed a feature flag
+        appLogger.info(
+          {
+            audit: true,
+            eventType: "FEATURE_FLAG_UPDATED",
+            featureName: name,
+            enabled,
+            rolloutPercentage: rolloutPercentage ?? null,
+            adminAddress: req.user?.walletAddress,
+            timestamp: new Date().toISOString(),
+          },
+          `[AdminAudit] Feature flag '${name}' set to enabled=${enabled} by ${req.user?.walletAddress}`,
+        );
         res.status(200).json({ name, flag });
       } catch (error) {
         next(error);
