@@ -30,6 +30,7 @@ servers:
 tags:
   - name: Health
   - name: Auth
+  - name: Admin
   - name: Wallet
   - name: Users
   - name: Trades
@@ -46,6 +47,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    adminAuth:
+      type: apiKey
+      in: header
+      name: x-admin-secret
+      description: Secret key authentication for admin-only management routes.
   parameters:
     TradeIdPath:
       in: path
@@ -838,6 +844,39 @@ components:
               - $ref: "#/components/schemas/ErrorEnvelope"
               - $ref: "#/components/schemas/AppErrorResponse"
 paths:
+  /api/admin/audit:
+    get:
+      tags: [Admin]
+      summary: Query administrative audit log events
+      description: Retrieve paginated administrative audit logs with optional filter parameters.
+      security:
+        - adminAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved admin audit log entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+  /api/admin/features:
+    get:
+      tags: [Admin]
+      summary: List system feature flags
+      description: Get active feature flags and system runtime toggles for administrative controls.
+      security:
+        - adminAuth: []
+      responses:
+        "200":
+          description: Feature flag status map returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
   /health:
     get:
       tags: [Health]

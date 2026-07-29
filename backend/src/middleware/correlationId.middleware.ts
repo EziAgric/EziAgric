@@ -65,3 +65,34 @@ export interface TracedRequest extends Request {
   correlationId: string;
   requestId: string;
 }
+
+/**
+ * The tracing IDs carried from an HTTP request down into services and
+ * outbound Soroban calls.
+ *
+ * Both fields are optional so services stay callable from contexts that have
+ * no HTTP request behind them (jobs, scripts, tests).
+ */
+export interface TraceContext {
+  correlationId?: string;
+  requestId?: string;
+}
+
+/**
+ * Extract the tracing IDs from a request so they can be handed to a service.
+ *
+ * Falls back to the response headers set by `correlationIdMiddleware`, and
+ * then to `x-request-id` from `requestIdMiddleware`, so a route still gets
+ * usable IDs if it is mounted without the full middleware stack.
+ */
+export function traceContextFrom(req: Request): TraceContext {
+  const traced = req as Partial<TracedRequest>;
+
+  const header = req.headers[REQUEST_ID_HEADER];
+  const headerRequestId = Array.isArray(header) ? header[0] : header;
+
+  return {
+    correlationId: traced.correlationId,
+    requestId: traced.requestId ?? (isValidId(headerRequestId) ? headerRequestId : undefined),
+  };
+}
