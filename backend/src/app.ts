@@ -190,7 +190,7 @@ export function createApp(): express.Application {
   // Admin trade batch operations: POST /admin/trades/batch/status
   app.use(createAdminTradeBatchRouter());
 
-  // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume
+  // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume, POST /api/admin/streams/:id/terminate
   app.use("/api", createAdminStreamsRouter());
 
   // Webhooks: CRUD /webhooks
