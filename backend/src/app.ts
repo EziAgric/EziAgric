@@ -41,6 +41,7 @@ import { createAdminFeaturesRouter } from "./routes/admin.features.routes";
 import { createAdminAuditRouter } from "./routes/admin.audit.routes";
 import { createAdminContractRouter } from "./routes/admin.contract.routes";
 import { createAdminAuthRouter } from "./routes/admin.auth.routes";
+import adminStreamsRoutes from "./routes/admin.streams.routes";
 import { webhooksRoutes } from "./routes/webhooks.routes";
 import { env } from "./config/env";
 
@@ -184,6 +185,9 @@ export function createApp(): express.Application {
 
   // Admin auth diagnostics: GET /api/admin/auth/claims
   app.use(createAdminAuthRouter());
+
+  // Admin streams clawback/remaining endpoints
+  app.use("/api/admin/streams", adminStreamsRoutes);
 
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);
