@@ -1,3 +1,4 @@
+import { PrismaClient } from "@prisma/client";
 import { Response, Router } from "express";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
@@ -7,19 +8,24 @@ import { getTraceContext } from "../middleware/tracing.middleware";
 import { AuthRequest } from "../services/auth.service";
 import { featureFlagService } from "../services/feature-flags.service";
 import { appLogger } from "../middleware/logger";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
 const updateFlagBodySchema = z.object({
   enabled: z.boolean(),
   rolloutPercentage: z.number().min(0).max(100).optional(),
 });
 
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
 export function createAdminFeaturesRouter() {
   const router = Router();
 
   router.get(
-    "/admin/features",
+    "/api/admin/features",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     async (_req: AuthRequest, res: Response, next) => {
       try {
         const flags = await featureFlagService.listFlags();
@@ -31,9 +37,10 @@ export function createAdminFeaturesRouter() {
   );
 
   router.patch(
-    "/admin/features/:name",
+    "/api/admin/features/:name",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     validateRequest({ body: updateFlagBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
@@ -43,7 +50,10 @@ export function createAdminFeaturesRouter() {
           rolloutPercentage?: number;
         };
 
-        const flag = await featureFlagService.setFlag(name, { enabled, rolloutPercentage });
+        const flag = await featureFlagService.setFlag(name, {
+          enabled,
+          rolloutPercentage,
+        });
 
         // Admin audit: record which admin changed a feature flag
         const traceCtx = getTraceContext();
@@ -62,7 +72,6 @@ export function createAdminFeaturesRouter() {
           },
           `[AdminAudit] Feature flag '${name}' set to enabled=${enabled} by ${req.user?.walletAddress}`,
         );
-
         res.status(200).json({ name, flag });
       } catch (error) {
         next(error);

@@ -2,10 +2,16 @@ import { Response, Router } from "express";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { AuthRequest } from "../services/auth.service";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
 function toIso(seconds: number | undefined): string | null {
-  return typeof seconds === "number" ? new Date(seconds * 1000).toISOString() : null;
+  return typeof seconds === "number"
+    ? new Date(seconds * 1000).toISOString()
+    : null;
 }
+
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
 
 export function createAdminAuthRouter(): Router {
   const router = Router();
@@ -16,6 +22,7 @@ export function createAdminAuthRouter(): Router {
     "/api/admin/auth/claims",
     authMiddleware,
     adminMiddleware,
+    adminRateLimit,
     (req: AuthRequest, res: Response) => {
       const user = req.user!;
       res.status(200).json({
