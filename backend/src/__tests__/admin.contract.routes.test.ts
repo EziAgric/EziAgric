@@ -28,11 +28,21 @@ const mockContractService = {
   buildUpdateFeeBpsTx: jest.Mock;
 };
 
+const mockPrisma = {
+  adminActionAudit: { create: jest.fn().mockResolvedValue({}) },
+};
+
 const app = express();
 app.use(express.json());
 app.use(correlationIdMiddleware);
 app.use("/", createAdminContractRouter(mockContractService));
+app.use("/", createAdminContractRouter(mockContractService, mockPrisma as never));
 app.use(errorHandler);
+
+const timeoutApp = express();
+timeoutApp.use(express.json());
+timeoutApp.use("/", createAdminContractRouter(mockContractService, mockPrisma as never, 30));
+timeoutApp.use(errorHandler);
 
 describe("Admin Contract Maintenance Routes", () => {
   const adminAddress = StellarSdk.Keypair.random().publicKey();
@@ -71,7 +81,7 @@ describe("Admin Contract Maintenance Routes", () => {
   describe("authorization", () => {
     it("rejects add-mediator with 401 when unauthenticated", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .send({ mediatorAddress });
       expect(res.status).toBe(401);
       expect(mockContractService.buildAddMediatorTx).not.toHaveBeenCalled();
@@ -79,7 +89,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects add-mediator with 403 for a non-admin wallet", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${nonAdminToken}`)
         .send({ mediatorAddress });
       expect(res.status).toBe(403);
@@ -88,7 +98,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects remove-mediator with 403 for a non-admin wallet", async () => {
       const res = await request(app)
-        .delete(`/admin/contract/mediators/${mediatorAddress}`)
+        .delete(`/api/admin/contract/mediators/${mediatorAddress}`)
         .set("Authorization", `Bearer ${nonAdminToken}`);
       expect(res.status).toBe(403);
       expect(mockContractService.buildRemoveMediatorTx).not.toHaveBeenCalled();
@@ -96,7 +106,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects fee update with 403 for a non-admin wallet", async () => {
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${nonAdminToken}`)
         .send({ feeBps: 100 });
       expect(res.status).toBe(403);
@@ -107,7 +117,7 @@ describe("Admin Contract Maintenance Routes", () => {
   describe("request validation", () => {
     it("rejects add-mediator with 400 for a malformed mediator address", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ mediatorAddress: "not-a-valid-address" });
       expect(res.status).toBe(400);
@@ -116,7 +126,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects add-mediator with 400 when mediatorAddress is missing", async () => {
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({});
       expect(res.status).toBe(400);
@@ -125,7 +135,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects remove-mediator with 400 for a malformed address param", async () => {
       const res = await request(app)
-        .delete("/admin/contract/mediators/not-a-valid-address")
+        .delete("/api/admin/contract/mediators/not-a-valid-address")
         .set("Authorization", `Bearer ${adminToken}`);
       expect(res.status).toBe(400);
       expect(mockContractService.buildRemoveMediatorTx).not.toHaveBeenCalled();
@@ -133,7 +143,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects fee update with 400 when feeBps is out of range", async () => {
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ feeBps: 5000 });
       expect(res.status).toBe(400);
@@ -142,7 +152,7 @@ describe("Admin Contract Maintenance Routes", () => {
 
     it("rejects fee update with 400 when feeBps is not an integer", async () => {
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ feeBps: 12.5 });
       expect(res.status).toBe(400);
@@ -155,7 +165,7 @@ describe("Admin Contract Maintenance Routes", () => {
       mockContractService.buildAddMediatorTx.mockResolvedValue({ unsignedXdr: "unsigned-add" });
 
       const res = await request(app)
-        .post("/admin/contract/mediators")
+        .post("/api/admin/contract/mediators")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ mediatorAddress });
 
@@ -166,13 +176,16 @@ describe("Admin Contract Maintenance Routes", () => {
         mediatorAddress,
         trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
+      expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+        data: { action: "ADD_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
+      });
     });
 
     it("builds an unsigned remove-mediator transaction for an admin caller", async () => {
       mockContractService.buildRemoveMediatorTx.mockResolvedValue({ unsignedXdr: "unsigned-remove" });
 
       const res = await request(app)
-        .delete(`/admin/contract/mediators/${mediatorAddress}`)
+        .delete(`/api/admin/contract/mediators/${mediatorAddress}`)
         .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
@@ -182,13 +195,16 @@ describe("Admin Contract Maintenance Routes", () => {
         mediatorAddress,
         trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
+      expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+        data: { action: "REMOVE_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
+      });
     });
 
     it("builds an unsigned fee-update transaction for an admin caller", async () => {
       mockContractService.buildUpdateFeeBpsTx.mockResolvedValue({ unsignedXdr: "unsigned-fee" });
 
       const res = await request(app)
-        .patch("/admin/contract/fee")
+        .patch("/api/admin/contract/fee")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ feeBps: 250 });
 
@@ -199,6 +215,39 @@ describe("Admin Contract Maintenance Routes", () => {
         feeBps: 250,
         trace: expect.objectContaining({ requestId: expect.any(String) }),
       });
+      expect(mockPrisma.adminActionAudit.create).toHaveBeenCalledWith({
+        data: { action: "UPDATE_FEE_BPS", actorAddress: adminAddress, targetReference: "250" },
+      });
+    });
+  });
+
+  describe("timeout handling (issue #10)", () => {
+    it("responds 504 when the Soroban client hangs past the configured timeout", async () => {
+      mockContractService.buildAddMediatorTx.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve({ unsignedXdr: "too-late" }), 200)),
+      );
+
+      const res = await request(timeoutApp)
+        .post("/admin/contract/mediators")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ mediatorAddress });
+
+      expect(res.status).toBe(504);
+      expect(res.body).toEqual(
+        expect.objectContaining({ code: "ADMIN_OPERATION_TIMEOUT" }),
+      );
+    });
+
+    it("does not time out when the Soroban client responds promptly", async () => {
+      mockContractService.buildUpdateFeeBpsTx.mockResolvedValue({ unsignedXdr: "unsigned-fee" });
+
+      const res = await request(timeoutApp)
+        .patch("/admin/contract/fee")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ feeBps: 100 });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ unsignedXdr: "unsigned-fee" });
     });
   });
 });

@@ -8,6 +8,8 @@ import { createAdminQuotaMiddleware } from "../middleware/adminQuota.middleware"
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { ADMIN_QUOTA_CONFIG } from "../config/adminQuota";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
 const tradeStatusUpdateSchema = z.object({
   tradeId: z.string().min(1, "tradeId is required"),
@@ -15,14 +17,25 @@ const tradeStatusUpdateSchema = z.object({
 });
 
 const batchStatusBodySchema = z.object({
-  updates: z.array(tradeStatusUpdateSchema).min(1, "At least one update is required").max(100, "Maximum 100 updates per request"),
+  updates: z
+    .array(tradeStatusUpdateSchema)
+    .min(1, "At least one update is required")
+    .max(100, "Maximum 100 updates per request"),
 });
 
 const VALID_TRANSITIONS: Record<TradeStatus, TradeStatus[]> = {
   [TradeStatus.PENDING_SIGNATURE]: [TradeStatus.CREATED, TradeStatus.CANCELLED],
   [TradeStatus.CREATED]: [TradeStatus.FUNDED, TradeStatus.CANCELLED],
-  [TradeStatus.FUNDED]: [TradeStatus.DELIVERED, TradeStatus.DISPUTED, TradeStatus.CANCELLED],
-  [TradeStatus.DELIVERED]: [TradeStatus.COMPLETED, TradeStatus.DISPUTED, TradeStatus.CANCELLED],
+  [TradeStatus.FUNDED]: [
+    TradeStatus.DELIVERED,
+    TradeStatus.DISPUTED,
+    TradeStatus.CANCELLED,
+  ],
+  [TradeStatus.DELIVERED]: [
+    TradeStatus.COMPLETED,
+    TradeStatus.DISPUTED,
+    TradeStatus.CANCELLED,
+  ],
   [TradeStatus.DISPUTED]: [TradeStatus.COMPLETED, TradeStatus.CANCELLED],
   [TradeStatus.COMPLETED]: [],
   [TradeStatus.CANCELLED]: [],
@@ -32,18 +45,28 @@ function isValidTransition(from: TradeStatus, to: TradeStatus): boolean {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-export function createAdminTradeBatchRouter(prisma: PrismaClient = defaultPrisma) {
+const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+
+export function createAdminTradeBatchRouter(
+  prisma: PrismaClient = defaultPrisma,
+) {
   const router = Router();
 
   router.post(
-    "/admin/trades/batch/status",
+    "/api/admin/trades/batch/status",
     authMiddleware,
     adminMiddleware,
-    createAdminQuotaMiddleware("admin.trades.batch.status", ADMIN_QUOTA_CONFIG.tradeBatchStatus),
+    adminRateLimit,
+    createAdminQuotaMiddleware(
+      "admin.trades.batch.status",
+      ADMIN_QUOTA_CONFIG.tradeBatchStatus,
+    ),
     validateRequest({ body: batchStatusBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
-        const { updates } = req.body as { updates: { tradeId: string; status: TradeStatus }[] };
+        const { updates } = req.body as {
+          updates: { tradeId: string; status: TradeStatus }[];
+        };
 
         const succeeded: string[] = [];
         const failed: { tradeId: string; reason: string }[] = [];
@@ -53,7 +76,9 @@ export function createAdminTradeBatchRouter(prisma: PrismaClient = defaultPrisma
             where: {
               OR: [
                 { tradeId },
-                { id: Number.isInteger(Number(tradeId)) ? Number(tradeId) : -1 },
+                {
+                  id: Number.isInteger(Number(tradeId)) ? Number(tradeId) : -1,
+                },
               ],
             },
             select: { tradeId: true, status: true, version: true },
@@ -78,11 +103,23 @@ export function createAdminTradeBatchRouter(prisma: PrismaClient = defaultPrisma
           });
 
           if (result.count === 0) {
-            failed.push({ tradeId, reason: "Concurrency conflict: trade was modified" });
+            failed.push({
+              tradeId,
+              reason: "Concurrency conflict: trade was modified",
+            });
           } else {
             succeeded.push(trade.tradeId);
           }
         }
+
+        await prisma.adminActionAudit.create({
+          data: {
+            action: "TRADE_BATCH_STATUS_UPDATE",
+            actorAddress: req.user!.walletAddress,
+            targetReference: `${succeeded.length}/${updates.length} succeeded`,
+            note: JSON.stringify({ succeeded, failed }),
+          },
+        });
 
         res.status(200).json({ succeeded, failed });
       } catch (error) {
