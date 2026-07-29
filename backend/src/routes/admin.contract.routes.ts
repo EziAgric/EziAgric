@@ -1,7 +1,9 @@
+import { PrismaClient } from "@prisma/client";
 import { Response, Router } from "express";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
+import { adminTimeoutMiddleware } from "../middleware/adminTimeout.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { ContractService } from "../services/contract.service";
@@ -35,7 +37,7 @@ export function createAdminContractRouter(
   const router = Router();
 
   router.post(
-    "/admin/contract/mediators",
+    "/api/admin/contract/mediators",
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
@@ -48,6 +50,11 @@ export function createAdminContractRouter(
           adminAddress,
           mediatorAddress,
         });
+        if (res.headersSent) return;
+        await prisma.adminActionAudit.create({
+          data: { action: "ADD_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
+        });
+        if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
         next(error);
@@ -56,7 +63,7 @@ export function createAdminContractRouter(
   );
 
   router.delete(
-    "/admin/contract/mediators/:address",
+    "/api/admin/contract/mediators/:address",
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
@@ -69,6 +76,11 @@ export function createAdminContractRouter(
           adminAddress,
           mediatorAddress,
         });
+        if (res.headersSent) return;
+        await prisma.adminActionAudit.create({
+          data: { action: "REMOVE_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
+        });
+        if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
         next(error);
@@ -77,7 +89,7 @@ export function createAdminContractRouter(
   );
 
   router.patch(
-    "/admin/contract/fee",
+    "/api/admin/contract/fee",
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
@@ -90,6 +102,11 @@ export function createAdminContractRouter(
           adminAddress,
           feeBps,
         });
+        if (res.headersSent) return;
+        await prisma.adminActionAudit.create({
+          data: { action: "UPDATE_FEE_BPS", actorAddress: adminAddress, targetReference: String(feeBps) },
+        });
+        if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
         next(error);

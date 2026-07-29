@@ -1,3 +1,4 @@
+import { PrismaClient } from "@prisma/client";
 import { Response, Router } from "express";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
@@ -19,7 +20,7 @@ export function createAdminFeaturesRouter() {
   const router = Router();
 
   router.get(
-    "/admin/features",
+    "/api/admin/features",
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
@@ -34,7 +35,7 @@ export function createAdminFeaturesRouter() {
   );
 
   router.patch(
-    "/admin/features/:name",
+    "/api/admin/features/:name",
     authMiddleware,
     adminMiddleware,
     adminRateLimit,

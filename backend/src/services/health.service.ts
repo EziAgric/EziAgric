@@ -266,6 +266,7 @@ export class HealthService {
       "JWT_SECRET",
       "AMANA_ESCROW_CONTRACT_ID",
       "USDC_CONTRACT_ID",
+      "ADMIN_SECRET_KEY",
     ];
 
     for (const varName of criticalVars) {

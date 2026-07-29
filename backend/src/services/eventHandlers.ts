@@ -70,7 +70,7 @@ export async function handleTradeCreated(
     buyerAddress: (event.data.buyer as string) || "",
     sellerAddress: (event.data.seller as string) || "",
     amountUsdc: String(event.data.amount_usdc ?? "0"),
-    status: EVENT_TO_STATUS[EventType.TradeCreated],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -103,7 +103,7 @@ export async function handleTradeFunded(
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.TradeFunded],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -146,7 +146,7 @@ export async function handleDeliveryConfirmed(
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.DeliveryConfirmed],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -173,7 +173,7 @@ export async function handleFundsReleased(
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.FundsReleased],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -205,7 +205,7 @@ export async function handleDisputeInitiated(
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.DisputeInitiated],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -234,7 +234,7 @@ export async function handleDisputeResolved(
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status: EVENT_TO_STATUS[EventType.DisputeResolved],
+    status,
     version: 1,
   });
   logEscrowEvent({
@@ -277,6 +277,40 @@ export async function handleStreamClawback(
     { streamId, admin, amount, ledger: event.ledgerSequence },
     "[EventHandler] StreamClawback",
   );
+}
+
+export async function handleStreamClawback(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const streamId = String(event.data.stream_id || event.data.streamId || "");
+  const admin = String(event.data.admin || "");
+  const amount = String(event.data.amount || "0");
+  
+  if (!streamId) return;
+
+  // Ensure stream exists or handle appropriately
+  const stream = await tx.stream.findUnique({ where: { streamId } });
+  if (stream) {
+    // We could update the stream's pendingClawback or unclaimed here
+    // but the issue just says persist stream_clawback events and associate them.
+  }
+
+  await tx.streamClawbackEvent.upsert({
+    where: {
+      streamId_txHash: {
+        streamId,
+        txHash: event.eventId, // Using eventId (from horizon) as proxy for txHash/dedup
+      },
+    },
+    update: {},
+    create: {
+      streamId,
+      admin,
+      amount,
+      txHash: event.eventId,
+      timestamp: new Date(),
+    }
+  });
+
+  appLogger.debug({ streamId, ledger: event.ledgerSequence }, "[EventHandler] StreamClawback");
 }
 
 /** Dispatch a parsed event to the correct handler */

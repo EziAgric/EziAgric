@@ -20,7 +20,7 @@ export function createAdminAuditRouter(): Router {
   const router = Router();
 
   router.get(
-    "/admin/audit",
+    "/api/admin/audit",
     authMiddleware,
     adminMiddleware,
     adminRateLimit,

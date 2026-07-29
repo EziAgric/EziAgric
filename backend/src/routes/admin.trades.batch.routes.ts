@@ -53,7 +53,7 @@ export function createAdminTradeBatchRouter(
   const router = Router();
 
   router.post(
-    "/admin/trades/batch/status",
+    "/api/admin/trades/batch/status",
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
@@ -111,6 +111,15 @@ export function createAdminTradeBatchRouter(
             succeeded.push(trade.tradeId);
           }
         }
+
+        await prisma.adminActionAudit.create({
+          data: {
+            action: "TRADE_BATCH_STATUS_UPDATE",
+            actorAddress: req.user!.walletAddress,
+            targetReference: `${succeeded.length}/${updates.length} succeeded`,
+            note: JSON.stringify({ succeeded, failed }),
+          },
+        });
 
         res.status(200).json({ succeeded, failed });
       } catch (error) {
