@@ -39,6 +39,8 @@ import { stellarAccountCreateRoutes } from "./routes/stellar.account.create";
 import { createContractStateRouter } from "./routes/contract.state.routes";
 import { createAdminFeaturesRouter } from "./routes/admin.features.routes";
 import { createAdminAuditRouter } from "./routes/admin.audit.routes";
+import { createAdminContractRouter } from "./routes/admin.contract.routes";
+import { createAdminAuthRouter } from "./routes/admin.auth.routes";
 import { webhooksRoutes } from "./routes/webhooks.routes";
 import { env } from "./config/env";
 
@@ -176,6 +178,12 @@ export function createApp(): express.Application {
 
   // Admin action audit history: GET /admin/audit
   app.use(createAdminAuditRouter());
+
+  // Admin contract maintenance/governance: mediators, fee rate
+  app.use(createAdminContractRouter());
+
+  // Admin auth diagnostics: GET /api/admin/auth/claims
+  app.use(createAdminAuthRouter());
 
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);
