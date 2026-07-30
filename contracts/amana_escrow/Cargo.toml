@@ -62,3 +62,11 @@ path = "tests/metrics_tests.rs"
 [[test]]
 name = "state_machine_fuzz_tests"
 path = "tests/state_machine_fuzz_tests.rs"
+
+[[test]]
+name = "clawback_invariant_tests"
+path = "tests/clawback_invariant_tests.rs"
+
+[[test]]
+name = "clawback_access_control_tests"
+path = "tests/clawback_access_control_tests.rs"

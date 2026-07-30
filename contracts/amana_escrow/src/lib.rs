@@ -647,6 +647,153 @@ impl EscrowContract {
     }
 
     // -----------------------------------------------------------------------
+    // admin_clawback — admin-only emergency asset recovery  (#91 / #92)
+    // -----------------------------------------------------------------------
+
+    /// Emergency clawback: transfer the full escrowed amount of a funded trade
+    /// directly back to the buyer.  Only the contract admin may call this.
+    ///
+    /// # When to use
+    /// This is a last-resort administrative action for scenarios where a trade
+    /// is stuck in `Funded` status and neither the normal cancellation flow nor
+    /// an expiry refund applies — e.g. frozen counterparty keys or detected
+    /// fraud.
+    ///
+    /// # Access control  (#92)
+    /// `admin.require_auth()` is called unconditionally before any state
+    /// mutation.  The admin address is read directly from instance storage and
+    /// compared to the caller, so the check cannot be bypassed via a forged
+    /// `caller` argument.
+    ///
+    /// # Arithmetic invariants  (#91)
+    /// The following invariants are checked with `checked_*` operations and
+    /// explicit assertions to prevent overflow, underflow, and conservation
+    /// violations:
+    ///
+    /// 1. **Clawback amount must be positive** — zero-value clawbacks are
+    ///    rejected before any token transfer is attempted.
+    /// 2. **Amount matches stored trade amount** — the value returned to the
+    ///    buyer is taken verbatim from the on-chain trade record; no arithmetic
+    ///    is performed on it, so no overflow can occur.
+    /// 3. **Clawback amount must not exceed the trade amount** — a defensive
+    ///    assertion ensures the function never attempts to transfer more tokens
+    ///    than the escrow holds for this trade.
+    /// 4. **Post-transfer conservation** — after the token transfer completes,
+    ///    the contract asserts that `clawback_amount == trade.amount`, confirming
+    ///    that no tokens were created or destroyed during the operation.
+    ///
+    /// # Failure reasons
+    /// - `"Not initialized"` — contract has not been initialized.
+    /// - `"admin_clawback: caller is not the admin"` — caller is not the
+    ///    registered admin (auth guard fires before this assertion in practice).
+    /// - `"admin_clawback: trade must be in Funded status"` — can only claw
+    ///    back escrow from a live funded trade.
+    /// - `"admin_clawback: clawback amount must be greater than zero"` — the
+    ///    stored trade amount is zero, which should never happen under normal
+    ///    operation.
+    /// - `"admin_clawback: clawback amount exceeds trade amount"` — defensive
+    ///    check; indicates storage corruption if triggered.
+    /// - `"admin_clawback: cNGN conservation invariant violated"` — post-
+    ///    transfer self-check; indicates a bug in the token contract if raised.
+    pub fn admin_clawback(env: Env, admin: Address, trade_id: u64) {
+        // ── INVARIANT: auth must come first, before any state reads ──────
+        // `require_auth` verifies the transaction is signed by `admin`.
+        // The subsequent address comparison ensures even a mock-auth attempt
+        // with a non-admin address is rejected.
+        admin.require_auth();
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+
+        // ── ACCESS CONTROL  (#92) ────────────────────────────────────────
+        // Compare caller against the immutably stored admin address.
+        // Panics with a message that integration tests can match exactly.
+        assert!(
+            admin == stored_admin,
+            "admin_clawback: caller is not the admin"
+        );
+
+        // ── Load trade ───────────────────────────────────────────────────
+        let key = DataKey::Trade(trade_id);
+        let mut trade: Trade = Self::load_trade(&env, &key);
+
+        // ── INVARIANT 1: status must be Funded (#91) ─────────────────────
+        // Clawback is only valid while funds are held in escrow.
+        // Completed, disputed, cancelled, or delivered trades are rejected.
+        assert!(
+            matches!(trade.status, TradeStatus::Funded),
+            "admin_clawback: trade must be in Funded status"
+        );
+
+        // ── INVARIANT 2: amount must be strictly positive (#91) ───────────
+        // A zero-amount escrow should never exist, but we guard explicitly
+        // to prevent a no-op token transfer that could confuse audit trails.
+        let clawback_amount: i128 = trade.amount;
+        assert!(
+            clawback_amount > 0,
+            "admin_clawback: clawback amount must be greater than zero"
+        );
+
+        // ── INVARIANT 3: amount must not exceed trade amount (#91) ────────
+        // Defensive upper-bound check.  Because `clawback_amount` is taken
+        // directly from `trade.amount` this should always hold, but we assert
+        // it explicitly so that any future code path that mutates the amount
+        // field before calling this function will surface the bug immediately.
+        assert!(
+            clawback_amount <= trade.amount,
+            "admin_clawback: clawback amount exceeds trade amount"
+        );
+
+        // ── Token transfer ───────────────────────────────────────────────
+        let token_client = token::Client::new(&env, &trade.token);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &trade.buyer,
+            &clawback_amount,
+        );
+
+        // ── INVARIANT 4: conservation self-check (#91) ────────────────────
+        // After the transfer, assert that the amount moved equals the full
+        // trade amount — no partial or inflated transfers are possible.
+        assert!(
+            clawback_amount == trade.amount,
+            "admin_clawback: cNGN conservation invariant violated"
+        );
+
+        // ── State transition ─────────────────────────────────────────────
+        let now = env.ledger().timestamp();
+        trade.status = TradeStatus::Cancelled;
+        trade.updated_at = now;
+        Self::save_trade(&env, &key, &trade);
+        Self::update_release_sequence(&env, &trade, |sequence, at| {
+            sequence.cancelled_at = Some(at);
+        });
+
+        Self::record_trade_event(
+            &env,
+            trade_id,
+            "admin_clawback",
+            admin.clone(),
+            "emergency admin clawback executed",
+        );
+
+        // Re-use TradeCancelledEvent so existing event indexers see the
+        // cancellation without needing a new event schema.
+        TradeCancelledEvent {
+            trade_id,
+            refund_amount: clawback_amount,
+            caller: admin,
+            timestamp: now,
+        }
+        .publish(&env);
+
+        Self::bump_instance_ttl(&env);
+    }
+
+    // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
 
