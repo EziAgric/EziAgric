@@ -28,7 +28,20 @@ interface TradeState {
   lastActionErrorView: AdminErrorView | null;
 
   fetchTrades: (params?: { status?: TradeStatus; page?: number }) => Promise<void>;
-  fetchTrade: (tradeId: string) => Promise<void>;
+  /**
+   * Refresh a single trade.
+   *
+   * `silent: true` opts out of the visible load-slot error so that
+   * transient refresh failures (e.g. releaseFunds / deposit doing a
+   * post-action refresh via `fetchTrade(tradeId, { silent: true })`)
+   * are NOT promoted to a misleading "load failed" banner above a
+   * successful mutation. Use the default (silent omitted) for any
+   * user-initiated load — those still surface in `errorView`.
+   */
+  fetchTrade: (
+    tradeId: string,
+    options?: { silent?: boolean },
+  ) => Promise<void>;
   createTrade: (data: {
     sellerAddress: string;
     amountUsdc: string;
@@ -68,12 +81,30 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     }
   },
 
-  fetchTrade: async (tradeId) => {
-    set({ isLoading: true, errorView: null });
+  fetchTrade: async (tradeId, options) => {
+    // Quiet refreshes (`silent: true`) are used by post-action hooks
+    // (releaseFunds / deposit) to reload the trade without promoting
+    // a transient refresh failure to the visible "load failed"
+    // banner above a successful mutation.
+    const silent = options?.silent === true;
+    // Intentionally: a silent background refresh does NOT clear a
+    // pre-existing `errorView` from a prior user-initiated load — the
+    // user might still need to act on it. Only explicit (non-silent)
+    // refreshes wipe the load-slot on entry. Don't "simplify" by
+    // removing the conditional spread.
+    set({ isLoading: true, ...(silent ? {} : { errorView: null }) });
     try {
       const trade = await tradeApi.getTrade(tradeId);
       set({ currentTrade: trade, isLoading: false });
     } catch (error: unknown) {
+      if (silent) {
+        // Leave both error slots untouched — the caller's mutation
+        // succeeded, surfacing a load failure here would only mislead
+        // the user. The stale `currentTrade` is recoverable by the
+        // next explicit refresh.
+        set({ isLoading: false });
+        return;
+      }
       set({ errorView: viewForError(error), isLoading: false });
     }
   },
@@ -105,10 +136,13 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     try {
       await tradeApi.releaseFunds(tradeId);
       if (get().currentTrade) {
-        // Chain: fetchTrade writes to `errorView` (load slot). We
-        // intentionally leave `lastActionErrorView` alone so an
-        // earlier mutation banner stays visible if this chain fails.
-        await get().fetchTrade(tradeId);
+        // Chain: refresh `currentTrade` after the mutation. Use the
+        // `silent: true` mode so a transient refresh failure does NOT
+        // promote itself to a misleading "load failed" banner above a
+        // successful release — `lastActionErrorView` is intentionally
+        // left alone so an earlier mutation banner stays visible if
+        // this chain fails.
+        await get().fetchTrade(tradeId, { silent: true });
       }
       set({ isLoading: false });
     } catch (error: unknown) {
@@ -121,7 +155,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     try {
       await tradeApi.deposit(tradeId);
       if (get().currentTrade) {
-        await get().fetchTrade(tradeId);
+        await get().fetchTrade(tradeId, { silent: true });
       }
       set({ isLoading: false });
     } catch (error: unknown) {

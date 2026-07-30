@@ -23,6 +23,15 @@ const mockList = tradeApi.listTrades as jest.MockedFunction<
 const mockConfirm = tradeApi.confirmDelivery as jest.MockedFunction<
   typeof tradeApi.confirmDelivery
 >;
+const mockGet = tradeApi.getTrade as jest.MockedFunction<
+  typeof tradeApi.getTrade
+>;
+const mockRelease = tradeApi.releaseFunds as jest.MockedFunction<
+  typeof tradeApi.releaseFunds
+>;
+const mockDeposit = tradeApi.deposit as jest.MockedFunction<
+  typeof tradeApi.deposit
+>;
 
 function resetStore(): void {
   act(() => {
@@ -168,5 +177,57 @@ describe('useTradeStore — error slot routing', () => {
     });
     expect(useTradeStore.getState().errorView).toBeNull();
     expect(useTradeStore.getState().lastActionErrorView).toBeNull();
+  });
+
+  // Locks the silent-refresh invariant added alongside fetchTrade's
+  // `{ silent?: boolean }` option. Both releaseFunds and deposit chain
+  // into `fetchTrade(tradeId, { silent: true })` after their mutation
+  // succeeds. If the chained refresh fails, the user must NOT see a
+  // misleading "load failed" banner above a successful action — the
+  // failure should stay silent and `lastActionErrorView` stays clean
+  // (the user's mutation succeeded) while `errorView` is never written
+  // from a silent refresh.
+  it('does NOT promote a failed post-action refresh (releaseFunds / deposit) to errorView', async () => {
+    // Minimal currentTrade stub — only `tradeId` is needed to make the
+    // `if (get().currentTrade)` gate inside releaseFunds/deposit fire
+    // so the silent-refresh branch runs.
+    const baseTrade = {
+      tradeId: 'trade-1',
+      status: 'PENDING',
+    } as any;
+
+    // ----- releaseFunds path -----
+    act(() => {
+      useTradeStore.setState({ currentTrade: baseTrade });
+    });
+    mockRelease.mockResolvedValueOnce({ unsignedXdr: 'stub-xdr' });
+    mockGet.mockRejectedValueOnce(
+      new AdminApiError({ code: NETWORK_ERROR_CODE, message: 'timed out' }),
+    );
+    await act(async () => {
+      await useTradeStore.getState().releaseFunds('trade-1');
+    });
+
+    let state = useTradeStore.getState();
+    expect(state.errorView).toBeNull();
+    expect(state.lastActionErrorView).toBeNull();
+    expect(state.isLoading).toBe(false);
+
+    // ----- deposit path (same invariant) -----
+    act(() => {
+      useTradeStore.setState({ currentTrade: baseTrade });
+    });
+    mockDeposit.mockResolvedValueOnce({ unsignedXdr: 'stub-xdr' });
+    mockGet.mockRejectedValueOnce(
+      new AdminApiError({ code: NETWORK_ERROR_CODE, message: 'timed out' }),
+    );
+    await act(async () => {
+      await useTradeStore.getState().deposit('trade-1');
+    });
+
+    state = useTradeStore.getState();
+    expect(state.errorView).toBeNull();
+    expect(state.lastActionErrorView).toBeNull();
+    expect(state.isLoading).toBe(false);
   });
 });
