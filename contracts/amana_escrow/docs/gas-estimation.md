@@ -10,7 +10,18 @@ The gas suite measures the Amana escrow hot paths that are most likely to affect
 - `deposit`
 - `initiate_dispute`
 - `resolve_dispute`
+- `admin_clawback` (unilateral admin `cancel_trade` on funded escrow)
 - the combined dispute lifecycle
+
+## Baseline Gas & Footprint Thresholds
+
+| Path | CPU Instructions Baseline | Memory Bytes Baseline | Primary Cost Drivers |
+| --- | --- | --- | --- |
+| `create_trade` | 3,000,000 | 2,000,000 | Trade struct initialization, persistent storage write, counter bump |
+| `deposit` | 5,000,000 | 3,000,000 | Auth verification, Stellar asset token transfer into escrow, status update |
+| `initiate_dispute` | 3,000,000 | 2,000,000 | Dispute record initialization, reason hash validation, status update |
+| `resolve_dispute` | 8,000,000 | 4,000,000 | Mediator authorization, payout BPS calculation, token transfer(s), dispute record update |
+| `admin_clawback` | 6,000,000 | 3,500,000 | Admin auth check, Stellar asset token refund transfer to buyer, status update to `Cancelled`, release sequence update, event emission |
 
 ## Methodology
 
