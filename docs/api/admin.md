@@ -199,6 +199,95 @@ are never retried and still return an error immediately. See
 [ADR-004](../adr/ADR-004-idempotency-and-retry-strategy.md#retry-and-circuit-breaking-for-server-to-dependency-calls-not-client-requests)
 for the full policy.
 
+## Streams
+
+Vested token streams the admin dashboard can act on.
+
+`GET /admin/streams` - paginated list of streams, newest first (#51).
+
+**Query params**
+
+| Param | Required | Notes |
+|---|---|---|
+| `page` | no | 1-indexed page number, defaults to `1` |
+| `limit` | no | Page size, defaults to `20`, capped at `100` |
+| `status` | no | Lifecycle state: `ACTIVE`, `SUSPENDED`, `TERMINATED`, `COMPLETED` |
+| `vestingState` | no | Derived from `claimed` vs. `totalVested`, independent of `status`: `not_started`, `vesting`, `fully_vested` |
+| `adminTag` | no | Operator-assigned label (e.g. `high-value`, `legal-hold`) |
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "streamId": "stream-abc-123",
+      "recipient": "GRECIPIENT...",
+      "status": "ACTIVE",
+      "vestingState": "vesting",
+      "totalVested": "10000",
+      "claimed": "2500",
+      "unclaimed": "7500",
+      "pendingClawback": "0",
+      "adminTags": ["high-value"],
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-05T00:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
+`POST /admin/streams/:id/clawback/preview` - validates a requested clawback
+amount against the stream's real remaining vested (`unclaimed`) balance and
+returns the resulting post-clawback balance, without performing the
+clawback. This is what the admin confirmation modal calls before an operator
+confirms, and what the frontend's client-side amount validation mirrors so
+the "Confirm" button is disabled before a doomed request is even sent.
+
+```json
+{ "amount": "3000" }
+```
+
+**Response `200`**
+
+```json
+{
+  "streamId": "stream-abc-123",
+  "remainingVested": "7500",
+  "requestedClawback": "3000",
+  "postClawbackBalance": "4500",
+  "preview": true,
+  "timestamp": "2026-07-30T12:00:00.000Z"
+}
+```
+
+`POST /admin/streams/:id/suspend`, `POST /admin/streams/:id/resume`, and
+`POST /admin/streams/:id/terminate` change a stream's lifecycle `status`;
+see the [OpenAPI spec](../../backend/src/docs/openapi.yaml) for the full
+request/response shape of `terminate` (the only one of the three currently
+backed by real state and an `AdminActionAudit` record - `suspend`/`resume`
+are stubs pending their own tracked issues).
+
+### Client-visible admin error states (#59)
+
+Stream/clawback routes use the same `{ code, message, details }` envelope as
+the rest of the API (see [overview.md](./overview.md)). The error codes a
+frontend should branch on for these routes:
+
+| Code | HTTP status | Meaning |
+|---|---|---|
+| `NOT_FOUND` | 404 | The stream id in the URL doesn't exist |
+| `CLAWBACK_INVALID_AMOUNT` | 400 | Requested amount is zero, negative, or not a valid integer string |
+| `CLAWBACK_TOO_LARGE` | 400 | Requested amount exceeds the stream's `unclaimed` (remaining vested) balance - `details.remainingVested` carries the actual limit |
+| `VALIDATION_ERROR` | 400 | Malformed request body/query (e.g. bad `page`/`limit`, unknown `status` enum value) |
+| n/a (`{ "error": "..." }`) | 403 | Caller is authenticated but not on the admin allowlist - see the [request timeouts](#request-timeouts) section above for the auth rules |
+| `INTERNAL_ERROR` | 500 | Unexpected backend failure; safe to show a generic retry message |
+
+For every other admin route in this document, the same envelope and the
+401/403 rules at the top of this page apply; route-specific codes are called
+out in each section (e.g. `ADMIN_QUOTA_EXCEEDED`, `FEATURE_DISABLED`).
+
 ## Contract maintenance
 
 Governance/maintenance operations that previously required the

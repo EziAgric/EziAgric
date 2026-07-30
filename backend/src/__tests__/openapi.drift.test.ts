@@ -78,6 +78,8 @@ const IMPLEMENTED_ROUTES = [
   "/admin/contract/mediators/{address}",
   "/admin/contract/fee",
   "/api/admin/auth/claims",
+  "/api/admin/streams",
+  "/api/admin/streams/{id}/clawback/preview",
   "/api/admin/streams/{id}/terminate",
 ];
 

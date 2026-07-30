@@ -212,6 +212,8 @@ components:
             - INFRA_ERROR
             - NOT_FOUND
             - INTERNAL_ERROR
+            - CLAWBACK_TOO_LARGE
+            - CLAWBACK_INVALID_AMOUNT
         message:
           type: string
         details:
@@ -295,6 +297,128 @@ components:
         signedTxXdr: null
         unclaimed: "7500"
         reversible: false
+    VestingState:
+      type: string
+      description: |-
+        Derived from `claimed` vs. `totalVested` — independent of the stream's
+        lifecycle `status`, since e.g. a SUSPENDED stream may already be
+        fully vested.
+      enum: [not_started, vesting, fully_vested]
+    AdminStreamSummary:
+      type: object
+      properties:
+        streamId:
+          type: string
+        recipient:
+          type: string
+        status:
+          $ref: "#/components/schemas/StreamStatus"
+        vestingState:
+          $ref: "#/components/schemas/VestingState"
+        totalVested:
+          type: string
+        claimed:
+          type: string
+        unclaimed:
+          type: string
+        pendingClawback:
+          type: string
+        adminTags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - streamId
+        - recipient
+        - status
+        - vestingState
+        - totalVested
+        - claimed
+        - unclaimed
+        - pendingClawback
+        - adminTags
+        - createdAt
+        - updatedAt
+      example:
+        streamId: stream-abc-123
+        recipient: GRECIPIENT000000000000000000000000000000000000000000
+        status: ACTIVE
+        vestingState: vesting
+        totalVested: "10000"
+        claimed: "2500"
+        unclaimed: "7500"
+        pendingClawback: "0"
+        adminTags: ["high-value"]
+        createdAt: "2026-07-01T00:00:00.000Z"
+        updatedAt: "2026-07-05T00:00:00.000Z"
+    AdminStreamListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminStreamSummary"
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer
+          required: [page, limit, total, totalPages]
+      required: [items, pagination]
+    StreamClawbackPreviewRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          pattern: "^\\d+$"
+          description: Requested clawback amount as a positive integer string.
+      required: [amount]
+      example:
+        amount: "3000"
+    StreamClawbackPreviewResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        remainingVested:
+          type: string
+          description: The stream's actual unclaimed vested balance before this clawback.
+        requestedClawback:
+          type: string
+        postClawbackBalance:
+          type: string
+          description: remainingVested minus requestedClawback.
+        preview:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - streamId
+        - remainingVested
+        - requestedClawback
+        - postClawbackBalance
+        - preview
+        - timestamp
+      example:
+        streamId: stream-abc-123
+        remainingVested: "7500"
+        requestedClawback: "3000"
+        postClawbackBalance: "4500"
+        preview: true
+        timestamp: "2026-07-30T12:00:00.000Z"
     AuthChallengeRequest:
       type: object
       properties:
@@ -945,6 +1069,113 @@ paths:
           description: Feature flag status map returned.
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+  /api/admin/streams:
+    get:
+      tags: [Admin]
+      summary: List admin-accessible streams (#51)
+      description: |-
+        Paginated list of vested token streams, newest first. Supports
+        filtering by lifecycle `status`, derived `vestingState` (how much of
+        the stream has actually vested, independent of lifecycle status),
+        and `adminTag` (operator-assigned label). Backs the admin stream
+        list UI that the clawback confirmation flow (#56, #57) is launched
+        from.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/StreamStatus"
+        - name: vestingState
+          in: query
+          schema:
+            $ref: "#/components/schemas/VestingState"
+        - name: adminTag
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: Paginated stream summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStreamListResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/clawback/preview:
+    post:
+      tags: [Admin]
+      summary: Preview a stream clawback before execution
+      description: |-
+        Validates a requested clawback amount against the stream's actual
+        remaining vested (unclaimed) balance and returns the resulting
+        post-clawback balance, without performing the clawback. Powers the
+        admin confirmation modal (#56) and client-side amount validation
+        (#57) — the frontend calls this before letting the operator confirm.
+
+        Error code references: `NOT_FOUND` (unknown stream),
+        `CLAWBACK_INVALID_AMOUNT` (zero/negative amount),
+        `CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamClawbackPreviewRequest"
+      responses:
+        "200":
+          description: Clawback preview computed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamClawbackPreviewResponse"
+        "400":
+          description: Invalid amount, or amount exceeds the remaining vested balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/streams/{id}/terminate:
     post:
       tags: [Admin]

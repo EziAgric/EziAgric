@@ -23,6 +23,10 @@ export enum BackendErrorCode {
   PAYMENT_PROVIDER_TIMEOUT = "PAYMENT_PROVIDER_TIMEOUT",
   PAYMENT_INSUFFICIENT_FUNDS = "PAYMENT_INSUFFICIENT_FUNDS",
   RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED",
+  ADMIN_QUOTA_EXCEEDED = "ADMIN_QUOTA_EXCEEDED",
+  ADMIN_OPERATION_TIMEOUT = "ADMIN_OPERATION_TIMEOUT",
+  CLAWBACK_TOO_LARGE = "CLAWBACK_TOO_LARGE",
+  CLAWBACK_INVALID_AMOUNT = "CLAWBACK_INVALID_AMOUNT",
 }
 
 /**
@@ -130,6 +134,26 @@ const ERROR_MESSAGE_MAP: Record<string, { title: string; message: string; type: 
   [BackendErrorCode.RATE_LIMIT_EXCEEDED]: {
     title: "Too Many Requests",
     message: "Please wait a moment before trying again.",
+    type: "warning",
+  },
+  [BackendErrorCode.ADMIN_QUOTA_EXCEEDED]: {
+    title: "Admin Quota Exceeded",
+    message: "You've hit the rate limit for this admin action. Try again later.",
+    type: "warning",
+  },
+  [BackendErrorCode.ADMIN_OPERATION_TIMEOUT]: {
+    title: "Operation Timed Out",
+    message: "The admin operation took too long to complete. Please try again.",
+    type: "warning",
+  },
+  [BackendErrorCode.CLAWBACK_TOO_LARGE]: {
+    title: "Amount Too Large",
+    message: "The requested clawback amount exceeds the stream's remaining vested balance.",
+    type: "warning",
+  },
+  [BackendErrorCode.CLAWBACK_INVALID_AMOUNT]: {
+    title: "Invalid Amount",
+    message: "Enter a clawback amount greater than zero.",
     type: "warning",
   },
 };

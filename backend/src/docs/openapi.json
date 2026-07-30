@@ -3,7 +3,7 @@
   "info": {
     "title": "Amana Backend API",
     "version": "1.0.0",
-    "description": "OpenAPI coverage for the live Amana backend routes under `backend/src/routes`.\n\nAuthentication flow:\n1. Call `POST /auth/challenge` with a Stellar public key.\n2. Sign the returned challenge with the wallet.\n3. Exchange the signature at `POST /auth/verify` for a bearer token.\n4. Send `Authorization: Bearer <token>` to protected endpoints.\n\nJWT semantics enforced by middleware:\n- `iss` must match `JWT_ISSUER` (default `amana`)\n- `aud` must match `JWT_AUDIENCE` (default `amana-api`)\n- `jti` is required and checked against the revocation denylist\n- `nbf` must be present and not be in the future\n\nError code references in operation descriptions map to backend `ErrorCode` values in\n`backend/src/errors/errorCodes.ts`. Some route handlers still emit legacy `{ error }`\npayloads while centralized validation/runtime failures return `{ code, message, details }`."
+    "description": "OpenAPI coverage for the live Amana backend routes under `backend/src/routes`.\n\nAuthentication flow:\n1. Call `POST /auth/challenge` with a Stellar public key.\n2. Sign the returned challenge with the wallet.\n3. Exchange the signature at `POST /auth/verify` for a bearer token.\n4. Send `Authorization: Bearer <token>` to protected endpoints.\n\nJWT semantics enforced by middleware:\n- `iss` must match `JWT_ISSUER` (default `amana`)\n- `aud` must match `JWT_AUDIENCE` (default `amana-api`)\n- `jti` is required and checked against the revocation denylist\n  (revoked tokens are rejected — replay protection)\n- `iat` (issued-at) must be present and in the past\n- `exp` (expires-at) is enforced: expired tokens are rejected\n  (default TTL: 86400 s / 24 h, configurable via `JWT_EXPIRES_IN`)\n- `nbf` (not-before) must be present and not be in the future\n- Tokens signed with algorithms other than HS256 are rejected\n\nError code references in operation descriptions map to backend `ErrorCode` values in\n`backend/src/errors/errorCodes.ts`. Some route handlers still emit legacy `{ error }`\npayloads while centralized validation/runtime failures return `{ code, message, details }`."
   },
   "servers": [
     {
@@ -16,6 +16,9 @@
     },
     {
       "name": "Auth"
+    },
+    {
+      "name": "Admin"
     },
     {
       "name": "Wallet"
@@ -54,6 +57,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "adminAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-admin-secret",
+        "description": "Secret key authentication for admin-only management routes."
       }
     },
     "parameters": {
@@ -260,7 +269,9 @@
               "DOMAIN_ERROR",
               "INFRA_ERROR",
               "NOT_FOUND",
-              "INTERNAL_ERROR"
+              "INTERNAL_ERROR",
+              "CLAWBACK_TOO_LARGE",
+              "CLAWBACK_INVALID_AMOUNT"
             ]
           },
           "message": {
@@ -360,7 +371,7 @@
           },
           "reversible": {
             "type": "boolean",
-            "description": "Always false \u2014 termination cannot be undone."
+            "description": "Always false — termination cannot be undone."
           }
         },
         "required": [
@@ -381,6 +392,182 @@
           "signedTxXdr": null,
           "unclaimed": "7500",
           "reversible": false
+        }
+      },
+      "VestingState": {
+        "type": "string",
+        "description": "Derived from `claimed` vs. `totalVested` — independent of the stream's\nlifecycle `status`, since e.g. a SUSPENDED stream may already be\nfully vested.",
+        "enum": [
+          "not_started",
+          "vesting",
+          "fully_vested"
+        ]
+      },
+      "AdminStreamSummary": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StreamStatus"
+          },
+          "vestingState": {
+            "$ref": "#/components/schemas/VestingState"
+          },
+          "totalVested": {
+            "type": "string"
+          },
+          "claimed": {
+            "type": "string"
+          },
+          "unclaimed": {
+            "type": "string"
+          },
+          "pendingClawback": {
+            "type": "string"
+          },
+          "adminTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "streamId",
+          "recipient",
+          "status",
+          "vestingState",
+          "totalVested",
+          "claimed",
+          "unclaimed",
+          "pendingClawback",
+          "adminTags",
+          "createdAt",
+          "updatedAt"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "recipient": "GRECIPIENT000000000000000000000000000000000000000000",
+          "status": "ACTIVE",
+          "vestingState": "vesting",
+          "totalVested": "10000",
+          "claimed": "2500",
+          "unclaimed": "7500",
+          "pendingClawback": "0",
+          "adminTags": [
+            "high-value"
+          ],
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-05T00:00:00.000Z"
+        }
+      },
+      "AdminStreamListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminStreamSummary"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "totalPages": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "page",
+              "limit",
+              "total",
+              "totalPages"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "pagination"
+        ]
+      },
+      "StreamClawbackPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "description": "Requested clawback amount as a positive integer string."
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "example": {
+          "amount": "3000"
+        }
+      },
+      "StreamClawbackPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "remainingVested": {
+            "type": "string",
+            "description": "The stream's actual unclaimed vested balance before this clawback."
+          },
+          "requestedClawback": {
+            "type": "string"
+          },
+          "postClawbackBalance": {
+            "type": "string",
+            "description": "remainingVested minus requestedClawback."
+          },
+          "preview": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "streamId",
+          "remainingVested",
+          "requestedClawback",
+          "postClawbackBalance",
+          "preview",
+          "timestamp"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "remainingVested": "7500",
+          "requestedClawback": "3000",
+          "postClawbackBalance": "4500",
+          "preview": true,
+          "timestamp": "2026-07-30T12:00:00.000Z"
         }
       },
       "AuthChallengeRequest": {
@@ -1416,13 +1603,228 @@
     }
   },
   "paths": {
+    "/api/admin/audit": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Query administrative audit log events",
+        "description": "Retrieve paginated administrative audit logs with optional filter parameters.",
+        "security": [
+          {
+            "adminAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved admin audit log entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "logs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        },
+        "operationId": "get.api.admin.audit"
+      }
+    },
+    "/api/admin/features": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List system feature flags",
+        "description": "Get active feature flags and system runtime toggles for administrative controls.",
+        "security": [
+          {
+            "adminAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feature flag status map returned."
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        },
+        "operationId": "get.api.admin.features"
+      }
+    },
+    "/api/admin/streams": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List admin-accessible streams (#51)",
+        "description": "Paginated list of vested token streams, newest first. Supports\nfiltering by lifecycle `status`, derived `vestingState` (how much of\nthe stream has actually vested, independent of lifecycle status),\nand `adminTag` (operator-assigned label). Backs the admin stream\nlist UI that the clawback confirmation flow (#56, #57) is launched\nfrom.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/StreamStatus"
+            }
+          },
+          {
+            "name": "vestingState",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/VestingState"
+            }
+          },
+          {
+            "name": "adminTag",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated stream summaries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStreamListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "get.api.admin.streams"
+      }
+    },
+    "/api/admin/streams/{id}/clawback/preview": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Preview a stream clawback before execution",
+        "description": "Validates a requested clawback amount against the stream's actual\nremaining vested (unclaimed) balance and returns the resulting\npost-clawback balance, without performing the clawback. Powers the\nadmin confirmation modal (#56) and client-side amount validation\n(#57) — the frontend calls this before letting the operator confirm.\n\nError code references: `NOT_FOUND` (unknown stream),\n`CLAWBACK_INVALID_AMOUNT` (zero/negative amount),\n`CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamClawbackPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clawback preview computed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamClawbackPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid amount, or amount exceeds the remaining vested balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.clawback.preview"
+      }
+    },
     "/api/admin/streams/{id}/terminate": {
       "post": {
         "tags": [
           "Admin"
         ],
         "summary": "Terminate a stream (admin only)",
-        "description": "Permanently terminates a vested token stream. Admin only.\n\nThe stream's state is validated before anything is signed or written:\nan unknown stream is a `404`, and a stream already in a terminal state\n(`TERMINATED`, `COMPLETED`) is a `409` rather than a silent no-op, so a\ndouble-submit is visible to the operator instead of producing a second\naudit record for one real action.\n\nSupplying `unsignedTxXdr` signs the on-chain terminate call with the\nconfigured admin key and returns the signed XDR for submission; the\nresulting on-chain event is ingested by the event listener. Omitting it\nperforms the backend state transition only. Every successful\ntermination writes an `AdminActionAudit` record (`STREAM_TERMINATE`).\n\nTermination is irreversible \u2014 `reversible` is always `false`.\nError code references: `NOT_FOUND`, `DOMAIN_ERROR`, `VALIDATION_ERROR`.",
+        "description": "Permanently terminates a vested token stream. Admin only.\n\nThe stream's state is validated before anything is signed or written:\nan unknown stream is a `404`, and a stream already in a terminal state\n(`TERMINATED`, `COMPLETED`) is a `409` rather than a silent no-op, so a\ndouble-submit is visible to the operator instead of producing a second\naudit record for one real action.\n\nSupplying `unsignedTxXdr` signs the on-chain terminate call with the\nconfigured admin key and returns the signed XDR for submission; the\nresulting on-chain event is ingested by the event listener. Omitting it\nperforms the backend state transition only. Every successful\ntermination writes an `AdminActionAudit` record (`STREAM_TERMINATE`).\n\nTermination is irreversible — `reversible` is always `false`.\nError code references: `NOT_FOUND`, `DOMAIN_ERROR`, `VALIDATION_ERROR`.",
         "security": [
           {
             "bearerAuth": []
@@ -1486,7 +1888,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.api.admin.streams.id.terminate"
       }
     },
     "/health": {
@@ -1524,7 +1927,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health"
       }
     },
     "/health/live": {
@@ -1544,7 +1948,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health.live"
       }
     },
     "/health/ready": {
@@ -1581,7 +1986,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health.ready"
       }
     },
     "/health/startup": {
@@ -1619,7 +2025,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health.startup"
       }
     },
     "/auth/challenge": {
@@ -1671,7 +2078,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "post.auth.challenge"
       }
     },
     "/auth/verify": {
@@ -1726,7 +2134,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "post.auth.verify"
       }
     },
     "/auth/logout": {
@@ -1758,7 +2167,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.auth.logout"
       }
     },
     "/wallet/balance": {
@@ -1803,7 +2213,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.wallet.balance"
       }
     },
     "/wallet/path-payment-quote": {
@@ -1858,7 +2269,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.wallet.path_payment_quote"
       }
     },
     "/users/me": {
@@ -1890,7 +2302,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.users.me"
       },
       "put": {
         "tags": [
@@ -1933,7 +2346,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "put.users.me"
       }
     },
     "/users/{address}": {
@@ -1975,7 +2389,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.users.address"
       }
     },
     "/dispute-categories": {
@@ -2015,7 +2430,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.dispute_categories"
       },
       "post": {
         "tags": [
@@ -2071,7 +2487,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.dispute_categories"
       }
     },
     "/dispute-categories/{id}": {
@@ -2113,7 +2530,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.dispute_categories.id"
       },
       "patch": {
         "tags": [
@@ -2177,7 +2595,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "patch.dispute_categories.id"
       },
       "delete": {
         "tags": [
@@ -2214,7 +2633,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "delete.dispute_categories.id"
       }
     },
     "/disputes": {
@@ -2296,7 +2716,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.disputes"
       }
     },
     "/disputes/{id}/transition": {
@@ -2376,7 +2797,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.disputes.id.transition"
       }
     },
     "/trades": {
@@ -2426,7 +2848,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades"
       },
       "get": {
         "tags": [
@@ -2476,7 +2899,8 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
+        },
+        "operationId": "get.trades"
       }
     },
     "/trades/stats": {
@@ -2505,7 +2929,8 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
+        },
+        "operationId": "get.trades.stats"
       }
     },
     "/trades/{id}": {
@@ -2554,7 +2979,8 @@
           "404": {
             "$ref": "#/components/responses/NotFoundError"
           }
-        }
+        },
+        "operationId": "get.trades.id"
       }
     },
     "/trades/{id}/deposit": {
@@ -2603,7 +3029,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.deposit"
       }
     },
     "/trades/{id}/confirm": {
@@ -2668,7 +3095,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.confirm"
       }
     },
     "/trades/{id}/release": {
@@ -2736,7 +3164,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.release"
       }
     },
     "/trades/{id}/dispute": {
@@ -2817,7 +3246,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.dispute"
       }
     },
     "/trades/{id}/manifest": {
@@ -2866,7 +3296,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.trades.id.manifest"
       },
       "post": {
         "tags": [
@@ -2936,7 +3367,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.manifest"
       }
     },
     "/trades/{id}/evidence": {
@@ -2991,7 +3423,8 @@
           "404": {
             "$ref": "#/components/responses/NotFoundError"
           }
-        }
+        },
+        "operationId": "get.trades.id.evidence"
       }
     },
     "/evidence/{cid}/stream": {
@@ -3071,7 +3504,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.evidence.cid.stream"
       }
     },
     "/evidence/video": {
@@ -3183,7 +3617,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "post.evidence.video"
       }
     },
     "/trades/{id}/history": {
@@ -3243,7 +3678,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.trades.id.history"
       }
     },
     "/trades/{id}/history/verify": {
@@ -3307,7 +3743,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.trades.id.history.verify"
       }
     },
     "/api/admin/auth/claims": {
@@ -3363,7 +3800,8 @@
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
           }
-        }
+        },
+        "operationId": "get.api.admin.auth.claims"
       }
     },
     "/treasury/balance": {
@@ -3406,7 +3844,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.treasury.balance"
       }
     },
     "/treasury/withdraw": {
@@ -3473,7 +3912,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.treasury.withdraw"
       }
     },
     "/treasury/config": {
@@ -3516,7 +3956,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.treasury.config"
       }
     },
     "/admin/contract/mediators": {
@@ -3573,7 +4014,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.admin.contract.mediators"
       }
     },
     "/admin/contract/mediators/{address}": {
@@ -3622,7 +4064,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "delete.admin.contract.mediators.address"
       }
     },
     "/admin/contract/fee": {
@@ -3681,7 +4124,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "patch.admin.contract.fee"
       }
     },
     "/goals": {
@@ -3713,7 +4157,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.goals"
       }
     }
   }

@@ -1,4 +1,5 @@
 import { Response, Router } from "express";
+import { StreamStatus } from "@prisma/client";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
@@ -6,13 +7,26 @@ import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+import { AppError, ErrorCode } from "../errors/errorCodes";
 import {
   StreamTerminationService,
   streamTerminationService,
 } from "../services/streamTermination.service";
+import { AdminStreamsService, adminStreamsService } from "../services/adminStreams.service";
 
 const streamIdParamSchema = z.object({
   id: z.string().min(1, "Stream ID is required"),
+});
+
+const streamListQuerySchema = z.object({
+  page: z.preprocess((val) => (val === undefined ? undefined : Number(val)), z.number().int().min(1).default(1)),
+  limit: z.preprocess(
+    (val) => (val === undefined ? undefined : Number(val)),
+    z.number().int().min(1).max(100).default(20),
+  ),
+  status: z.nativeEnum(StreamStatus).optional(),
+  vestingState: z.enum(["not_started", "vesting", "fully_vested"]).optional(),
+  adminTag: z.string().min(1).max(100).optional(),
 });
 
 const clawbackPreviewBodySchema = z.object({
@@ -37,15 +51,48 @@ const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
 /**
  * @param terminationService injected so tests can exercise the route without a
  * database or an admin signing key.
+ * @param streamsService injected so tests can exercise the route without a database.
  */
 export function createAdminStreamsRouter(
   terminationService: StreamTerminationService = streamTerminationService,
+  streamsService: AdminStreamsService = adminStreamsService,
 ) {
   const router = Router();
 
   /**
+   * GET /api/admin/streams
+   * List streams an admin can act on, paged and filterable by lifecycle
+   * status, derived vesting state, and admin tag (#51).
+   */
+  router.get(
+    "/admin/streams",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ query: streamListQuerySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { page, limit, status, vestingState, adminTag } = req.query as unknown as z.infer<
+          typeof streamListQuerySchema
+        >;
+
+        const result = await streamsService.list({ page, limit, status, vestingState, adminTag });
+        res.status(200).json(result);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
    * POST /api/admin/streams/:id/clawback/preview
-   * Preview the effect of a clawback before execution
+   * Preview the effect of a clawback before execution. Validates the
+   * requested amount against the stream's actual remaining vested
+   * (unclaimed) balance so the frontend confirmation flow (#56, #57) always
+   * reflects real data instead of the amount alone.
+   *
+   * Error code references: `NOT_FOUND`, `CLAWBACK_INVALID_AMOUNT`,
+   * `CLAWBACK_TOO_LARGE`.
    */
   router.post(
     "/admin/streams/:id/clawback/preview",
@@ -61,17 +108,39 @@ export function createAdminStreamsRouter(
         const { id: streamId } = req.params as { id: string };
         const { amount } = req.body as { amount: string };
 
-        // Mock implementation - replace with actual stream service logic
-        const remainingVested = "10000";
-        const requestedClawback = amount;
-        const postClawbackBalance = String(
-          BigInt(remainingVested) - BigInt(amount),
-        );
+        const stream = await streamsService.getByStreamId(streamId);
+        if (!stream) {
+          throw new AppError(ErrorCode.NOT_FOUND, `Stream ${streamId} not found`, 404, {
+            streamId,
+          });
+        }
+
+        const requestedClawback = BigInt(amount);
+        if (requestedClawback <= BigInt(0)) {
+          throw new AppError(
+            ErrorCode.CLAWBACK_INVALID_AMOUNT,
+            "Clawback amount must be a positive integer",
+            400,
+            { streamId, amount },
+          );
+        }
+
+        const remainingVested = BigInt(stream.unclaimed);
+        if (requestedClawback > remainingVested) {
+          throw new AppError(
+            ErrorCode.CLAWBACK_TOO_LARGE,
+            `Requested clawback ${amount} exceeds remaining vested amount ${stream.unclaimed}`,
+            400,
+            { streamId, amount, remainingVested: stream.unclaimed },
+          );
+        }
+
+        const postClawbackBalance = String(remainingVested - requestedClawback);
 
         res.status(200).json({
           streamId,
-          remainingVested,
-          requestedClawback,
+          remainingVested: stream.unclaimed,
+          requestedClawback: amount,
           postClawbackBalance,
           preview: true,
           timestamp: new Date().toISOString(),
