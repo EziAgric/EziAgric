@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
@@ -10,7 +9,9 @@ import {
 import type { StackScreenProps } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../types/navigation';
+import type { AdminActionType } from './AdminActionSuccessScreen';
 import { useAuthStore } from '../stores/authStore';
+import { useAdminActionHistoryStore } from '../stores/adminActionHistoryStore';
 
 type Props = StackScreenProps<RootStackParamList, 'AdminStreamsOverview'>;
 
@@ -29,13 +30,31 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { role } = useAuthStore();
   const isAdmin = role === 'admin';
+  const { addAction } = useAdminActionHistoryStore();
+
+  /**
+   * Execute an admin action, record it in the session history, then navigate
+   * to the confirmation screen so the operator sees a clear success state.
+   */
+  const handleAction = (actionType: AdminActionType, streamId: string) => {
+    const timestamp = new Date().toISOString();
+    addAction({ actionType, streamId, timestamp });
+    navigation.navigate('AdminActionSuccess', { actionType, streamId, timestamp });
+  };
 
   if (!isAdmin) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}> 
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <Text style={styles.title}>Admin access required</Text>
         <Text style={styles.body}>Only administrators can manage streams from this screen.</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          accessibilityHint="Returns to the previous screen"
+        >
           <Text style={styles.backButtonText}>Go back</Text>
         </TouchableOpacity>
       </View>
@@ -43,10 +62,21 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}> 
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Admin stream overview</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <Text
+          style={styles.title}
+          accessibilityRole="header"
+        >
+          Admin stream overview
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          accessibilityHint="Returns to the previous screen"
+        >
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
       </View>
@@ -55,21 +85,68 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
         data={STREAMS}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        accessibilityRole="list"
+        accessibilityLabel="Admin stream list"
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <View
+            style={styles.card}
+            accessible={false}
+          >
             <View style={styles.cardHeader}>
-              <Text style={styles.streamId}>{item.id}</Text>
-              <Text style={styles.status}>{item.status}</Text>
+              <Text
+                style={styles.streamId}
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={`Stream ID: ${item.id}`}
+              >
+                {item.id}
+              </Text>
+              <Text
+                style={styles.status}
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={`Status: ${item.status}`}
+              >
+                {item.status}
+              </Text>
             </View>
-            <Text style={styles.meta}>Pending clawback: {item.pendingClawback}</Text>
+            <Text
+              style={styles.meta}
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={`Pending clawback amount: ${item.pendingClawback}`}
+            >
+              Pending clawback: {item.pendingClawback}
+            </Text>
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.actionButton}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleAction('Clawback', item.id)}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={`Clawback stream ${item.id}`}
+                accessibilityHint="Executes an admin clawback on this stream and shows a confirmation"
+              >
                 <Text style={styles.actionText}>Clawback</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleAction('Lock', item.id)}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={`Lock stream ${item.id}`}
+                accessibilityHint="Locks this stream and shows a confirmation"
+              >
                 <Text style={styles.actionText}>Lock</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton}>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => handleAction('Terminate', item.id)}
+                accessible
+                accessibilityRole="button"
+                accessibilityLabel={`Terminate stream ${item.id}`}
+                accessibilityHint="Terminates this stream and shows a confirmation"
+              >
                 <Text style={styles.actionText}>Terminate</Text>
               </TouchableOpacity>
             </View>
