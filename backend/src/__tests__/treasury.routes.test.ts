@@ -84,7 +84,7 @@ describe("Treasury Routes - POST /treasury/withdraw", () => {
         .send({ destination: destinationAddress, amount: "100" });
 
       expect(res.status).toBe(403);
-      expect(res.body.error).toMatch(/admin access required/i);
+      expect(res.body.message).toMatch(/admin access required/i);
     });
   });
 

@@ -44,6 +44,7 @@ import { createAdminAuthRouter } from "./routes/admin.auth.routes";
 import { createAdminStreamsRouter } from "./routes/admin.streams.routes";
 import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes";
 import { webhooksRoutes } from "./routes/webhooks.routes";
+import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
@@ -175,23 +176,23 @@ export function createApp(): express.Application {
   // Treasury management
   app.use("/treasury", createTreasuryRouter());
 
-  // Feature flags (admin-managed)
-  app.use(createAdminFeaturesRouter());
+  // Feature flags (admin-managed) — gated by ADMIN_ROUTES_ENABLED
+  app.use(adminFeatureGate, createAdminFeaturesRouter());
 
   // Admin action audit history: GET /admin/audit
-  app.use(createAdminAuditRouter());
+  app.use(adminFeatureGate, createAdminAuditRouter());
 
   // Admin contract maintenance/governance: mediators, fee rate
-  app.use(createAdminContractRouter());
+  app.use(adminFeatureGate, createAdminContractRouter());
 
   // Admin auth diagnostics: GET /api/admin/auth/claims
-  app.use(createAdminAuthRouter());
+  app.use(adminFeatureGate, createAdminAuthRouter());
 
   // Admin trade batch operations: POST /admin/trades/batch/status
-  app.use(createAdminTradeBatchRouter());
+  app.use(adminFeatureGate, createAdminTradeBatchRouter());
 
   // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume
-  app.use("/api", createAdminStreamsRouter());
+  app.use("/api", adminFeatureGate, createAdminStreamsRouter());
 
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);

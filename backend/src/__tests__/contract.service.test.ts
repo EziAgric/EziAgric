@@ -1,4 +1,4 @@
-import { Account, Networks, rpc } from "@stellar/stellar-sdk";
+import { Account, Networks, rpc, xdr } from "@stellar/stellar-sdk";
 import { __resetRetrySleepForTests, __setRetrySleepForTests } from "../lib/retry";
 import {
   __resetRpcServerFactoryForTests,
@@ -6,9 +6,12 @@ import {
   ContractService,
 } from "../services/contract.service";
 
+// Valid ScVal mock for simulateTransaction responses
+const mockScVal = xdr.ScVal.scvU64(new xdr.Uint64(7));
+
 describe("ContractService network resilience", () => {
-  const buyerAddress = "GCKFBEIYTKP6ZCFWXHA5QB4MX2CSHKQJBM3NP5M4A4V4UMZQZK3Q4QVU";
-  const sellerAddress = "GA6HCMBLTZS6UL2J3HPVG4JXZXA4HXK3YW5SGS2ZTD5RMDM4U3RMMOBR";
+  const buyerAddress = "GA5PYVIXJTWWTZESUAGD6LYGD4CNZ2XWBCRUDGU6MCHB2CBK6UGO77ZN";
+  const sellerAddress = "GB4CNYSIQTKZOWN2ZBKZBYI76U3WIYYYYA7OIAUGU5HHBEDXHU7M7IM7";
   const sleepMock = jest.fn().mockResolvedValue(undefined);
 
   const buildService = (overrides: Partial<rpc.Server> = {}) => {
@@ -17,7 +20,7 @@ describe("ContractService network resilience", () => {
         .fn()
         .mockImplementation(async (accountId: string) => new Account(accountId, "1")),
       simulateTransaction: jest.fn().mockResolvedValue({
-        result: { retval: { _value: "7" } },
+        result: { retval: mockScVal },
       }),
       prepareTransaction: jest.fn().mockImplementation(async (tx) => tx),
       ...overrides,
@@ -127,8 +130,8 @@ describe("ContractService network resilience", () => {
 });
 
 describe("ContractService XDR builders", () => {
-  const buyerAddress = "GCKFBEIYTKP6ZCFWXHA5QB4MX2CSHKQJBM3NP5M4A4V4UMZQZK3Q4QVU";
-  const sellerAddress = "GA6HCMBLTZS6UL2J3HPVG4JXZXA4HXK3YW5SGS2ZTD5RMDM4U3RMMOBR";
+  const buyerAddress = "GA5PYVIXJTWWTZESUAGD6LYGD4CNZ2XWBCRUDGU6MCHB2CBK6UGO77ZN";
+  const sellerAddress = "GB4CNYSIQTKZOWN2ZBKZBYI76U3WIYYYYA7OIAUGU5HHBEDXHU7M7IM7";
   const mediatorAddress = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 
   const buildService = (overrides: Partial<rpc.Server> = {}) => {
@@ -137,7 +140,7 @@ describe("ContractService XDR builders", () => {
         .fn()
         .mockImplementation(async (accountId: string) => new Account(accountId, "1")),
       simulateTransaction: jest.fn().mockResolvedValue({
-        result: { retval: { _value: "7" } },
+        result: { retval: mockScVal },
       }),
       prepareTransaction: jest.fn().mockImplementation(async (tx) => tx),
       ...overrides,
@@ -453,7 +456,7 @@ describe("ContractService XDR builders", () => {
           buyerAddress,
           amountUsdc: "100",
         }),
-      ).rejects.toThrow("USDC_CONTRACT_ID is not configured");
+      ).rejects.toThrow("TOKEN_CONTRACT_ID is not configured");
     });
   });
 
@@ -906,10 +909,7 @@ describe("ContractService XDR builders", () => {
     it("handles contract not found error", async () => {
       const server = {
         getAccount: jest.fn().mockImplementation(async (accountId: string) => new Account(accountId, "1")),
-        simulateTransaction: jest.fn().mockRejectedValue({
-          response: { status: 404 },
-          message: "Contract not found",
-        }),
+        simulateTransaction: jest.fn().mockRejectedValue(new Error("Contract not found")),
         prepareTransaction: jest.fn().mockImplementation(async (tx) => tx),
       } as unknown as rpc.Server;
 
