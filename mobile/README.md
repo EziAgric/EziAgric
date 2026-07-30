@@ -93,11 +93,25 @@ npm run lint
 
 ## Project structure
 
-- `src/api/` – API client and service methods
+- `src/api/` – API client and service methods, plus admin error mapping ([docs/admin-errors.md](docs/admin-errors.md))
+- `src/components/` – Shared UI components (e.g. `AdminErrorBanner`)
 - `src/stores/` – Zustand state management
 - `src/screens/` – Screen components
 - `src/App.tsx` – Root app component
 - `app.config.ts` – Expo configuration
+
+## Admin error handling
+
+Backend admin endpoints can return rich error payloads. The mobile app wraps
+every Axios error in a typed `AdminApiError`, maps the backend `code` to a
+user-friendly view (title / action), and renders it through a single
+`AdminErrorBanner` component. 403s and network failures are handled with
+the same component (sign-out / retry respectively). All four mobile admin
+screens (`AdminStreamsOverview`, `AdminTradesBatch`, `AdminContract`,
+`AdminFeatures`) use the same error pattern.
+
+See [`docs/admin-errors.md`](docs/admin-errors.md) for the full code → action
+table, the per-screen error-slot model, and how to add a new error code.
 
 ## Backend integration
 
