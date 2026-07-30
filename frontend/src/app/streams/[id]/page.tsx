@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdmin } from "@/hooks/useAdmin";
 import { api, type StreamRemainingResponse, ApiError } from "@/lib/api";
 import { Breadcrumb, LoadingState, ErrorState } from "@/components/ui";
+import {
+  getAssetInfo,
+  stroopsToAmount,
+  formatAmountWithAsset,
+} from "@/lib/stellar/assets";
 
 export default function StreamDetailPage() {
   const params = useParams();
@@ -16,6 +21,13 @@ export default function StreamDetailPage() {
   const [streamData, setStreamData] = useState<StreamRemainingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Get asset info from stream data
+  const assetInfo = useMemo(() => {
+    return getAssetInfo(streamData?.assetCode);
+  }, [streamData?.assetCode]);
+
+  const decimals = streamData?.decimals ?? assetInfo.decimals;
 
   useEffect(() => {
     if (!token || !streamId) return;
@@ -101,7 +113,7 @@ export default function StreamDetailPage() {
           <div>
             <h1 className="text-xl font-bold text-text-primary">Stream Details</h1>
             <p className="mt-0.5 text-xs text-text-secondary">
-              Vested token stream information
+              Vested token stream information • {assetInfo.symbol} ({decimals} decimals)
             </p>
           </div>
         </div>
@@ -137,9 +149,11 @@ export default function StreamDetailPage() {
                   Total Vested
                 </p>
                 <p className="mt-2 text-2xl font-bold text-text-primary">
-                  {BigInt(streamData.totalVested).toLocaleString()}
+                  {stroopsToAmount(streamData.totalVested, decimals)}
                 </p>
-                <p className="mt-1 text-xs text-text-muted">Total amount vested</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  {assetInfo.symbol} • Total amount vested
+                </p>
               </div>
 
               <div className="rounded-2xl border border-border-default bg-card p-5">
@@ -147,9 +161,11 @@ export default function StreamDetailPage() {
                   Claimed
                 </p>
                 <p className="mt-2 text-2xl font-bold text-text-primary">
-                  {BigInt(streamData.claimed).toLocaleString()}
+                  {stroopsToAmount(streamData.claimed, decimals)}
                 </p>
-                <p className="mt-1 text-xs text-text-muted">Already claimed</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  {assetInfo.symbol} • Already claimed
+                </p>
               </div>
 
               <div className="rounded-2xl border border-border-default bg-card p-5">
@@ -157,9 +173,11 @@ export default function StreamDetailPage() {
                   Unclaimed
                 </p>
                 <p className="mt-2 text-2xl font-bold text-text-primary">
-                  {BigInt(streamData.unclaimed).toLocaleString()}
+                  {stroopsToAmount(streamData.unclaimed, decimals)}
                 </p>
-                <p className="mt-1 text-xs text-text-muted">Available to claim</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  {assetInfo.symbol} • Available to claim
+                </p>
               </div>
 
               <div className="rounded-2xl border border-border-default bg-card p-5">
@@ -167,9 +185,11 @@ export default function StreamDetailPage() {
                   Pending Clawback
                 </p>
                 <p className="mt-2 text-2xl font-bold text-text-primary">
-                  {BigInt(streamData.pendingClawback).toLocaleString()}
+                  {stroopsToAmount(streamData.pendingClawback, decimals)}
                 </p>
-                <p className="mt-1 text-xs text-text-muted">Clawback pending</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  {assetInfo.symbol} • Clawback pending
+                </p>
               </div>
             </div>
 
