@@ -7,6 +7,7 @@ export type { IconProps } from "./Icon";
 export { BentoCard } from "./BentoCard";
 export { Breadcrumb } from "./Breadcrumb";
 export type { BreadcrumbItem } from "./Breadcrumb";
+export { CurrencyInput } from "./CurrencyInput";
 export { DriverManifestForm } from "./DriverManifestForm";
 export type { DriverManifestData } from "./DriverManifestForm";
 

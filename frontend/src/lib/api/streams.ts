@@ -16,6 +16,9 @@ export interface StreamRemainingResponse {
   claimed: string;
   unclaimed: string;
   pendingClawback: string;
+  assetCode?: string;
+  assetIssuer?: string;
+  decimals?: number;
 }
 
 export interface ClawbackPreviewRequest {
@@ -29,6 +32,9 @@ export interface ClawbackPreviewResponse {
   postClawbackBalance: string;
   preview: boolean;
   timestamp: string;
+  assetCode?: string;
+  assetIssuer?: string;
+  decimals?: number;
 }
 
 export interface SuspendStreamRequest {

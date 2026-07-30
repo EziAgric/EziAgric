@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdmin } from "@/hooks/useAdmin";
+import { useCurrencyInput } from "@/hooks/useCurrencyInput";
 import {
   api,
   type StreamRemainingResponse,
   type ClawbackPreviewResponse,
   ApiError,
 } from "@/lib/api";
-import { Breadcrumb, LoadingState, ErrorState } from "@/components/ui";
+import { Breadcrumb, LoadingState, ErrorState, CurrencyInput } from "@/components/ui";
+import {
+  getAssetInfo,
+  formatAmountWithAsset,
+  stroopsToAmount,
+} from "@/lib/stellar/assets";
 
 export default function AdminStreamManagementPage() {
   const params = useParams();
@@ -27,9 +33,25 @@ export default function AdminStreamManagementPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
 
-  const [clawbackAmount, setClawbackAmount] = useState("");
   const [suspendReason, setSuspendReason] = useState("");
   const [resumeNote, setResumeNote] = useState("");
+
+  // Get asset info from stream data
+  const assetInfo = useMemo(() => {
+    return getAssetInfo(streamData?.assetCode);
+  }, [streamData?.assetCode]);
+
+  const decimals = streamData?.decimals ?? assetInfo.decimals;
+
+  // Currency input for clawback amount
+  const clawbackInput = useCurrencyInput({
+    asset: { ...assetInfo, decimals },
+    max: streamData?.unclaimed,
+    onValidChange: (stroops) => {
+      // Clear preview when amount changes
+      setClawbackPreview(null);
+    },
+  });
 
   useEffect(() => {
     if (!token || !streamId) return;
@@ -58,14 +80,14 @@ export default function AdminStreamManagementPage() {
   }, [token, streamId]);
 
   const handlePreviewClawback = async () => {
-    if (!token || !clawbackAmount) return;
+    if (!token || !clawbackInput.stroops) return;
 
     setActionLoading(true);
     setActionStatus(null);
 
     try {
       const preview = await api.streams.previewClawback(token, streamId, {
-        amount: clawbackAmount,
+        amount: clawbackInput.stroops,
       });
       setClawbackPreview(preview);
       setActionStatus("Preview generated successfully");
@@ -209,33 +231,47 @@ export default function AdminStreamManagementPage() {
           <div className="space-y-6">
             {/* Stream overview */}
             <div className="rounded-2xl border border-border-default bg-card p-5">
-              <p className="text-xs uppercase tracking-[0.22em] text-text-secondary mb-4">
-                Stream Overview
-              </p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs uppercase tracking-[0.22em] text-text-secondary">
+                  Stream Overview
+                </p>
+                <div className="rounded-full bg-bg-elevated px-3 py-1">
+                  <span className="text-xs font-semibold text-text-primary">
+                    {assetInfo.symbol}
+                  </span>
+                  <span className="ml-1 text-xs text-text-muted">
+                    ({decimals} decimals)
+                  </span>
+                </div>
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <p className="text-xs text-text-muted">Total Vested</p>
                   <p className="mt-1 text-lg font-bold text-text-primary">
-                    {BigInt(streamData.totalVested).toLocaleString()}
+                    {stroopsToAmount(streamData.totalVested, decimals)}
                   </p>
+                  <p className="text-xs text-text-muted">{assetInfo.symbol}</p>
                 </div>
                 <div>
                   <p className="text-xs text-text-muted">Claimed</p>
                   <p className="mt-1 text-lg font-bold text-status-success">
-                    {BigInt(streamData.claimed).toLocaleString()}
+                    {stroopsToAmount(streamData.claimed, decimals)}
                   </p>
+                  <p className="text-xs text-text-muted">{assetInfo.symbol}</p>
                 </div>
                 <div>
                   <p className="text-xs text-text-muted">Unclaimed</p>
                   <p className="mt-1 text-lg font-bold text-gold">
-                    {BigInt(streamData.unclaimed).toLocaleString()}
+                    {stroopsToAmount(streamData.unclaimed, decimals)}
                   </p>
+                  <p className="text-xs text-text-muted">{assetInfo.symbol}</p>
                 </div>
                 <div>
                   <p className="text-xs text-text-muted">Pending Clawback</p>
                   <p className="mt-1 text-lg font-bold text-status-warning">
-                    {BigInt(streamData.pendingClawback).toLocaleString()}
+                    {stroopsToAmount(streamData.pendingClawback, decimals)}
                   </p>
+                  <p className="text-xs text-text-muted">{assetInfo.symbol}</p>
                 </div>
               </div>
             </div>
@@ -259,22 +295,19 @@ export default function AdminStreamManagementPage() {
                 Clawback Preview
               </p>
               <div className="space-y-4">
-                <div>
-                  <label htmlFor="clawbackAmount" className="block text-sm font-medium text-text-primary mb-2">
-                    Clawback Amount
-                  </label>
-                  <input
-                    id="clawbackAmount"
-                    type="text"
-                    value={clawbackAmount}
-                    onChange={(e) => setClawbackAmount(e.target.value)}
-                    placeholder="Enter amount to clawback"
-                    className="w-full rounded-lg border border-border-default bg-bg-elevated px-4 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-gold focus:outline-none"
-                  />
-                </div>
+                <CurrencyInput
+                  label="Clawback Amount"
+                  value={clawbackInput.value}
+                  onChange={clawbackInput.setValue}
+                  asset={{ ...assetInfo, decimals }}
+                  error={clawbackInput.error}
+                  helperText={`Maximum: ${stroopsToAmount(streamData.unclaimed, decimals)} ${assetInfo.symbol}`}
+                  placeholder="Enter amount to clawback"
+                />
+                
                 <button
                   onClick={() => void handlePreviewClawback()}
-                  disabled={actionLoading || !clawbackAmount}
+                  disabled={actionLoading || !clawbackInput.isValid}
                   className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-text-inverse transition-colors hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {actionLoading ? "Loading..." : "Preview Clawback"}
@@ -286,15 +319,21 @@ export default function AdminStreamManagementPage() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <p className="text-text-muted">Remaining Vested</p>
-                        <p className="font-medium text-text-primary">{clawbackPreview.remainingVested}</p>
+                        <p className="font-medium text-text-primary">
+                          {stroopsToAmount(clawbackPreview.remainingVested, decimals)} {assetInfo.symbol}
+                        </p>
                       </div>
                       <div>
                         <p className="text-text-muted">Requested Clawback</p>
-                        <p className="font-medium text-status-warning">{clawbackPreview.requestedClawback}</p>
+                        <p className="font-medium text-status-warning">
+                          {stroopsToAmount(clawbackPreview.requestedClawback, decimals)} {assetInfo.symbol}
+                        </p>
                       </div>
                       <div>
                         <p className="text-text-muted">Post-Clawback Balance</p>
-                        <p className="font-medium text-text-primary">{clawbackPreview.postClawbackBalance}</p>
+                        <p className="font-medium text-text-primary">
+                          {stroopsToAmount(clawbackPreview.postClawbackBalance, decimals)} {assetInfo.symbol}
+                        </p>
                       </div>
                       <div>
                         <p className="text-text-muted">Timestamp</p>
