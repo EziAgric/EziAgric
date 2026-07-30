@@ -1,6 +1,7 @@
 import { PrismaClient, StreamStatus } from "@prisma/client";
 import { prisma as defaultPrisma } from "../lib/db";
 import { AppError, ErrorCode } from "../errors/errorCodes";
+import { adminNotificationService as defaultAdminNotificationService, AdminNotificationService, extractErrorInfo } from "./adminNotification.service";
 
 /**
  * Admin-initiated stream termination (#24).
@@ -56,15 +57,18 @@ export type CacheInvalidator = (streamId: string) => Promise<void>;
 export class StreamTerminationService {
   private prisma: StreamPrisma;
   private signTransaction?: TransactionSigner;
+  private adminNotification: AdminNotificationService;
   private invalidateCache?: CacheInvalidator;
 
   constructor(
     prisma: StreamPrisma = defaultPrisma,
     signTransaction?: TransactionSigner,
+    adminNotification?: AdminNotificationService,
     invalidateCache?: CacheInvalidator,
   ) {
     this.prisma = prisma;
     this.signTransaction = signTransaction;
+    this.adminNotification = adminNotification ?? defaultAdminNotificationService;
     this.invalidateCache = invalidateCache;
   }
 
@@ -92,76 +96,99 @@ export class StreamTerminationService {
   async terminate(input: TerminateStreamInput): Promise<TerminateStreamResult> {
     const { streamId, adminAddress, reason, unsignedTxXdr } = input;
 
-    const stream = await this.prisma.stream.findUnique({ where: { streamId } });
-
-    if (!stream) {
-      throw new AppError(ErrorCode.NOT_FOUND, `Stream ${streamId} not found`, 404, {
-        streamId,
-      });
-    }
-
-    if (!TERMINABLE_STATUSES.includes(stream.status)) {
-      throw new AppError(
-        ErrorCode.DOMAIN_ERROR,
-        `Stream ${streamId} cannot be terminated from status ${stream.status}`,
-        409,
-        {
-          streamId,
-          status: stream.status,
-          terminableFrom: [...TERMINABLE_STATUSES],
-        },
-      );
-    }
-
-    // Sign before mutating: if signing fails the stream must stay live rather
-    // than be marked terminated with no transaction to submit.
-    let signedTxXdr: string | null = null;
-    if (unsignedTxXdr) {
-      signedTxXdr = this.getSigner()(unsignedTxXdr);
-    }
-
-    const terminatedAt = new Date();
-
-    const updated = await this.prisma.stream.update({
-      where: { streamId },
-      data: {
-        status: StreamStatus.TERMINATED,
-        terminatedAt,
-        terminatedBy: adminAddress,
-        terminationReason: reason ?? null,
-      },
-    });
-
-    await this.prisma.adminActionAudit.create({
-      data: {
-        action: ADMIN_ACTION_STREAM_TERMINATE,
-        actorAddress: adminAddress,
-        targetReference: streamId,
-        note: reason ?? null,
-      },
-    });
-
     try {
-      await this.getCacheInvalidator()(streamId);
-    } catch {
-      // Cache invalidation is best-effort; do not fail the termination
-    }
+      const stream = await this.prisma.stream.findUnique({ where: { streamId } });
 
-    return {
-      streamId,
-      status: updated.status,
-      previousStatus: stream.status,
-      terminatedBy: adminAddress,
-      terminatedAt: terminatedAt.toISOString(),
-      reason: reason ?? null,
-      signedTxXdr,
-      unclaimed: updated.unclaimed,
-    };
+      if (!stream) {
+        throw new AppError(ErrorCode.NOT_FOUND, `Stream ${streamId} not found`, 404, {
+          streamId,
+        });
+      }
+
+      if (!TERMINABLE_STATUSES.includes(stream.status)) {
+        throw new AppError(
+          ErrorCode.DOMAIN_ERROR,
+          `Stream ${streamId} cannot be terminated from status ${stream.status}`,
+          409,
+          {
+            streamId,
+            status: stream.status,
+            terminableFrom: [...TERMINABLE_STATUSES],
+          },
+        );
+      }
+
+      // Sign before mutating: if signing fails the stream must stay live rather
+      // than be marked terminated with no transaction to submit.
+      let signedTxXdr: string | null = null;
+      if (unsignedTxXdr) {
+        signedTxXdr = this.getSigner()(unsignedTxXdr);
+      }
+
+      const terminatedAt = new Date();
+
+      const updated = await this.prisma.stream.update({
+        where: { streamId },
+        data: {
+          status: StreamStatus.TERMINATED,
+          terminatedAt,
+          terminatedBy: adminAddress,
+          terminationReason: reason ?? null,
+        },
+      });
+
+      await this.prisma.adminActionAudit.create({
+        data: {
+          action: ADMIN_ACTION_STREAM_TERMINATE,
+          actorAddress: adminAddress,
+          targetReference: streamId,
+          note: reason ?? null,
+        },
+      });
+
+      const result: TerminateStreamResult = {
+        streamId,
+        status: updated.status,
+        previousStatus: stream.status,
+        terminatedBy: adminAddress,
+        terminatedAt: terminatedAt.toISOString(),
+        reason: reason ?? null,
+        signedTxXdr,
+        unclaimed: updated.unclaimed,
+      };
+
+      this.adminNotification.notifyStreamTerminated({
+        streamId,
+        adminAddress,
+        reason: reason ?? null,
+        previousStatus: stream.status,
+        terminatedAt: terminatedAt.toISOString(),
+        unclaimed: updated.unclaimed,
+      });
+
+      try {
+        await this.getCacheInvalidator()(streamId);
+      } catch {
+        // Cache invalidation is best-effort; do not fail the termination
+      }
+
+      return result;
+    } catch (error) {
+      this.adminNotification.notifyOperationFailed({
+        streamId,
+        adminAddress,
+        action: ADMIN_ACTION_STREAM_TERMINATE,
+        error: extractErrorInfo(error),
+        timestamp: new Date().toISOString(),
+      });
+      throw error;
+    }
   }
 }
 
 export const streamTerminationService = new StreamTerminationService(
   defaultPrisma,
+  undefined,
   undefined,
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("./streamCache.service").invalidateStreamCache,

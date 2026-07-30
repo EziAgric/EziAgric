@@ -130,6 +130,15 @@ export const envSchema = z.object({
   SOROBAN_SUBMIT_BACKOFF_MS: z.string().default('1000,2000,4000,8000'),
   // Hard wall-clock timeout (ms) for admin routes that build Soroban transactions via RPC
   ADMIN_ROUTE_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+
+  // Feature flag to enable/disable admin routes at startup (defaults to disabled)
+  ADMIN_ROUTES_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value: 'true' | 'false') => value === 'true'),
+
+  // Required when admin routes are mounted (server-side Stellar signing key for admin ops)
+  ADMIN_SECRET_KEY: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

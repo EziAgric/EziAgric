@@ -205,7 +205,8 @@ describe("admin route validation harness (#23)", () => {
         .send(route.body);
 
       expect(res.status).toBe(403);
-      expect(res.body.error).toMatch(/admin access required/i);
+      expect(res.body.message).toMatch(/admin access required/i);
+      expect(res.body.code).toBe("AUTH_ERROR");
     });
 
     it("does not reach any service when authorization fails", async () => {
@@ -244,13 +245,13 @@ describe("admin route validation harness (#23)", () => {
     it("rejects a missing required field with a field-named message", async () => {
       const res = await asAdmin("post", "/admin/contract/mediators").send({});
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain("mediatorAddress");
+      expect(res.body.message).toContain("mediatorAddress");
     });
 
     it("rejects a wrong-typed field", async () => {
       const res = await asAdmin("patch", "/admin/contract/fee").send({ feeBps: "100" });
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain("feeBps");
+      expect(res.body.message).toContain("feeBps");
       expect(contractService.buildUpdateFeeBpsTx).not.toHaveBeenCalled();
     });
 
@@ -278,7 +279,7 @@ describe("admin route validation harness (#23)", () => {
     it("rejects a feature flag update with a non-boolean enabled", async () => {
       const res = await asAdmin("patch", "/admin/features/beta").send({ enabled: "yes" });
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain("enabled");
+      expect(res.body.message).toContain("enabled");
     });
 
     it("rejects a rolloutPercentage outside 0-100", async () => {
@@ -292,7 +293,7 @@ describe("admin route validation harness (#23)", () => {
     it("rejects an empty batch of trade updates", async () => {
       const res = await asAdmin("post", "/admin/trades/batch/status").send({ updates: [] });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/at least one update/i);
+      expect(res.body.message).toMatch(/at least one update/i);
       expect(prisma.trade.findFirst).not.toHaveBeenCalled();
     });
 
@@ -303,7 +304,7 @@ describe("admin route validation harness (#23)", () => {
       }));
       const res = await asAdmin("post", "/admin/trades/batch/status").send({ updates });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/maximum 100/i);
+      expect(res.body.message).toMatch(/maximum 100/i);
       expect(prisma.trade.findFirst).not.toHaveBeenCalled();
     });
 
@@ -331,7 +332,7 @@ describe("admin route validation harness (#23)", () => {
         mediatorAddress: address,
       });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/valid Stellar public key/i);
+      expect(res.body.message).toMatch(/valid Stellar public key/i);
       expect(contractService.buildAddMediatorTx).not.toHaveBeenCalled();
     });
 
@@ -346,7 +347,7 @@ describe("admin route validation harness (#23)", () => {
         updates: [{ tradeId: "", status: TradeStatus.CREATED }],
       });
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/tradeId/i);
+      expect(res.body.message).toMatch(/tradeId/i);
       expect(prisma.trade.findFirst).not.toHaveBeenCalled();
     });
 

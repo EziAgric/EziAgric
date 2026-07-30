@@ -2,6 +2,7 @@ import { Response, NextFunction } from "express";
 import { trace, SpanStatusCode } from "@opentelemetry/api";
 import { isMediatorAddress } from "../lib/accessControl";
 import { AuthRequest, AuthService } from "../services/auth.service";
+import { AppError, ErrorCode } from "../errors/errorCodes";
 
 /**
  * Admin authentication middleware (adminAuth health guard).

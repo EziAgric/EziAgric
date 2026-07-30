@@ -266,7 +266,7 @@ export async function handleStreamClawback(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
-  const streamId = String(event.data.stream_id ?? event.data.streamId ?? event.tradeId);
+  const streamId = String(event.data.stream_id ?? event.data.streamId ?? event.tradeId ?? "");
   const admin = String(event.data.admin ?? "");
   const amount = String(event.data.amount ?? "0");
 
@@ -275,7 +275,7 @@ export async function handleStreamClawback(
   logEscrowEvent({
     tradeId: streamId,
     eventType: "StreamClawback",
-    toStatus: TradeStatus.COMPLETED,
+    toStatus: TradeStatus.CANCELLED,
     ledgerSequence: event.ledgerSequence,
     contractId: event.contractId,
     actor: admin,

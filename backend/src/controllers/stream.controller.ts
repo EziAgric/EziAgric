@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 export const getStreamRemaining = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const stream = await prisma.stream.findUnique({
       where: { streamId: id }
@@ -32,7 +32,7 @@ export const getStreamRemaining = async (req: Request, res: Response): Promise<v
 
 export const executeStreamClawback = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { amount, unsignedTxXdr, reason } = req.body;
 
     if (!amount) {
