@@ -6,4 +6,5 @@ export type RootStackParamList = {
   CreateTrade: undefined;
   EvidenceCapture: { tradeId: string };
   VaultDashboard: undefined;
+  AdminStreamsOverview: undefined;
 };
