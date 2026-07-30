@@ -269,7 +269,9 @@
               "DOMAIN_ERROR",
               "INFRA_ERROR",
               "NOT_FOUND",
-              "INTERNAL_ERROR"
+              "INTERNAL_ERROR",
+              "CLAWBACK_TOO_LARGE",
+              "CLAWBACK_INVALID_AMOUNT"
             ]
           },
           "message": {
@@ -390,6 +392,284 @@
           "signedTxXdr": null,
           "unclaimed": "7500",
           "reversible": false
+        }
+      },
+      "VestingState": {
+        "type": "string",
+        "description": "Derived from `claimed` vs. `totalVested` — independent of the stream's\nlifecycle `status`, since e.g. a SUSPENDED stream may already be\nfully vested.",
+        "enum": [
+          "not_started",
+          "vesting",
+          "fully_vested"
+        ]
+      },
+      "AdminStreamSummary": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StreamStatus"
+          },
+          "vestingState": {
+            "$ref": "#/components/schemas/VestingState"
+          },
+          "totalVested": {
+            "type": "string"
+          },
+          "claimed": {
+            "type": "string"
+          },
+          "unclaimed": {
+            "type": "string"
+          },
+          "pendingClawback": {
+            "type": "string"
+          },
+          "adminTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "streamId",
+          "recipient",
+          "status",
+          "vestingState",
+          "totalVested",
+          "claimed",
+          "unclaimed",
+          "pendingClawback",
+          "adminTags",
+          "createdAt",
+          "updatedAt"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "recipient": "GRECIPIENT000000000000000000000000000000000000000000",
+          "status": "ACTIVE",
+          "vestingState": "vesting",
+          "totalVested": "10000",
+          "claimed": "2500",
+          "unclaimed": "7500",
+          "pendingClawback": "0",
+          "adminTags": [
+            "high-value"
+          ],
+          "createdAt": "2026-07-01T00:00:00.000Z",
+          "updatedAt": "2026-07-05T00:00:00.000Z"
+        }
+      },
+      "AdminStreamListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminStreamSummary"
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "totalPages": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "page",
+              "limit",
+              "total",
+              "totalPages"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "pagination"
+        ]
+      },
+      "StreamClawbackPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "pattern": "^\\d+$",
+            "description": "Requested clawback amount as a positive integer string."
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "example": {
+          "amount": "3000"
+        }
+      },
+      "StreamClawbackPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "remainingVested": {
+            "type": "string",
+            "description": "The stream's actual unclaimed vested balance before this clawback."
+          },
+          "requestedClawback": {
+            "type": "string"
+          },
+          "postClawbackBalance": {
+            "type": "string",
+            "description": "remainingVested minus requestedClawback."
+          },
+          "preview": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "streamId",
+          "remainingVested",
+          "requestedClawback",
+          "postClawbackBalance",
+          "preview",
+          "timestamp"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "remainingVested": "7500",
+          "requestedClawback": "3000",
+          "postClawbackBalance": "4500",
+          "preview": true,
+          "timestamp": "2026-07-30T12:00:00.000Z"
+        }
+      },
+      "StreamLockRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Operator-supplied reason for the maintenance lock."
+          }
+        },
+        "example": {
+          "reason": "Scheduled database migration"
+        }
+      },
+      "StreamLockResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "Always true for a successful lock."
+          },
+          "lockedBy": {
+            "type": "string",
+            "description": "Wallet address of the admin who locked the stream."
+          },
+          "lockedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "streamId",
+          "locked",
+          "lockedBy",
+          "lockedAt"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "locked": true,
+          "lockedBy": "GADMIN000000000000000000000000000000000000000000000000",
+          "lockedAt": "2026-07-30T12:00:00.000Z",
+          "reason": "Scheduled database migration"
+        }
+      },
+      "StreamUnlockRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Optional note for the unlock action."
+          }
+        },
+        "example": {
+          "reason": "Maintenance complete"
+        }
+      },
+      "StreamUnlockResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "Always false for a successful unlock."
+          },
+          "unlockedBy": {
+            "type": "string",
+            "description": "Wallet address of the admin who unlocked the stream."
+          },
+          "unlockedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "streamId",
+          "locked",
+          "unlockedBy",
+          "unlockedAt"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "locked": false,
+          "unlockedBy": "GADMIN000000000000000000000000000000000000000000000000",
+          "unlockedAt": "2026-07-30T12:00:00.000Z",
+          "reason": null
         }
       },
       "AuthChallengeRequest": {
@@ -1459,7 +1739,8 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
+        },
+        "operationId": "get.api.admin.audit"
       }
     },
     "/api/admin/features": {
@@ -1481,7 +1762,178 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
+        },
+        "operationId": "get.api.admin.features"
+      }
+    },
+    "/api/admin/streams": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List admin-accessible streams (#51)",
+        "description": "Paginated list of vested token streams, newest first. Supports\nfiltering by lifecycle `status`, derived `vestingState` (how much of\nthe stream has actually vested, independent of lifecycle status),\nand `adminTag` (operator-assigned label). Backs the admin stream\nlist UI that the clawback confirmation flow (#56, #57) is launched\nfrom.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/StreamStatus"
+            }
+          },
+          {
+            "name": "vestingState",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/VestingState"
+            }
+          },
+          {
+            "name": "adminTag",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated stream summaries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStreamListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "get.api.admin.streams"
+      }
+    },
+    "/api/admin/streams/{id}/clawback/preview": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Preview a stream clawback before execution",
+        "description": "Validates a requested clawback amount against the stream's actual\nremaining vested (unclaimed) balance and returns the resulting\npost-clawback balance, without performing the clawback. Powers the\nadmin confirmation modal (#56) and client-side amount validation\n(#57) — the frontend calls this before letting the operator confirm.\n\nConcurrent clawback requests against the same stream are serialized;\na request against a stream with a clawback already in flight gets\n`409`. All routes in this section return `404` when the\n`ADMIN_ROUTES_ENABLED` feature flag is off.\n\nError code references: `NOT_FOUND` (unknown stream),\n`CLAWBACK_INVALID_AMOUNT` (zero/negative amount),\n`CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`),\n`DOMAIN_ERROR` (clawback already in progress for this stream).",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamClawbackPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clawback preview computed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamClawbackPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid amount, or amount exceeds the remaining vested balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "409": {
+            "description": "A clawback is already in progress for this stream.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.clawback.preview"
       }
     },
     "/api/admin/streams/{id}/terminate": {
@@ -1545,7 +1997,7 @@
             "$ref": "#/components/responses/NotFoundError"
           },
           "409": {
-            "description": "Stream is not in a state that can be terminated.",
+            "description": "Stream is not in a state that can be terminated, or the stream is locked for maintenance.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1557,7 +2009,142 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.api.admin.streams.id.terminate"
+      }
+    },
+    "/api/admin/streams/{id}/lock": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Lock a stream for maintenance (admin only)",
+        "description": "Marks a stream as locked for operational maintenance. Idempotent —\nlocking an already-locked stream returns 200 without changing state.\n\nLocked streams reject other admin mutations (suspend, resume,\nterminate, clawback) with `409 Conflict` until unlocked.\nUser-facing operations are unaffected.\n\nEvery successful lock writes an `AdminActionAudit` record\n(`STREAM_LOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamLockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream locked (or already locked).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamLockResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.lock"
+      }
+    },
+    "/api/admin/streams/{id}/unlock": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Unlock a previously locked stream (admin only)",
+        "description": "Removes the maintenance lock from a stream. Idempotent — unlocking an\nalready-unlocked stream returns 200 without changing state.\n\nEvery successful unlock writes an `AdminActionAudit` record\n(`STREAM_UNLOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamUnlockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream unlocked (or already unlocked).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamUnlockResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.unlock"
       }
     },
     "/health": {
@@ -1595,7 +2182,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health"
       }
     },
     "/health/live": {
@@ -1615,7 +2203,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health.live"
       }
     },
     "/health/ready": {
@@ -1652,7 +2241,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health.ready"
       }
     },
     "/health/startup": {
@@ -1690,7 +2280,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.health.startup"
       }
     },
     "/auth/challenge": {
@@ -1742,7 +2333,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "post.auth.challenge"
       }
     },
     "/auth/verify": {
@@ -1797,7 +2389,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "post.auth.verify"
       }
     },
     "/auth/logout": {
@@ -1829,7 +2422,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.auth.logout"
       }
     },
     "/wallet/balance": {
@@ -1874,7 +2468,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.wallet.balance"
       }
     },
     "/wallet/path-payment-quote": {
@@ -1929,7 +2524,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.wallet.path_payment_quote"
       }
     },
     "/users/me": {
@@ -1961,7 +2557,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.users.me"
       },
       "put": {
         "tags": [
@@ -2004,7 +2601,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "put.users.me"
       }
     },
     "/users/{address}": {
@@ -2046,7 +2644,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.users.address"
       }
     },
     "/dispute-categories": {
@@ -2086,7 +2685,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.dispute_categories"
       },
       "post": {
         "tags": [
@@ -2142,7 +2742,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.dispute_categories"
       }
     },
     "/dispute-categories/{id}": {
@@ -2184,7 +2785,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.dispute_categories.id"
       },
       "patch": {
         "tags": [
@@ -2248,7 +2850,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "patch.dispute_categories.id"
       },
       "delete": {
         "tags": [
@@ -2285,7 +2888,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "delete.dispute_categories.id"
       }
     },
     "/disputes": {
@@ -2367,7 +2971,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.disputes"
       }
     },
     "/disputes/{id}/transition": {
@@ -2447,7 +3052,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.disputes.id.transition"
       }
     },
     "/trades": {
@@ -2497,7 +3103,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades"
       },
       "get": {
         "tags": [
@@ -2547,7 +3154,8 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
+        },
+        "operationId": "get.trades"
       }
     },
     "/trades/stats": {
@@ -2576,7 +3184,8 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        }
+        },
+        "operationId": "get.trades.stats"
       }
     },
     "/trades/{id}": {
@@ -2625,7 +3234,8 @@
           "404": {
             "$ref": "#/components/responses/NotFoundError"
           }
-        }
+        },
+        "operationId": "get.trades.id"
       }
     },
     "/trades/{id}/deposit": {
@@ -2674,7 +3284,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.deposit"
       }
     },
     "/trades/{id}/confirm": {
@@ -2739,7 +3350,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.confirm"
       }
     },
     "/trades/{id}/release": {
@@ -2807,7 +3419,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.release"
       }
     },
     "/trades/{id}/dispute": {
@@ -2888,7 +3501,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.dispute"
       }
     },
     "/trades/{id}/manifest": {
@@ -2937,7 +3551,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.trades.id.manifest"
       },
       "post": {
         "tags": [
@@ -3007,7 +3622,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.trades.id.manifest"
       }
     },
     "/trades/{id}/evidence": {
@@ -3062,7 +3678,8 @@
           "404": {
             "$ref": "#/components/responses/NotFoundError"
           }
-        }
+        },
+        "operationId": "get.trades.id.evidence"
       }
     },
     "/evidence/{cid}/stream": {
@@ -3142,7 +3759,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get.evidence.cid.stream"
       }
     },
     "/evidence/video": {
@@ -3254,7 +3872,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "post.evidence.video"
       }
     },
     "/trades/{id}/history": {
@@ -3314,7 +3933,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.trades.id.history"
       }
     },
     "/trades/{id}/history/verify": {
@@ -3378,7 +3998,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.trades.id.history.verify"
       }
     },
     "/api/admin/auth/claims": {
@@ -3437,7 +4058,8 @@
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
           }
-        }
+        },
+        "operationId": "get.api.admin.auth.claims"
       }
     },
     "/api/admin/sessions/revoke": {
@@ -3499,7 +4121,8 @@
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
           }
-        }
+        },
+        "operationId": "post.api.admin.sessions.revoke"
       }
     },
     "/treasury/balance": {
@@ -3542,7 +4165,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.treasury.balance"
       }
     },
     "/treasury/withdraw": {
@@ -3609,7 +4233,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.treasury.withdraw"
       }
     },
     "/treasury/config": {
@@ -3652,7 +4277,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.treasury.config"
       }
     },
     "/admin/contract/mediators": {
@@ -3712,7 +4338,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "post.admin.contract.mediators"
       }
     },
     "/admin/contract/mediators/{address}": {
@@ -3764,7 +4391,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "delete.admin.contract.mediators.address"
       }
     },
     "/admin/contract/fee": {
@@ -3826,7 +4454,152 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "patch.admin.contract.fee"
+      }
+    },
+    "/api/admin/streams/{id}/suspend": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Suspend a vesting stream",
+        "description": "Suspend a stream without immediate clawback. Gated by `ADMIN_ROUTES_ENABLED`.\nError code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream suspended."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.suspend"
+      }
+    },
+    "/api/admin/streams/{id}/resume": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Resume a suspended vesting stream",
+        "description": "Resume a previously suspended stream. Gated by `ADMIN_ROUTES_ENABLED`.\nError code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream resumed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.resume"
       }
     },
     "/goals": {
@@ -3858,7 +4631,8 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        }
+        },
+        "operationId": "get.goals"
       }
     }
   }
