@@ -10,6 +10,10 @@ import {
   StreamTerminationService,
   streamTerminationService,
 } from "../services/streamTermination.service";
+import {
+  StreamLockService,
+  streamLockService,
+} from "../services/streamLock.service";
 
 const streamIdParamSchema = z.object({
   id: z.string().min(1, "Stream ID is required"),
@@ -27,6 +31,14 @@ const resumeBodySchema = z.object({
   note: z.string().min(1).max(500).optional(),
 });
 
+const lockBodySchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+});
+
+const unlockBodySchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+});
+
 const terminateBodySchema = z.object({
   reason: z.string().min(1).max(500).optional(),
   unsignedTxXdr: z.string().min(1).optional(),
@@ -40,6 +52,7 @@ const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
  */
 export function createAdminStreamsRouter(
   terminationService: StreamTerminationService = streamTerminationService,
+  lockService: StreamLockService = streamLockService,
 ) {
   const router = Router();
 
@@ -98,6 +111,8 @@ export function createAdminStreamsRouter(
         const { reason } = req.body as { reason?: string };
         const adminAddress = req.user!.walletAddress;
 
+        await lockService.requireStreamNotLocked(streamId);
+
         // Mock implementation - replace with actual stream service logic
         // This should mark the stream as suspended in the database
         res.status(200).json({
@@ -129,6 +144,8 @@ export function createAdminStreamsRouter(
         const { id: streamId } = req.params as { id: string };
         const { note } = req.body as { note?: string };
         const adminAddress = req.user!.walletAddress;
+
+        await lockService.requireStreamNotLocked(streamId);
 
         // Mock implementation - replace with actual stream service logic
         res.status(200).json({
@@ -169,6 +186,8 @@ export function createAdminStreamsRouter(
         };
         const adminAddress = req.user!.walletAddress;
 
+        await lockService.requireStreamNotLocked(streamId);
+
         const result = await terminationService.terminate({
           streamId,
           adminAddress,
@@ -180,6 +199,67 @@ export function createAdminStreamsRouter(
           ...result,
           reversible: false,
         });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/lock
+   * Lock a stream for maintenance. Idempotent — relocking an already-locked
+   * stream returns 200. Locked streams reject other admin mutations (suspend,
+   * resume, terminate, clawback) with 409 until unlocked.
+   */
+  router.post(
+    "/admin/streams/:id/lock",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema, body: lockBodySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { reason } = req.body as { reason?: string };
+        const adminAddress = req.user!.walletAddress;
+
+        const result = await lockService.lock({
+          streamId,
+          adminAddress,
+          reason,
+        });
+
+        res.status(200).json(result);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/unlock
+   * Unlock a previously locked stream. Idempotent — unlocking an already-
+   * unlocked stream returns 200.
+   */
+  router.post(
+    "/admin/streams/:id/unlock",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema, body: unlockBodySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { reason } = req.body as { reason?: string };
+        const adminAddress = req.user!.walletAddress;
+
+        const result = await lockService.unlock({
+          streamId,
+          adminAddress,
+          reason,
+        });
+
+        res.status(200).json(result);
       } catch (error) {
         next(error);
       }

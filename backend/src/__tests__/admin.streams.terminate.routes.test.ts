@@ -9,7 +9,10 @@
  */
 
 jest.mock("../config/env", () => ({
-  env: { NODE_ENV: "test", JWT_SECRET: "test-jwt-secret-value-with-minimum-length-32" },
+  env: {
+    NODE_ENV: "test",
+    JWT_SECRET: "test-jwt-secret-value-with-minimum-length-32",
+  },
 }));
 
 jest.mock("../config/rateLimit", () => ({
@@ -28,6 +31,31 @@ jest.mock("../services/auth.service", () => ({
   },
 }));
 
+jest.mock("../services/adminNotification.service", () => ({
+  AdminNotificationService: class {},
+  AdminNotificationEvents: {},
+  extractErrorInfo: (error: unknown) => {
+    if (error && typeof error === "object") {
+      const err = error as Record<string, unknown>;
+      return {
+        message: typeof err.message === "string" ? err.message : String(error),
+        code: typeof err.code === "string" ? err.code : undefined,
+        details: typeof err.details === "object" && err.details !== null ? err.details : undefined,
+      };
+    }
+    return { message: String(error) };
+  },
+  adminNotificationService: {
+    notifyStreamLocked: jest.fn(),
+    notifyStreamUnlocked: jest.fn(),
+    notifyStreamTerminated: jest.fn(),
+    notifyOperationFailed: jest.fn(),
+    onSuccess: jest.fn(),
+    onFailure: jest.fn(),
+    removeAllListeners: jest.fn(),
+  },
+}));
+
 const mockIsMediatorAddress = jest.fn();
 jest.mock("../lib/accessControl", () => ({
   isMediatorAddress: (address: string) => mockIsMediatorAddress(address),
@@ -39,11 +67,16 @@ import request from "supertest";
 import { StreamStatus } from "@prisma/client";
 
 import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
+import { StreamLockService } from "../services/streamLock.service";
 import {
   ADMIN_ACTION_STREAM_TERMINATE,
   StreamTerminationService,
 } from "../services/streamTermination.service";
 import { errorHandler } from "../middleware/errorHandler";
+import { adminNotificationService } from "../services/adminNotification.service";
+
+const notifyStreamTerminatedMock = adminNotificationService.notifyStreamTerminated as jest.Mock;
+const notifyOperationFailedMock = adminNotificationService.notifyOperationFailed as jest.Mock;
 
 const JWT_SECRET = "test-jwt-secret-value-with-minimum-length-32";
 const ADMIN_ADDRESS = "GADMIN000000000000000000000000000000000000000000000000";
@@ -89,7 +122,12 @@ function makePrisma(stream: StreamRecord | null) {
         current && current.streamId === where.streamId ? { ...current } : null,
       ),
       update: jest.fn(
-        async ({ data }: { where: { streamId: string }; data: Partial<StreamRecord> }) => {
+        async ({
+          data,
+        }: {
+          where: { streamId: string };
+          data: Partial<StreamRecord>;
+        }) => {
           current = { ...(current as StreamRecord), ...data };
           return { ...current };
         },
@@ -107,10 +145,19 @@ function tokenFor(walletAddress: string): string {
   });
 }
 
-function buildApp(service: StreamTerminationService): Express {
+function buildApp(
+  prismaMock: unknown,
+  signer?: (xdr: string) => string,
+): Express {
   const app = express();
   app.use(express.json());
-  app.use("/api", createAdminStreamsRouter(service));
+  app.use(
+    "/api",
+    createAdminStreamsRouter(
+      new StreamTerminationService(prismaMock as never, signer),
+      new StreamLockService(prismaMock as never),
+    ),
+  );
   app.use(errorHandler);
   return app;
 }
@@ -118,7 +165,9 @@ function buildApp(service: StreamTerminationService): Express {
 describe("POST /api/admin/streams/:id/terminate", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockIsMediatorAddress.mockImplementation((address: string) => address === ADMIN_ADDRESS);
+    mockIsMediatorAddress.mockImplementation(
+      (address: string) => address === ADMIN_ADDRESS,
+    );
   });
 
   // ── Admin protection ────────────────────────────────────────────────────
@@ -126,9 +175,11 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("admin protection", () => {
     it("rejects a request with no bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
-      const res = await request(app).post(`/api/admin/streams/${STREAM_ID}/terminate`).send({});
+      const res = await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/terminate`)
+        .send({});
 
       expect(res.status).toBe(401);
       expect(prisma.stream.update).not.toHaveBeenCalled();
@@ -136,7 +187,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects a malformed bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -149,7 +200,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects an authenticated non-admin caller (403)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -167,7 +218,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("valid termination", () => {
     it("terminates an ACTIVE stream and records who did it", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -199,7 +250,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("terminates a SUSPENDED stream", async () => {
       const prisma = makePrisma(makeStream({ status: StreamStatus.SUSPENDED }));
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -214,7 +265,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("writes an admin audit record for the termination", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -231,10 +282,31 @@ describe("POST /api/admin/streams/:id/terminate", () => {
       });
     });
 
+    it("emits a notification on successful termination", async () => {
+      const prisma = makePrisma(makeStream());
+      const app = buildApp(prisma);
+
+      await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/terminate`)
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({ reason: "Recipient offboarded" });
+
+      expect(notifyStreamTerminatedMock).toHaveBeenCalledTimes(1);
+      expect(notifyStreamTerminatedMock).toHaveBeenCalledWith({
+        streamId: STREAM_ID,
+        adminAddress: ADMIN_ADDRESS,
+        reason: "Recipient offboarded",
+        previousStatus: StreamStatus.ACTIVE,
+        terminatedAt: expect.any(String),
+        unclaimed: "7500",
+      });
+      expect(notifyOperationFailedMock).not.toHaveBeenCalled();
+    });
+
     it("signs the supplied contract transaction and returns it", async () => {
       const prisma = makePrisma(makeStream());
       const signer = jest.fn().mockReturnValue("SIGNED_XDR");
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(prisma, signer);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -249,7 +321,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
     it("performs the backend transition with no signer when no XDR is supplied", async () => {
       const prisma = makePrisma(makeStream());
       const signer = jest.fn();
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(prisma, signer);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -268,7 +340,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("invalid state", () => {
     it("returns 404 for an unknown stream and writes nothing", async () => {
       const prisma = makePrisma(null);
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post("/api/admin/streams/does-not-exist/terminate")
@@ -280,6 +352,38 @@ describe("POST /api/admin/streams/:id/terminate", () => {
       expect(prisma.adminActionAudit.create).not.toHaveBeenCalled();
     });
 
+    it("emits a failure notification when terminate stream not found", async () => {
+      const prisma = makePrisma(null);
+      const app = buildApp(prisma);
+
+      await request(app)
+        .post("/api/admin/streams/does-not-exist/terminate")
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({});
+
+      expect(notifyOperationFailedMock).toHaveBeenCalledTimes(1);
+      const call = notifyOperationFailedMock.mock.calls[0][0];
+      expect(call.streamId).toBe("does-not-exist");
+      expect(call.action).toBe(ADMIN_ACTION_STREAM_TERMINATE);
+      expect(call.error.message).toContain("not found");
+    });
+
+    it("emits a failure notification when stream is in non-terminable state", async () => {
+      const prisma = makePrisma(makeStream({ status: StreamStatus.TERMINATED }));
+      const app = buildApp(prisma);
+
+      await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/terminate`)
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({});
+
+      expect(notifyOperationFailedMock).toHaveBeenCalledTimes(1);
+      const call = notifyOperationFailedMock.mock.calls[0][0];
+      expect(call.streamId).toBe(STREAM_ID);
+      expect(call.action).toBe(ADMIN_ACTION_STREAM_TERMINATE);
+      expect(call.error.message).toContain("cannot be terminated");
+    });
+
     it("returns 409 when the stream is already TERMINATED", async () => {
       const prisma = makePrisma(
         makeStream({
@@ -288,7 +392,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
           terminatedBy: ADMIN_ADDRESS,
         }),
       );
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -302,7 +406,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("returns 409 when the stream is COMPLETED", async () => {
       const prisma = makePrisma(makeStream({ status: StreamStatus.COMPLETED }));
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -314,9 +418,11 @@ describe("POST /api/admin/streams/:id/terminate", () => {
     });
 
     it("validates state before signing, so a rejected termination signs nothing", async () => {
-      const prisma = makePrisma(makeStream({ status: StreamStatus.TERMINATED }));
+      const prisma = makePrisma(
+        makeStream({ status: StreamStatus.TERMINATED }),
+      );
       const signer = jest.fn().mockReturnValue("SIGNED_XDR");
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(prisma, signer);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -332,7 +438,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
       const signer = jest.fn(() => {
         throw new Error("Invalid unsigned transaction XDR.");
       });
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(prisma, signer);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -346,7 +452,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects a second termination of the same stream (409 on replay)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
       const auth = `Bearer ${tokenFor(ADMIN_ADDRESS)}`;
 
       const first = await request(app)
@@ -370,7 +476,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("payload validation", () => {
     it("rejects a non-string reason (400)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -383,7 +489,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects a reason longer than 500 characters (400)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
