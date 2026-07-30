@@ -1,5 +1,8 @@
 import { create } from 'zustand';
+
 import { tradeApi } from '../api/trade';
+import { viewForError } from '../api/errorInterceptor';
+import { AdminErrorView } from '../api/errors';
 import type { Trade, TradeListResult, TradeStatus } from '../types/trade';
 
 interface TradeState {
@@ -7,7 +10,23 @@ interface TradeState {
   total: number;
   currentTrade: Trade | null;
   isLoading: boolean;
-  error: string | null;
+
+  /**
+   * Error view for **load** actions (`fetchTrades`, `fetchTrade`).
+   * Screens that primarily render a list/detail read this and put the
+   * banner above the content.
+   */
+  errorView: AdminErrorView | null;
+  /**
+   * Error view for **mutation** actions (`createTrade`,
+   * `confirmDelivery`, `releaseFunds`, `deposit`, `initiateDispute`).
+   * Kept separate from `errorView` so a successful poll doesn't wipe
+   * the most-recent mutation error before the user can read it (this
+   * mirrors the dual-state pattern used by the admin screens — see
+   * `loadErrorView` vs `actionErrorView`).
+   */
+  lastActionErrorView: AdminErrorView | null;
+
   fetchTrades: (params?: { status?: TradeStatus; page?: number }) => Promise<void>;
   fetchTrade: (tradeId: string) => Promise<void>;
   createTrade: (data: {
@@ -23,7 +42,12 @@ interface TradeState {
   releaseFunds: (tradeId: string) => Promise<void>;
   deposit: (tradeId: string) => Promise<void>;
   initiateDispute: (tradeId: string, reason: string) => Promise<void>;
-  clearError: () => void;
+  /**
+   * Clears both error slots. Called by banner `onGoBack` / `onRetry`
+   * paths and after explicit dismissals so a stale mutation banner
+   * never leaks behind a successful refresh.
+   */
+  clearErrorView: () => void;
 }
 
 export const useTradeStore = create<TradeState>((set, get) => ({
@@ -31,85 +55,93 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   total: 0,
   currentTrade: null,
   isLoading: false,
-  error: null,
+  errorView: null,
+  lastActionErrorView: null,
 
   fetchTrades: async (params) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, errorView: null });
     try {
       const result: TradeListResult = await tradeApi.listTrades(params);
       set({ trades: result.trades, total: result.total, isLoading: false });
-    } catch (e: unknown) {
-      set({ error: (e as Error)?.message ?? 'Failed to load trades', isLoading: false });
+    } catch (error: unknown) {
+      set({ errorView: viewForError(error), isLoading: false });
     }
   },
 
   fetchTrade: async (tradeId) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, errorView: null });
     try {
       const trade = await tradeApi.getTrade(tradeId);
       set({ currentTrade: trade, isLoading: false });
-    } catch (e: unknown) {
-      set({ error: (e as Error)?.message ?? 'Failed to load trade', isLoading: false });
+    } catch (error: unknown) {
+      set({ errorView: viewForError(error), isLoading: false });
     }
   },
 
   createTrade: async (data) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, lastActionErrorView: null });
     try {
       const result = await tradeApi.createTrade(data);
       set({ isLoading: false });
       return result;
-    } catch (e: unknown) {
-      set({ error: (e as Error)?.message ?? 'Failed to create trade', isLoading: false });
+    } catch (error: unknown) {
+      set({ lastActionErrorView: viewForError(error), isLoading: false });
       return null;
     }
   },
 
   confirmDelivery: async (tradeId) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, lastActionErrorView: null });
     try {
       const trade = await tradeApi.confirmDelivery(tradeId);
       set({ currentTrade: trade, isLoading: false });
-    } catch (e: unknown) {
-      set({ error: (e as Error)?.message ?? 'Failed to confirm delivery', isLoading: false });
+    } catch (error: unknown) {
+      set({ lastActionErrorView: viewForError(error), isLoading: false });
     }
   },
 
   releaseFunds: async (tradeId) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, lastActionErrorView: null });
     try {
       await tradeApi.releaseFunds(tradeId);
       if (get().currentTrade) {
+        // Chain: fetchTrade writes to `errorView` (load slot). We
+        // intentionally leave `lastActionErrorView` alone so an
+        // earlier mutation banner stays visible if this chain fails.
         await get().fetchTrade(tradeId);
       }
       set({ isLoading: false });
-    } catch (e: unknown) {
-      set({ error: (e as Error)?.message ?? 'Failed to release funds', isLoading: false });
+    } catch (error: unknown) {
+      set({ lastActionErrorView: viewForError(error), isLoading: false });
     }
   },
 
   deposit: async (tradeId) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, lastActionErrorView: null });
     try {
       await tradeApi.deposit(tradeId);
       if (get().currentTrade) {
         await get().fetchTrade(tradeId);
       }
       set({ isLoading: false });
-    } catch (e: unknown) {
-      set({ error: (e as Error)?.message ?? 'Failed to deposit', isLoading: false });
+    } catch (error: unknown) {
+      set({ lastActionErrorView: viewForError(error), isLoading: false });
     }
   },
 
   initiateDispute: async (tradeId, reason) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, lastActionErrorView: null });
     try {
       const trade = await tradeApi.initiateDispute(tradeId, reason);
       set({ currentTrade: trade, isLoading: false });
-    } catch (e: unknown) {
-      set({ error: (e as Error)?.message ?? 'Failed to initiate dispute', isLoading: false });
+    } catch (error: unknown) {
+      set({ lastActionErrorView: viewForError(error), isLoading: false });
     }
   },
 
-  clearError: () => set({ error: null }),
+  clearErrorView: () =>
+    set({
+      errorView: null,
+      lastActionErrorView: null,
+    }),
 }));
