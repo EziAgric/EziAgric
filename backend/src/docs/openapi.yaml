@@ -15,7 +15,12 @@ info:
     - `iss` must match `JWT_ISSUER` (default `amana`)
     - `aud` must match `JWT_AUDIENCE` (default `amana-api`)
     - `jti` is required and checked against the revocation denylist
-    - `nbf` must be present and not be in the future
+      (revoked tokens are rejected — replay protection)
+    - `iat` (issued-at) must be present and in the past
+    - `exp` (expires-at) is enforced: expired tokens are rejected
+      (default TTL: 86400 s / 24 h, configurable via `JWT_EXPIRES_IN`)
+    - `nbf` (not-before) must be present and not be in the future
+    - Tokens signed with algorithms other than HS256 are rejected
 
     Error code references in operation descriptions map to backend `ErrorCode` values in
     `backend/src/errors/errorCodes.ts`. Some route handlers still emit legacy `{ error }`
@@ -222,6 +227,150 @@ components:
         details:
           - path: body.amountUsdc
             message: Invalid amount format
+    StreamStatus:
+      type: string
+      description: |-
+        Lifecycle state of a vested token stream. ACTIVE and SUSPENDED are live
+        states an admin may terminate from; TERMINATED and COMPLETED are terminal.
+      enum: [ACTIVE, SUSPENDED, TERMINATED, COMPLETED]
+    StreamTerminateRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Operator-supplied reason, stored on the stream and in the admin audit log.
+        unsignedTxXdr:
+          type: string
+          minLength: 1
+          description: |-
+            Base64 unsigned Soroban transaction XDR for the on-chain terminate
+            call. When present it is signed with the admin key and returned as
+            `signedTxXdr`; when absent only the backend transition is performed.
+      example:
+        reason: Recipient offboarded
+    StreamTerminateResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        status:
+          $ref: "#/components/schemas/StreamStatus"
+        previousStatus:
+          $ref: "#/components/schemas/StreamStatus"
+        terminatedBy:
+          type: string
+          description: Wallet address of the admin who terminated the stream.
+        terminatedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+        signedTxXdr:
+          type: string
+          nullable: true
+          description: Signed transaction XDR; null when no unsigned XDR was supplied.
+        unclaimed:
+          type: string
+          description: Unclaimed vested amount at the moment of termination.
+        reversible:
+          type: boolean
+          description: Always false — termination cannot be undone.
+      required:
+        - streamId
+        - status
+        - previousStatus
+        - terminatedBy
+        - terminatedAt
+        - reversible
+      example:
+        streamId: stream-abc-123
+        status: TERMINATED
+        previousStatus: ACTIVE
+        terminatedBy: GADMIN000000000000000000000000000000000000000000000000
+        terminatedAt: "2026-07-30T12:00:00.000Z"
+        reason: Recipient offboarded
+        signedTxXdr: null
+        unclaimed: "7500"
+        reversible: false
+    StreamLockRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Operator-supplied reason for the maintenance lock.
+      example:
+        reason: Scheduled database migration
+    StreamLockResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        locked:
+          type: boolean
+          description: Always true for a successful lock.
+        lockedBy:
+          type: string
+          description: Wallet address of the admin who locked the stream.
+        lockedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+      required:
+        - streamId
+        - locked
+        - lockedBy
+        - lockedAt
+      example:
+        streamId: stream-abc-123
+        locked: true
+        lockedBy: GADMIN000000000000000000000000000000000000000000000000
+        lockedAt: "2026-07-30T12:00:00.000Z"
+        reason: Scheduled database migration
+    StreamUnlockRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Optional note for the unlock action.
+      example:
+        reason: Maintenance complete
+    StreamUnlockResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        locked:
+          type: boolean
+          description: Always false for a successful unlock.
+        unlockedBy:
+          type: string
+          description: Wallet address of the admin who unlocked the stream.
+        unlockedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+      required:
+        - streamId
+        - locked
+        - unlockedBy
+        - unlockedAt
+      example:
+        streamId: stream-abc-123
+        locked: false
+        unlockedBy: GADMIN000000000000000000000000000000000000000000000000
+        unlockedAt: "2026-07-30T12:00:00.000Z"
+        reason: null
     AuthChallengeRequest:
       type: object
       properties:
@@ -872,6 +1021,159 @@ paths:
           description: Feature flag status map returned.
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+  /api/admin/streams/{id}/terminate:
+    post:
+      tags: [Admin]
+      summary: Terminate a stream (admin only)
+      description: |-
+        Permanently terminates a vested token stream. Admin only.
+
+        The stream's state is validated before anything is signed or written:
+        an unknown stream is a `404`, and a stream already in a terminal state
+        (`TERMINATED`, `COMPLETED`) is a `409` rather than a silent no-op, so a
+        double-submit is visible to the operator instead of producing a second
+        audit record for one real action.
+
+        Supplying `unsignedTxXdr` signs the on-chain terminate call with the
+        configured admin key and returns the signed XDR for submission; the
+        resulting on-chain event is ingested by the event listener. Omitting it
+        performs the backend state transition only. Every successful
+        termination writes an `AdminActionAudit` record (`STREAM_TERMINATE`).
+
+        Termination is irreversible — `reversible` is always `false`.
+        Error code references: `NOT_FOUND`, `DOMAIN_ERROR`, `VALIDATION_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamTerminateRequest"
+      responses:
+        "200":
+          description: Stream terminated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamTerminateResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Stream is not in a state that can be terminated, or the stream is locked for maintenance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/lock:
+    post:
+      tags: [Admin]
+      summary: Lock a stream for maintenance (admin only)
+      description: |-
+        Marks a stream as locked for operational maintenance. Idempotent —
+        locking an already-locked stream returns 200 without changing state.
+
+        Locked streams reject other admin mutations (suspend, resume,
+        terminate, clawback) with `409 Conflict` until unlocked.
+        User-facing operations are unaffected.
+
+        Every successful lock writes an `AdminActionAudit` record
+        (`STREAM_LOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamLockRequest"
+      responses:
+        "200":
+          description: Stream locked (or already locked).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamLockResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/unlock:
+    post:
+      tags: [Admin]
+      summary: Unlock a previously locked stream (admin only)
+      description: |-
+        Removes the maintenance lock from a stream. Idempotent — unlocking an
+        already-unlocked stream returns 200 without changing state.
+
+        Every successful unlock writes an `AdminActionAudit` record
+        (`STREAM_UNLOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamUnlockRequest"
+      responses:
+        "200":
+          description: Stream unlocked (or already unlocked).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamUnlockResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /health:
     get:
       tags: [Health]
@@ -1952,6 +2254,7 @@ paths:
         Error code references: `AUTH_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       responses:
         "200":
           description: Sanitized admin JWT claims.
@@ -1976,6 +2279,43 @@ paths:
                   audience:
                     type: string
                     nullable: true
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+  /api/admin/sessions/revoke:
+    post:
+      tags: [Admin]
+      summary: Revoke an active admin session or token JTI
+      description: |-
+        Control plane endpoint to revoke active admin session JTIs.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jti:
+                  type: string
+                  description: Optional session JTI to invalidate (defaults to caller's JTI).
+      responses:
+        "200":
+          description: Admin session revoked successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  jti:
+                    type: string
+                  revokedAt:
+                    type: string
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -2091,6 +2431,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       requestBody:
         required: true
         content:
@@ -2128,6 +2469,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       parameters:
         - name: address
           in: path
@@ -2163,6 +2505,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       requestBody:
         required: true
         content:

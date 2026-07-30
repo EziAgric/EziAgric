@@ -6,7 +6,9 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { createAdminQuotaMiddleware } from "../middleware/adminQuota.middleware";
 import { validateRequest } from "../middleware/validateRequest";
+import { getTraceContext } from "../middleware/tracing.middleware";
 import { AuthRequest } from "../services/auth.service";
+import { appLogger } from "../middleware/logger";
 import { ADMIN_QUOTA_CONFIG } from "../config/adminQuota";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
@@ -111,6 +113,27 @@ export function createAdminTradeBatchRouter(
             succeeded.push(trade.tradeId);
           }
         }
+
+        // Admin audit: record which admin performed batch trade status updates
+        // Log before responding so the audit record isn't lost if the response write fails.
+        const traceCtx = getTraceContext();
+        appLogger.info(
+          {
+            audit: true,
+            eventType: "BATCH_TRADE_STATUS_UPDATE",
+            actionName: "admin.trades.batch.status",
+            totalUpdates: updates.length,
+            succeededCount: succeeded.length,
+            failedCount: failed.length,
+            succeeded: succeeded,
+            failed: failed.map((f) => ({ tradeId: f.tradeId, reason: f.reason })),
+            adminAddress: req.user?.walletAddress,
+            traceId: traceCtx?.traceId,
+            spanId: traceCtx?.spanId,
+            timestamp: new Date().toISOString(),
+          },
+          `[AdminAudit] Batch trade status update: ${succeeded.length} succeeded, ${failed.length} failed by ${req.user?.walletAddress}`,
+        );
 
         await prisma.adminActionAudit.create({
           data: {

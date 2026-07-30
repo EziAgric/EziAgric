@@ -8,6 +8,14 @@ import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 import { streamClawbackService } from "../services/streamClawback.service";
 import { AppError, ErrorCode } from "../errors/errorCodes";
+import {
+  StreamTerminationService,
+  streamTerminationService,
+} from "../services/streamTermination.service";
+import {
+  StreamLockService,
+  streamLockService,
+} from "../services/streamLock.service";
 
 const streamIdParamSchema = z.object({
   id: z.string().min(1, "Stream ID is required"),
@@ -25,9 +33,29 @@ const resumeBodySchema = z.object({
   note: z.string().min(1).max(500).optional(),
 });
 
+const lockBodySchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+});
+
+const unlockBodySchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+});
+
+const terminateBodySchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+  unsignedTxXdr: z.string().min(1).optional(),
+});
+
 const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
 
-export function createAdminStreamsRouter() {
+/**
+ * @param terminationService injected so tests can exercise the route without a
+ * database or an admin signing key.
+ */
+export function createAdminStreamsRouter(
+  terminationService: StreamTerminationService = streamTerminationService,
+  lockService: StreamLockService = streamLockService,
+) {
   const router = Router();
 
   /**
@@ -93,6 +121,8 @@ export function createAdminStreamsRouter() {
         const { reason } = req.body as { reason?: string };
         const adminAddress = req.user!.walletAddress;
 
+        await lockService.requireStreamNotLocked(streamId);
+
         // Mock implementation - replace with actual stream service logic
         // This should mark the stream as suspended in the database
         res.status(200).json({
@@ -125,6 +155,8 @@ export function createAdminStreamsRouter() {
         const { note } = req.body as { note?: string };
         const adminAddress = req.user!.walletAddress;
 
+        await lockService.requireStreamNotLocked(streamId);
+
         // Mock implementation - replace with actual stream service logic
         res.status(200).json({
           streamId,
@@ -133,6 +165,111 @@ export function createAdminStreamsRouter() {
           resumedAt: new Date().toISOString(),
           note: note || "Stream resumed",
         });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/terminate
+   * Terminate a stream permanently. Admin only.
+   *
+   * The stream's state is validated before anything is signed or written:
+   * unknown stream → 404, already-terminal stream → 409. Supplying
+   * `unsignedTxXdr` signs the on-chain terminate call with the admin key and
+   * returns it for submission; omitting it performs the backend transition
+   * only. Every termination writes an AdminActionAudit record.
+   */
+  router.post(
+    "/admin/streams/:id/terminate",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema, body: terminateBodySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { reason, unsignedTxXdr } = req.body as {
+          reason?: string;
+          unsignedTxXdr?: string;
+        };
+        const adminAddress = req.user!.walletAddress;
+
+        await lockService.requireStreamNotLocked(streamId);
+
+        const result = await terminationService.terminate({
+          streamId,
+          adminAddress,
+          reason,
+          unsignedTxXdr,
+        });
+
+        res.status(200).json({
+          ...result,
+          reversible: false,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/lock
+   * Lock a stream for maintenance. Idempotent — relocking an already-locked
+   * stream returns 200. Locked streams reject other admin mutations (suspend,
+   * resume, terminate, clawback) with 409 until unlocked.
+   */
+  router.post(
+    "/admin/streams/:id/lock",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema, body: lockBodySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { reason } = req.body as { reason?: string };
+        const adminAddress = req.user!.walletAddress;
+
+        const result = await lockService.lock({
+          streamId,
+          adminAddress,
+          reason,
+        });
+
+        res.status(200).json(result);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/unlock
+   * Unlock a previously locked stream. Idempotent — unlocking an already-
+   * unlocked stream returns 200.
+   */
+  router.post(
+    "/admin/streams/:id/unlock",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema, body: unlockBodySchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const { reason } = req.body as { reason?: string };
+        const adminAddress = req.user!.walletAddress;
+
+        const result = await lockService.unlock({
+          streamId,
+          adminAddress,
+          reason,
+        });
+
+        res.status(200).json(result);
       } catch (error) {
         next(error);
       }

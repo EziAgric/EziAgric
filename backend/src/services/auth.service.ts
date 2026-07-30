@@ -26,6 +26,9 @@ export interface JWTPayload {
   iss?: string;
   aud?: string;
   nbf?: number;
+  /** Set by adminMiddleware at runtime when the caller is on the ADMIN_STELLAR_PUBKEYS allowlist.
+   *  Not present in the signed JWT — added to the in-memory request context after verification. */
+  isAdmin?: boolean;
 }
 
 export interface AuthRequest extends Request {

@@ -3,7 +3,7 @@
   "info": {
     "title": "Amana Backend API",
     "version": "1.0.0",
-    "description": "OpenAPI coverage for the live Amana backend routes under `backend/src/routes`.\n\nAuthentication flow:\n1. Call `POST /auth/challenge` with a Stellar public key.\n2. Sign the returned challenge with the wallet.\n3. Exchange the signature at `POST /auth/verify` for a bearer token.\n4. Send `Authorization: Bearer <token>` to protected endpoints.\n\nJWT semantics enforced by middleware:\n- `iss` must match `JWT_ISSUER` (default `amana`)\n- `aud` must match `JWT_AUDIENCE` (default `amana-api`)\n- `jti` is required and checked against the revocation denylist\n- `nbf` must be present and not be in the future\n\nError code references in operation descriptions map to backend `ErrorCode` values in\n`backend/src/errors/errorCodes.ts`. Some route handlers still emit legacy `{ error }`\npayloads while centralized validation/runtime failures return `{ code, message, details }`."
+    "description": "OpenAPI coverage for the live Amana backend routes under `backend/src/routes`.\n\nAuthentication flow:\n1. Call `POST /auth/challenge` with a Stellar public key.\n2. Sign the returned challenge with the wallet.\n3. Exchange the signature at `POST /auth/verify` for a bearer token.\n4. Send `Authorization: Bearer <token>` to protected endpoints.\n\nJWT semantics enforced by middleware:\n- `iss` must match `JWT_ISSUER` (default `amana`)\n- `aud` must match `JWT_AUDIENCE` (default `amana-api`)\n- `jti` is required and checked against the revocation denylist\n  (revoked tokens are rejected — replay protection)\n- `iat` (issued-at) must be present and in the past\n- `exp` (expires-at) is enforced: expired tokens are rejected\n  (default TTL: 86400 s / 24 h, configurable via `JWT_EXPIRES_IN`)\n- `nbf` (not-before) must be present and not be in the future\n- Tokens signed with algorithms other than HS256 are rejected\n\nError code references in operation descriptions map to backend `ErrorCode` values in\n`backend/src/errors/errorCodes.ts`. Some route handlers still emit legacy `{ error }`\npayloads while centralized validation/runtime failures return `{ code, message, details }`."
   },
   "servers": [
     {
@@ -16,6 +16,9 @@
     },
     {
       "name": "Auth"
+    },
+    {
+      "name": "Admin"
     },
     {
       "name": "Wallet"
@@ -54,6 +57,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "adminAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-admin-secret",
+        "description": "Secret key authentication for admin-only management routes."
       }
     },
     "parameters": {
@@ -294,6 +303,93 @@
               "message": "Invalid amount format"
             }
           ]
+        }
+      },
+      "StreamStatus": {
+        "type": "string",
+        "description": "Lifecycle state of a vested token stream. ACTIVE and SUSPENDED are live\nstates an admin may terminate from; TERMINATED and COMPLETED are terminal.",
+        "enum": [
+          "ACTIVE",
+          "SUSPENDED",
+          "TERMINATED",
+          "COMPLETED"
+        ]
+      },
+      "StreamTerminateRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Operator-supplied reason, stored on the stream and in the admin audit log."
+          },
+          "unsignedTxXdr": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Base64 unsigned Soroban transaction XDR for the on-chain terminate\ncall. When present it is signed with the admin key and returned as\n`signedTxXdr`; when absent only the backend transition is performed."
+          }
+        },
+        "example": {
+          "reason": "Recipient offboarded"
+        }
+      },
+      "StreamTerminateResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StreamStatus"
+          },
+          "previousStatus": {
+            "$ref": "#/components/schemas/StreamStatus"
+          },
+          "terminatedBy": {
+            "type": "string",
+            "description": "Wallet address of the admin who terminated the stream."
+          },
+          "terminatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "signedTxXdr": {
+            "type": "string",
+            "nullable": true,
+            "description": "Signed transaction XDR; null when no unsigned XDR was supplied."
+          },
+          "unclaimed": {
+            "type": "string",
+            "description": "Unclaimed vested amount at the moment of termination."
+          },
+          "reversible": {
+            "type": "boolean",
+            "description": "Always false — termination cannot be undone."
+          }
+        },
+        "required": [
+          "streamId",
+          "status",
+          "previousStatus",
+          "terminatedBy",
+          "terminatedAt",
+          "reversible"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "status": "TERMINATED",
+          "previousStatus": "ACTIVE",
+          "terminatedBy": "GADMIN000000000000000000000000000000000000000000000000",
+          "terminatedAt": "2026-07-30T12:00:00.000Z",
+          "reason": "Recipient offboarded",
+          "signedTxXdr": null,
+          "unclaimed": "7500",
+          "reversible": false
         }
       },
       "AuthChallengeRequest": {
@@ -1329,6 +1425,141 @@
     }
   },
   "paths": {
+    "/api/admin/audit": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Query administrative audit log events",
+        "description": "Retrieve paginated administrative audit logs with optional filter parameters.",
+        "security": [
+          {
+            "adminAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved admin audit log entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "logs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      }
+    },
+    "/api/admin/features": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List system feature flags",
+        "description": "Get active feature flags and system runtime toggles for administrative controls.",
+        "security": [
+          {
+            "adminAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feature flag status map returned."
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      }
+    },
+    "/api/admin/streams/{id}/terminate": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Terminate a stream (admin only)",
+        "description": "Permanently terminates a vested token stream. Admin only.\n\nThe stream's state is validated before anything is signed or written:\nan unknown stream is a `404`, and a stream already in a terminal state\n(`TERMINATED`, `COMPLETED`) is a `409` rather than a silent no-op, so a\ndouble-submit is visible to the operator instead of producing a second\naudit record for one real action.\n\nSupplying `unsignedTxXdr` signs the on-chain terminate call with the\nconfigured admin key and returns the signed XDR for submission; the\nresulting on-chain event is ingested by the event listener. Omitting it\nperforms the backend state transition only. Every successful\ntermination writes an `AdminActionAudit` record (`STREAM_TERMINATE`).\n\nTermination is irreversible — `reversible` is always `false`.\nError code references: `NOT_FOUND`, `DOMAIN_ERROR`, `VALIDATION_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamTerminateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream terminated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTerminateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "409": {
+            "description": "Stream is not in a state that can be terminated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -3160,6 +3391,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "responses": {
@@ -3191,6 +3425,68 @@
                     "audience": {
                       "type": "string",
                       "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/api/admin/sessions/revoke": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Revoke an active admin session or token JTI",
+        "description": "Control plane endpoint to revoke active admin session JTIs.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jti": {
+                    "type": "string",
+                    "description": "Optional session JTI to invalidate (defaults to caller's JTI)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Admin session revoked successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "jti": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "type": "string"
                     }
                   }
                 }
@@ -3369,6 +3665,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "requestBody": {
@@ -3426,6 +3725,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "parameters": [
@@ -3475,6 +3777,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "requestBody": {
