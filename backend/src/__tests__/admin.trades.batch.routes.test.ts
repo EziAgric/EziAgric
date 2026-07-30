@@ -178,7 +178,7 @@ describe("Admin Trade Batch Route", () => {
       .send({ updates: [{ tradeId: "trade-1", status: TradeStatus.CANCELLED }] });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe("Forbidden: admin access required");
+    expect(res.body.message).toBe("Forbidden: admin access required");
   });
 
   it("returns 400 for empty updates array", async () => {

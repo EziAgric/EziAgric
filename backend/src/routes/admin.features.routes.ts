@@ -4,8 +4,10 @@ import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
+import { getTraceContext } from "../middleware/tracing.middleware";
 import { AuthRequest } from "../services/auth.service";
 import { featureFlagService } from "../services/feature-flags.service";
+import { appLogger } from "../middleware/logger";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
@@ -52,6 +54,24 @@ export function createAdminFeaturesRouter() {
           enabled,
           rolloutPercentage,
         });
+
+        // Admin audit: record which admin changed a feature flag
+        const traceCtx = getTraceContext();
+        appLogger.info(
+          {
+            audit: true,
+            eventType: "FEATURE_FLAG_UPDATED",
+            actionName: "admin.features.update",
+            featureName: name,
+            enabled,
+            rolloutPercentage: rolloutPercentage ?? null,
+            adminAddress: req.user?.walletAddress,
+            traceId: traceCtx?.traceId,
+            spanId: traceCtx?.spanId,
+            timestamp: new Date().toISOString(),
+          },
+          `[AdminAudit] Feature flag '${name}' set to enabled=${enabled} by ${req.user?.walletAddress}`,
+        );
         res.status(200).json({ name, flag });
       } catch (error) {
         next(error);
