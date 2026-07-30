@@ -11,6 +11,14 @@
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { AuthRequest } from "../services/auth.service";
 
+// ── Mock redis so tests never attempt network connections ─────────────────
+jest.mock("../lib/redis", () => ({
+  redis: {
+    exists: jest.fn().mockResolvedValue(0),
+    set: jest.fn().mockResolvedValue("OK"),
+  },
+}));
+
 // ── Mock accessControl so tests never touch env vars ───────────────────────
 jest.mock("../lib/accessControl", () => ({
   isMediatorAddress: jest.fn(),

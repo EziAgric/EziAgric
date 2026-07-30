@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { sorobanAdminService } from "../services/sorobanAdmin.service";
+import { validateAdminReason } from "../lib/adminReason";
 
 const prisma = new PrismaClient();
 
@@ -32,12 +33,14 @@ export const getStreamRemaining = async (req: Request, res: Response): Promise<v
 export const executeStreamClawback = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { amount, unsignedTxXdr } = req.body;
+    const { amount, unsignedTxXdr, reason } = req.body;
 
     if (!amount) {
       res.status(400).json({ error: "Amount is required" });
       return;
     }
+
+    const validatedReason = validateAdminReason(reason, { required: false });
 
     const stream = await prisma.stream.findUnique({
       where: { streamId: id }
@@ -72,6 +75,7 @@ export const executeStreamClawback = async (req: Request, res: Response): Promis
     res.status(200).json({
       message: "Clawback transaction prepared/signed",
       signedTxXdr,
+      reason: validatedReason ?? null,
     });
   } catch (err) {
     console.error("[StreamController] Error executing stream clawback:", err);
