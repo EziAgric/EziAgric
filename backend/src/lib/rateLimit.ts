@@ -12,7 +12,7 @@ function resolveClientIp(req: Request): string {
     return forwarded.split(',')[0].trim();
   }
 
-  return req.ip || req.socket.remoteAddress || 'unknown';
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 function resolveWalletAddress(req: Request): string | undefined {

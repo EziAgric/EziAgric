@@ -968,6 +968,7 @@ paths:
         Error code references: `NOT_FOUND`, `DOMAIN_ERROR`, `VALIDATION_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       parameters:
         - name: id
           in: path
@@ -2085,6 +2086,7 @@ paths:
         Error code references: `AUTH_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       responses:
         "200":
           description: Sanitized admin JWT claims.
@@ -2109,6 +2111,43 @@ paths:
                   audience:
                     type: string
                     nullable: true
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+  /api/admin/sessions/revoke:
+    post:
+      tags: [Admin]
+      summary: Revoke an active admin session or token JTI
+      description: |-
+        Control plane endpoint to revoke active admin session JTIs.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jti:
+                  type: string
+                  description: Optional session JTI to invalidate (defaults to caller's JTI).
+      responses:
+        "200":
+          description: Admin session revoked successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  jti:
+                    type: string
+                  revokedAt:
+                    type: string
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -2224,6 +2263,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       requestBody:
         required: true
         content:
@@ -2261,6 +2301,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       parameters:
         - name: address
           in: path
@@ -2296,6 +2337,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       requestBody:
         required: true
         content:

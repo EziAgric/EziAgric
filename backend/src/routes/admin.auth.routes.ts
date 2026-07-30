@@ -1,7 +1,7 @@
 import { Response, Router } from "express";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
-import { AuthRequest } from "../services/auth.service";
+import { AuthRequest, AuthService } from "../services/auth.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
@@ -33,6 +33,38 @@ export function createAdminAuthRouter(): Router {
         issuer: user.iss ?? null,
         audience: user.aud ?? null,
       });
+    },
+  );
+
+  /**
+   * Control plane API endpoint to revoke active admin sessions (Issue #49).
+   * Accepts optional `jti` in body (or revokes the caller's active token JTI).
+   */
+  router.post(
+    "/api/admin/sessions/revoke",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const jtiToRevoke = req.body?.jti || req.user?.jti;
+        if (!jtiToRevoke || typeof jtiToRevoke !== "string") {
+          res.status(400).json({ error: "Bad Request: missing jti to revoke" });
+          return;
+        }
+
+        const expiresAt = req.user?.exp || Math.floor(Date.now() / 1000) + 86400;
+        await AuthService.revokeToken(jtiToRevoke, expiresAt);
+
+        res.status(200).json({
+          message: "Session revoked successfully",
+          jti: jtiToRevoke,
+          revokedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("REVOKE HANDLER ERROR:", error);
+        res.status(500).json({ error: "Failed to revoke admin session" });
+      }
     },
   );
 
