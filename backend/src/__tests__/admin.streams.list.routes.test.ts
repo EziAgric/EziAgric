@@ -77,7 +77,10 @@ function tokenFor(walletAddress: string): string {
 function buildApp(streamsService: AdminStreamsService): Express {
   const app = express();
   app.use(express.json());
-  app.use("/api", createAdminStreamsRouter(new StreamTerminationService({} as never), streamsService));
+  app.use(
+    "/api",
+    createAdminStreamsRouter(new StreamTerminationService({} as never), undefined, streamsService),
+  );
   app.use(errorHandler);
   return app;
 }

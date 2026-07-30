@@ -570,6 +570,108 @@
           "timestamp": "2026-07-30T12:00:00.000Z"
         }
       },
+      "StreamLockRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Operator-supplied reason for the maintenance lock."
+          }
+        },
+        "example": {
+          "reason": "Scheduled database migration"
+        }
+      },
+      "StreamLockResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "Always true for a successful lock."
+          },
+          "lockedBy": {
+            "type": "string",
+            "description": "Wallet address of the admin who locked the stream."
+          },
+          "lockedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "streamId",
+          "locked",
+          "lockedBy",
+          "lockedAt"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "locked": true,
+          "lockedBy": "GADMIN000000000000000000000000000000000000000000000000",
+          "lockedAt": "2026-07-30T12:00:00.000Z",
+          "reason": "Scheduled database migration"
+        }
+      },
+      "StreamUnlockRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Optional note for the unlock action."
+          }
+        },
+        "example": {
+          "reason": "Maintenance complete"
+        }
+      },
+      "StreamUnlockResponse": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "Always false for a successful unlock."
+          },
+          "unlockedBy": {
+            "type": "string",
+            "description": "Wallet address of the admin who unlocked the stream."
+          },
+          "unlockedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "streamId",
+          "locked",
+          "unlockedBy",
+          "unlockedAt"
+        ],
+        "example": {
+          "streamId": "stream-abc-123",
+          "locked": false,
+          "unlockedBy": "GADMIN000000000000000000000000000000000000000000000000",
+          "unlockedAt": "2026-07-30T12:00:00.000Z",
+          "reason": null
+        }
+      },
       "AuthChallengeRequest": {
         "type": "object",
         "properties": {
@@ -1674,6 +1776,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "parameters": [
@@ -1753,10 +1858,13 @@
           "Admin"
         ],
         "summary": "Preview a stream clawback before execution",
-        "description": "Validates a requested clawback amount against the stream's actual\nremaining vested (unclaimed) balance and returns the resulting\npost-clawback balance, without performing the clawback. Powers the\nadmin confirmation modal (#56) and client-side amount validation\n(#57) — the frontend calls this before letting the operator confirm.\n\nError code references: `NOT_FOUND` (unknown stream),\n`CLAWBACK_INVALID_AMOUNT` (zero/negative amount),\n`CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`).",
+        "description": "Validates a requested clawback amount against the stream's actual\nremaining vested (unclaimed) balance and returns the resulting\npost-clawback balance, without performing the clawback. Powers the\nadmin confirmation modal (#56) and client-side amount validation\n(#57) — the frontend calls this before letting the operator confirm.\n\nConcurrent clawback requests against the same stream are serialized;\na request against a stream with a clawback already in flight gets\n`409`. All routes in this section return `404` when the\n`ADMIN_ROUTES_ENABLED` feature flag is off.\n\nError code references: `NOT_FOUND` (unknown stream),\n`CLAWBACK_INVALID_AMOUNT` (zero/negative amount),\n`CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`),\n`DOMAIN_ERROR` (clawback already in progress for this stream).",
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "parameters": [
@@ -1811,6 +1919,16 @@
           "404": {
             "$ref": "#/components/responses/NotFoundError"
           },
+          "409": {
+            "description": "A clawback is already in progress for this stream.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
@@ -1828,6 +1946,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "parameters": [
@@ -1876,7 +1997,7 @@
             "$ref": "#/components/responses/NotFoundError"
           },
           "409": {
-            "description": "Stream is not in a state that can be terminated.",
+            "description": "Stream is not in a state that can be terminated, or the stream is locked for maintenance.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1890,6 +2011,140 @@
           }
         },
         "operationId": "post.api.admin.streams.id.terminate"
+      }
+    },
+    "/api/admin/streams/{id}/lock": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Lock a stream for maintenance (admin only)",
+        "description": "Marks a stream as locked for operational maintenance. Idempotent —\nlocking an already-locked stream returns 200 without changing state.\n\nLocked streams reject other admin mutations (suspend, resume,\nterminate, clawback) with `409 Conflict` until unlocked.\nUser-facing operations are unaffected.\n\nEvery successful lock writes an `AdminActionAudit` record\n(`STREAM_LOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamLockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream locked (or already locked).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamLockResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.lock"
+      }
+    },
+    "/api/admin/streams/{id}/unlock": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Unlock a previously locked stream (admin only)",
+        "description": "Removes the maintenance lock from a stream. Idempotent — unlocking an\nalready-unlocked stream returns 200 without changing state.\n\nEvery successful unlock writes an `AdminActionAudit` record\n(`STREAM_UNLOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamUnlockRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream unlocked (or already unlocked).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamUnlockResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.unlock"
       }
     },
     "/health": {
@@ -3757,6 +4012,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "responses": {
@@ -3802,6 +4060,69 @@
           }
         },
         "operationId": "get.api.admin.auth.claims"
+      }
+    },
+    "/api/admin/sessions/revoke": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Revoke an active admin session or token JTI",
+        "description": "Control plane endpoint to revoke active admin session JTIs.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jti": {
+                    "type": "string",
+                    "description": "Optional session JTI to invalidate (defaults to caller's JTI)."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Admin session revoked successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "jti": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        },
+        "operationId": "post.api.admin.sessions.revoke"
       }
     },
     "/treasury/balance": {
@@ -3970,6 +4291,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "requestBody": {
@@ -4028,6 +4352,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "parameters": [
@@ -4078,6 +4405,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "adminAuth": []
           }
         ],
         "requestBody": {
@@ -4126,6 +4456,150 @@
           }
         },
         "operationId": "patch.admin.contract.fee"
+      }
+    },
+    "/api/admin/streams/{id}/suspend": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Suspend a vesting stream",
+        "description": "Suspend a stream without immediate clawback. Gated by `ADMIN_ROUTES_ENABLED`.\nError code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream suspended."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.suspend"
+      }
+    },
+    "/api/admin/streams/{id}/resume": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Resume a suspended vesting stream",
+        "description": "Resume a previously suspended stream. Gated by `ADMIN_ROUTES_ENABLED`.\nError code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream resumed."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "post.api.admin.streams.id.resume"
       }
     },
     "/goals": {

@@ -419,6 +419,82 @@ components:
         postClawbackBalance: "4500"
         preview: true
         timestamp: "2026-07-30T12:00:00.000Z"
+    StreamLockRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Operator-supplied reason for the maintenance lock.
+      example:
+        reason: Scheduled database migration
+    StreamLockResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        locked:
+          type: boolean
+          description: Always true for a successful lock.
+        lockedBy:
+          type: string
+          description: Wallet address of the admin who locked the stream.
+        lockedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+      required:
+        - streamId
+        - locked
+        - lockedBy
+        - lockedAt
+      example:
+        streamId: stream-abc-123
+        locked: true
+        lockedBy: GADMIN000000000000000000000000000000000000000000000000
+        lockedAt: "2026-07-30T12:00:00.000Z"
+        reason: Scheduled database migration
+    StreamUnlockRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Optional note for the unlock action.
+      example:
+        reason: Maintenance complete
+    StreamUnlockResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        locked:
+          type: boolean
+          description: Always false for a successful unlock.
+        unlockedBy:
+          type: string
+          description: Wallet address of the admin who unlocked the stream.
+        unlockedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+      required:
+        - streamId
+        - locked
+        - unlockedBy
+        - unlockedAt
+      example:
+        streamId: stream-abc-123
+        locked: false
+        unlockedBy: GADMIN000000000000000000000000000000000000000000000000
+        unlockedAt: "2026-07-30T12:00:00.000Z"
+        reason: null
     AuthChallengeRequest:
       type: object
       properties:
@@ -1082,6 +1158,7 @@ paths:
         from.
       security:
         - bearerAuth: []
+        - adminAuth: []
       parameters:
         - name: page
           in: query
@@ -1136,11 +1213,18 @@ paths:
         admin confirmation modal (#56) and client-side amount validation
         (#57) — the frontend calls this before letting the operator confirm.
 
+        Concurrent clawback requests against the same stream are serialized;
+        a request against a stream with a clawback already in flight gets
+        `409`. All routes in this section return `404` when the
+        `ADMIN_ROUTES_ENABLED` feature flag is off.
+
         Error code references: `NOT_FOUND` (unknown stream),
         `CLAWBACK_INVALID_AMOUNT` (zero/negative amount),
-        `CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`).
+        `CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`),
+        `DOMAIN_ERROR` (clawback already in progress for this stream).
       security:
         - bearerAuth: []
+        - adminAuth: []
       parameters:
         - name: id
           in: path
@@ -1174,6 +1258,12 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: A clawback is already in progress for this stream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/admin/streams/{id}/terminate:
@@ -1199,6 +1289,7 @@ paths:
         Error code references: `NOT_FOUND`, `DOMAIN_ERROR`, `VALIDATION_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       parameters:
         - name: id
           in: path
@@ -1229,11 +1320,103 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          description: Stream is not in a state that can be terminated.
+          description: Stream is not in a state that can be terminated, or the stream is locked for maintenance.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/lock:
+    post:
+      tags: [Admin]
+      summary: Lock a stream for maintenance (admin only)
+      description: |-
+        Marks a stream as locked for operational maintenance. Idempotent —
+        locking an already-locked stream returns 200 without changing state.
+
+        Locked streams reject other admin mutations (suspend, resume,
+        terminate, clawback) with `409 Conflict` until unlocked.
+        User-facing operations are unaffected.
+
+        Every successful lock writes an `AdminActionAudit` record
+        (`STREAM_LOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamLockRequest"
+      responses:
+        "200":
+          description: Stream locked (or already locked).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamLockResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/unlock:
+    post:
+      tags: [Admin]
+      summary: Unlock a previously locked stream (admin only)
+      description: |-
+        Removes the maintenance lock from a stream. Idempotent — unlocking an
+        already-unlocked stream returns 200 without changing state.
+
+        Every successful unlock writes an `AdminActionAudit` record
+        (`STREAM_UNLOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamUnlockRequest"
+      responses:
+        "200":
+          description: Stream unlocked (or already unlocked).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamUnlockResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
   /health:
@@ -2316,6 +2499,7 @@ paths:
         Error code references: `AUTH_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       responses:
         "200":
           description: Sanitized admin JWT claims.
@@ -2340,6 +2524,43 @@ paths:
                   audience:
                     type: string
                     nullable: true
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+  /api/admin/sessions/revoke:
+    post:
+      tags: [Admin]
+      summary: Revoke an active admin session or token JTI
+      description: |-
+        Control plane endpoint to revoke active admin session JTIs.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jti:
+                  type: string
+                  description: Optional session JTI to invalidate (defaults to caller's JTI).
+      responses:
+        "200":
+          description: Admin session revoked successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  jti:
+                    type: string
+                  revokedAt:
+                    type: string
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -2455,6 +2676,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       requestBody:
         required: true
         content:
@@ -2492,6 +2714,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       parameters:
         - name: address
           in: path
@@ -2527,6 +2750,7 @@ paths:
         Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
       security:
         - bearerAuth: []
+        - adminAuth: []
       requestBody:
         required: true
         content:
@@ -2553,6 +2777,90 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/suspend:
+    post:
+      tags: [Admin]
+      summary: Suspend a vesting stream
+      description: |-
+        Suspend a stream without immediate clawback. Gated by `ADMIN_ROUTES_ENABLED`.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Stream suspended.
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/resume:
+    post:
+      tags: [Admin]
+      summary: Resume a suspended vesting stream
+      description: |-
+        Resume a previously suspended stream. Gated by `ADMIN_ROUTES_ENABLED`.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Stream resumed.
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
   /goals:

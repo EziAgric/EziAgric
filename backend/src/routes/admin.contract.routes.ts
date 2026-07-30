@@ -53,7 +53,7 @@ export function createAdminContractRouter(
           trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
-        await prisma.adminActionAudit.create({
+        await prisma?.adminActionAudit.create({
           data: { action: "ADD_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
         });
         if (res.headersSent) return;
@@ -80,7 +80,7 @@ export function createAdminContractRouter(
           trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
-        await prisma.adminActionAudit.create({
+        await prisma?.adminActionAudit.create({
           data: { action: "REMOVE_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
         });
         if (res.headersSent) return;
@@ -107,7 +107,7 @@ export function createAdminContractRouter(
           trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
-        await prisma.adminActionAudit.create({
+        await prisma?.adminActionAudit.create({
           data: { action: "UPDATE_FEE_BPS", actorAddress: adminAddress, targetReference: String(feeBps) },
         });
         if (res.headersSent) return;
