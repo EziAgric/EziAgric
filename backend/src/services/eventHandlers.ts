@@ -3,6 +3,7 @@ import { EventType, ParsedEvent, EVENT_TO_STATUS } from "../types/events";
 import { appLogger } from "../middleware/logger";
 import { webhookService } from "./webhook.service";
 import { logEscrowEvent } from "../lib/escrowAudit";
+import { invalidateStreamCache } from "./streamCache.service";
 
 type TradeCreatePayload = {
   tradeId: string;
@@ -65,13 +66,13 @@ export async function handleTradeCreated(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
-  const status = EVENT_TO_STATUS[event.eventType];
+  const targetStatus = EVENT_TO_STATUS[event.eventType] ?? TradeStatus.CREATED;
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: (event.data.buyer as string) || "",
     sellerAddress: (event.data.seller as string) || "",
     amountUsdc: String(event.data.amount_usdc ?? "0"),
-    status,
+    status: targetStatus,
     version: 1,
   });
   logEscrowEvent({
@@ -100,12 +101,12 @@ export async function handleTradeFunded(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
-  const status = EVENT_TO_STATUS[event.eventType];
+  const targetStatus = EVENT_TO_STATUS[event.eventType] ?? TradeStatus.FUNDED;
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status,
+    status: targetStatus,
     version: 1,
   });
   logEscrowEvent({
@@ -144,12 +145,12 @@ export async function handleDeliveryConfirmed(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
-  const status = EVENT_TO_STATUS[event.eventType];
+  const targetStatus = EVENT_TO_STATUS[event.eventType] ?? TradeStatus.DELIVERED;
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status,
+    status: targetStatus,
     version: 1,
   });
   logEscrowEvent({
@@ -172,12 +173,12 @@ export async function handleFundsReleased(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
-  const status = EVENT_TO_STATUS[event.eventType];
+  const targetStatus = EVENT_TO_STATUS[event.eventType] ?? TradeStatus.COMPLETED;
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status,
+    status: targetStatus,
     version: 1,
   });
   logEscrowEvent({
@@ -205,12 +206,12 @@ export async function handleDisputeInitiated(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
-  const status = EVENT_TO_STATUS[event.eventType];
+  const targetStatus = EVENT_TO_STATUS[event.eventType] ?? TradeStatus.DISPUTED;
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status,
+    status: targetStatus,
     version: 1,
   });
   logEscrowEvent({
@@ -235,12 +236,12 @@ export async function handleDisputeResolved(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
-  const status = EVENT_TO_STATUS[event.eventType];
+  const targetStatus = EVENT_TO_STATUS[event.eventType] ?? TradeStatus.COMPLETED;
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
     sellerAddress: "",
-    status,
+    status: targetStatus,
     version: 1,
   });
   logEscrowEvent({
@@ -261,7 +262,10 @@ export async function handleDisputeResolved(
   });
 }
 
-export async function handleStreamClawback(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+export async function handleStreamClawback(
+  tx: Prisma.TransactionClient,
+  event: ParsedEvent,
+): Promise<void> {
   const streamId = String(event.data.stream_id ?? event.data.streamId ?? event.tradeId ?? "");
   const admin = String(event.data.admin ?? "");
   const amount = String(event.data.amount ?? "0");
@@ -296,7 +300,10 @@ export async function handleStreamClawback(tx: Prisma.TransactionClient, event: 
     },
   });
 
-  appLogger.debug({ streamId, admin, amount, ledger: event.ledgerSequence }, "[EventHandler] StreamClawback");
+  appLogger.debug(
+    { streamId, admin, amount, ledger: event.ledgerSequence },
+    "[EventHandler] StreamClawback",
+  );
 }
 
 /** Dispatch a parsed event to the correct handler */
@@ -320,6 +327,12 @@ export async function dispatchEvent(
   const handler = handlers[event.eventType];
   if (handler) {
     await handler(tx, event);
+    if (event.eventType === EventType.StreamClawback) {
+      const streamId = String(event.data.stream_id ?? event.data.streamId ?? event.tradeId);
+      if (streamId) {
+        await invalidateStreamCache(streamId);
+      }
+    }
   } else {
     appLogger.warn(
       { eventType: event.eventType },

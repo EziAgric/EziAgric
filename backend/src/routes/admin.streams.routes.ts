@@ -8,10 +8,15 @@ import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 import { streamClawbackService } from "../services/streamClawback.service";
 import { AppError, ErrorCode } from "../errors/errorCodes";
+import { adminNotificationService, extractErrorInfo } from "../services/adminNotification.service";
 import {
   StreamTerminationService,
   streamTerminationService,
+  ADMIN_ACTION_STREAM_TERMINATE,
 } from "../services/streamTermination.service";
+import {
+  getCachedStreamState,
+} from "../services/streamCache.service";
 import {
   StreamLockService,
   streamLockService,
@@ -57,6 +62,33 @@ export function createAdminStreamsRouter(
   lockService: StreamLockService = streamLockService,
 ) {
   const router = Router();
+
+  /**
+   * GET /api/admin/streams/:id
+   * Retrieve cached stream state for admin queries.
+   * Returns cached result when fresh, otherwise fetches from DB and caches it.
+   */
+  router.get(
+    "/admin/streams/:id",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+        const state = await getCachedStreamState(streamId);
+
+        if (!state) {
+          res.status(404).json({ error: "Stream not found" });
+          return;
+        }
+
+        res.status(200).json(state);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   /**
    * POST /api/admin/streams/:id/clawback/preview
@@ -210,6 +242,16 @@ export function createAdminStreamsRouter(
           reversible: false,
         });
       } catch (error) {
+        if (error instanceof AppError && error.statusCode === 404) {
+          const { id } = req.params as { id: string };
+          adminNotificationService.notifyOperationFailed({
+            streamId: id,
+            adminAddress: req.user!.walletAddress,
+            action: ADMIN_ACTION_STREAM_TERMINATE,
+            error: extractErrorInfo(error),
+            timestamp: new Date().toISOString(),
+          });
+        }
         next(error);
       }
     },

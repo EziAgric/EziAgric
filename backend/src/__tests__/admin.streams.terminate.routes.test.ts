@@ -71,6 +71,7 @@ import { StreamLockService } from "../services/streamLock.service";
 import {
   ADMIN_ACTION_STREAM_TERMINATE,
   StreamTerminationService,
+  CacheInvalidator,
 } from "../services/streamTermination.service";
 import { errorHandler } from "../middleware/errorHandler";
 import { adminNotificationService } from "../services/adminNotification.service";
@@ -145,6 +146,8 @@ function tokenFor(walletAddress: string): string {
   });
 }
 
+const noopCacheInvalidator: CacheInvalidator = jest.fn().mockResolvedValue(undefined);
+
 function buildApp(
   prismaMock: unknown,
   signer?: (xdr: string) => string,
@@ -154,7 +157,7 @@ function buildApp(
   app.use(
     "/api",
     createAdminStreamsRouter(
-      new StreamTerminationService(prismaMock as never, signer),
+      new StreamTerminationService(prismaMock as never, signer, undefined, noopCacheInvalidator),
       new StreamLockService(prismaMock as never),
     ),
   );
