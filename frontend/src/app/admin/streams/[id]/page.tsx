@@ -24,7 +24,7 @@ export default function AdminStreamManagementPage() {
   const router = useRouter();
   const streamId = params.id as string;
   const { token, isAuthenticated, isLoading: authLoading } = useAuth();
-  const { isAdmin } = useAdmin();
+  const { canAccessAdmin, isAdminUIEnabled } = useAdmin();
 
   const [streamData, setStreamData] = useState<StreamRemainingResponse | null>(null);
   const [clawbackPreview, setClawbackPreview] = useState<ClawbackPreviewResponse | null>(null);
@@ -169,7 +169,29 @@ export default function AdminStreamManagementPage() {
     );
   }
 
-  if (!isAuthenticated || !isAdmin) {
+  // Check feature flag first
+  if (!isAdminUIEnabled) {
+    return (
+      <section className="min-h-full bg-bg-primary px-6 py-8 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <ErrorState
+            title="Feature Not Available"
+            message="Admin features are currently not available."
+          />
+          <div className="mt-6 text-center">
+            <Link
+              href={`/streams/${streamId}`}
+              className="inline-flex rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-text-inverse hover:bg-gold-hover transition-colors"
+            >
+              View Stream Details
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!isAuthenticated || !canAccessAdmin) {
     return (
       <section className="min-h-full bg-bg-primary px-6 py-8 lg:px-10">
         <div className="mx-auto max-w-7xl">

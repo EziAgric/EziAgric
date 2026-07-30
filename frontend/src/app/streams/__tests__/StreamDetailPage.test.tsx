@@ -49,8 +49,8 @@ describe("StreamDetailPage", () => {
     mockUseParams.mockReturnValue({ id: mockStreamId });
   });
 
-  describe("Admin Link Visibility", () => {
-    it("shows admin action link when user is authenticated as admin", async () => {
+  describe("Admin Link Visibility with Feature Flag", () => {
+    it("shows admin action link when user is admin and feature flag is enabled", async () => {
       mockUseAuth.mockReturnValue({
         token: "mock-token",
         isAuthenticated: true,
@@ -68,6 +68,8 @@ describe("StreamDetailPage", () => {
 
       mockUseAdmin.mockReturnValue({
         isAdmin: true,
+        isAdminUIEnabled: true,
+        canAccessAdmin: true,
         adminAddresses: ["GADMIN123"],
       });
 
@@ -81,6 +83,40 @@ describe("StreamDetailPage", () => {
 
       const adminLink = screen.getByText("Manage Stream").closest("a");
       expect(adminLink).toHaveAttribute("href", `/admin/streams/${mockStreamId}`);
+    });
+
+    it("does not show admin action link when feature flag is disabled", async () => {
+      mockUseAuth.mockReturnValue({
+        token: "mock-token",
+        isAuthenticated: true,
+        isLoading: false,
+        address: "GADMIN123",
+        shortAddress: "GADMIN...123",
+        isWalletConnected: true,
+        isWalletDetected: true,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      mockUseAdmin.mockReturnValue({
+        isAdmin: true,
+        isAdminUIEnabled: false,
+        canAccessAdmin: false,
+        adminAddresses: ["GADMIN123"],
+      });
+
+      (api.streams.getRemaining as jest.Mock).mockResolvedValue(mockStreamData);
+
+      render(<StreamDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Stream Details")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText("Manage Stream")).not.toBeInTheDocument();
     });
 
     it("does not show admin action link when user is not admin", async () => {
@@ -101,6 +137,8 @@ describe("StreamDetailPage", () => {
 
       mockUseAdmin.mockReturnValue({
         isAdmin: false,
+        isAdminUIEnabled: true,
+        canAccessAdmin: false,
         adminAddresses: ["GADMIN123"],
       });
 
@@ -133,6 +171,8 @@ describe("StreamDetailPage", () => {
 
       mockUseAdmin.mockReturnValue({
         isAdmin: false,
+        isAdminUIEnabled: true,
+        canAccessAdmin: false,
         adminAddresses: ["GADMIN123"],
       });
 
