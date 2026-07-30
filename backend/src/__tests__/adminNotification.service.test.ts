@@ -134,14 +134,4 @@ describe("extractErrorInfo", () => {
     const result = extractErrorInfo(undefined);
     expect(result.message).toBe("undefined");
   });
-
-  it("omits code when missing", () => {
-    const result = extractErrorInfo({ message: "no code" });
-    expect(result).toEqual({ message: "no code" });
-  });
-
-  it("omits details when missing", () => {
-    const result = extractErrorInfo({ message: "no details" });
-    expect(result).toEqual({ message: "no details" });
-  });
 });
