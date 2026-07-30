@@ -42,6 +42,7 @@ import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import {
   ADMIN_ACTION_STREAM_TERMINATE,
   StreamTerminationService,
+  CacheInvalidator,
 } from "../services/streamTermination.service";
 import { errorHandler } from "../middleware/errorHandler";
 
@@ -107,6 +108,8 @@ function tokenFor(walletAddress: string): string {
   });
 }
 
+const noopCacheInvalidator: CacheInvalidator = jest.fn().mockResolvedValue(undefined);
+
 function buildApp(service: StreamTerminationService): Express {
   const app = express();
   app.use(express.json());
@@ -126,7 +129,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("admin protection", () => {
     it("rejects a request with no bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app).post(`/api/admin/streams/${STREAM_ID}/terminate`).send({});
 
@@ -136,7 +139,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects a malformed bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -149,7 +152,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects an authenticated non-admin caller (403)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -167,7 +170,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("valid termination", () => {
     it("terminates an ACTIVE stream and records who did it", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -199,7 +202,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("terminates a SUSPENDED stream", async () => {
       const prisma = makePrisma(makeStream({ status: StreamStatus.SUSPENDED }));
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -214,7 +217,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("writes an admin audit record for the termination", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -234,7 +237,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
     it("signs the supplied contract transaction and returns it", async () => {
       const prisma = makePrisma(makeStream());
       const signer = jest.fn().mockReturnValue("SIGNED_XDR");
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(new StreamTerminationService(prisma as never, signer, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -249,7 +252,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
     it("performs the backend transition with no signer when no XDR is supplied", async () => {
       const prisma = makePrisma(makeStream());
       const signer = jest.fn();
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(new StreamTerminationService(prisma as never, signer, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -268,7 +271,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("invalid state", () => {
     it("returns 404 for an unknown stream and writes nothing", async () => {
       const prisma = makePrisma(null);
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post("/api/admin/streams/does-not-exist/terminate")
@@ -288,7 +291,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
           terminatedBy: ADMIN_ADDRESS,
         }),
       );
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -302,7 +305,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("returns 409 when the stream is COMPLETED", async () => {
       const prisma = makePrisma(makeStream({ status: StreamStatus.COMPLETED }));
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -316,7 +319,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
     it("validates state before signing, so a rejected termination signs nothing", async () => {
       const prisma = makePrisma(makeStream({ status: StreamStatus.TERMINATED }));
       const signer = jest.fn().mockReturnValue("SIGNED_XDR");
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(new StreamTerminationService(prisma as never, signer, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -332,7 +335,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
       const signer = jest.fn(() => {
         throw new Error("Invalid unsigned transaction XDR.");
       });
-      const app = buildApp(new StreamTerminationService(prisma as never, signer));
+      const app = buildApp(new StreamTerminationService(prisma as never, signer, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -346,7 +349,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects a second termination of the same stream (409 on replay)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
       const auth = `Bearer ${tokenFor(ADMIN_ADDRESS)}`;
 
       const first = await request(app)
@@ -370,7 +373,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
   describe("payload validation", () => {
     it("rejects a non-string reason (400)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)
@@ -383,7 +386,7 @@ describe("POST /api/admin/streams/:id/terminate", () => {
 
     it("rejects a reason longer than 500 characters (400)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new StreamTerminationService(prisma as never));
+      const app = buildApp(new StreamTerminationService(prisma as never, undefined, noopCacheInvalidator));
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/terminate`)

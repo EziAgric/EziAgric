@@ -51,13 +51,21 @@ export type TransactionSigner = (unsignedTxXdr: string) => string;
 
 type StreamPrisma = Pick<PrismaClient, "stream" | "adminActionAudit">;
 
+export type CacheInvalidator = (streamId: string) => Promise<void>;
+
 export class StreamTerminationService {
   private prisma: StreamPrisma;
   private signTransaction?: TransactionSigner;
+  private invalidateCache?: CacheInvalidator;
 
-  constructor(prisma: StreamPrisma = defaultPrisma, signTransaction?: TransactionSigner) {
+  constructor(
+    prisma: StreamPrisma = defaultPrisma,
+    signTransaction?: TransactionSigner,
+    invalidateCache?: CacheInvalidator,
+  ) {
     this.prisma = prisma;
     this.signTransaction = signTransaction;
+    this.invalidateCache = invalidateCache;
   }
 
   /**
@@ -71,6 +79,14 @@ export class StreamTerminationService {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { sorobanAdminService } = require("./sorobanAdmin.service");
     return (xdr: string) => sorobanAdminService.signTransaction(xdr);
+  }
+
+  private getCacheInvalidator(): CacheInvalidator {
+    if (this.invalidateCache) return this.invalidateCache;
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { invalidateStreamCache } = require("./streamCache.service");
+    return invalidateStreamCache;
   }
 
   async terminate(input: TerminateStreamInput): Promise<TerminateStreamResult> {
@@ -125,6 +141,12 @@ export class StreamTerminationService {
       },
     });
 
+    try {
+      await this.getCacheInvalidator()(streamId);
+    } catch {
+      // Cache invalidation is best-effort; do not fail the termination
+    }
+
     return {
       streamId,
       status: updated.status,
@@ -138,4 +160,9 @@ export class StreamTerminationService {
   }
 }
 
-export const streamTerminationService = new StreamTerminationService();
+export const streamTerminationService = new StreamTerminationService(
+  defaultPrisma,
+  undefined,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("./streamCache.service").invalidateStreamCache,
+);
