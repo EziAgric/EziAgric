@@ -10,6 +10,10 @@ import {
   StreamTerminationService,
   streamTerminationService,
 } from "../services/streamTermination.service";
+import {
+  StreamReconciliationService,
+  streamReconciliationService,
+} from "../services/streamReconciliation.service";
 
 const streamIdParamSchema = z.object({
   id: z.string().min(1, "Stream ID is required"),
@@ -37,9 +41,12 @@ const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
 /**
  * @param terminationService injected so tests can exercise the route without a
  * database or an admin signing key.
+ * @param reconciliationService injected so tests can exercise the route without a
+ * database.
  */
 export function createAdminStreamsRouter(
   terminationService: StreamTerminationService = streamTerminationService,
+  reconciliationService: StreamReconciliationService = streamReconciliationService,
 ) {
   const router = Router();
 
@@ -180,6 +187,33 @@ export function createAdminStreamsRouter(
           ...result,
           reversible: false,
         });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  /**
+   * POST /api/admin/streams/:id/reconcile
+   * Reconcile a stream's backend state against on-chain contract events.
+   *
+   * Compares the stream's DB record against ingested on-chain events
+   * (StreamClawbackEvent, ProcessedEvent) and admin audit actions, returning
+   * a structured reconciliation result with any mismatches. Admin only.
+   */
+  router.post(
+    "/admin/streams/:id/reconcile",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+
+        const result = await reconciliationService.reconcile(streamId);
+
+        res.status(200).json(result);
       } catch (error) {
         next(error);
       }

@@ -295,6 +295,98 @@ components:
         signedTxXdr: null
         unclaimed: "7500"
         reversible: false
+    StreamReconciliationMismatch:
+      type: object
+      properties:
+        field:
+          type: string
+          description: The field that differs between expected and actual.
+        expected:
+          type: string
+          description: The value computed from on-chain events or derived from them.
+        actual:
+          type: string
+          description: The value currently stored in the backend database.
+        source:
+          type: string
+          enum: [on-chain, backend, computed]
+          description: Where the expected value comes from.
+        description:
+          type: string
+          description: Human-readable explanation of the mismatch.
+      required: [field, expected, actual, source, description]
+      example:
+        field: pendingClawback
+        expected: "5000"
+        actual: "0"
+        source: on-chain
+        description: Sum of StreamClawbackEvent amounts does not match the stream's pendingClawback field
+    StreamReconciliationResponse:
+      type: object
+      description: |-
+        Result of comparing a stream's backend state against on-chain contract
+        events. `consistent` is true when no mismatches were found.
+      properties:
+        streamId:
+          type: string
+        reconciledAt:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp of when the reconciliation was performed.
+        consistent:
+          type: boolean
+          description: True when no mismatches were found.
+        mismatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/StreamReconciliationMismatch"
+        streamSnapshot:
+          type: object
+          properties:
+            status:
+              type: string
+            totalVested:
+              type: string
+            claimed:
+              type: string
+            unclaimed:
+              type: string
+            pendingClawback:
+              type: string
+          required: [status, totalVested, claimed, unclaimed, pendingClawback]
+        onChainSummary:
+          type: object
+          properties:
+            clawbackEventCount:
+              type: integer
+            totalClawedBackOnChain:
+              type: string
+          required: [clawbackEventCount, totalClawedBackOnChain]
+        adminActionCount:
+          type: integer
+      required:
+        - streamId
+        - reconciledAt
+        - consistent
+        - mismatches
+        - streamSnapshot
+        - onChainSummary
+        - adminActionCount
+      example:
+        streamId: stream-abc-123
+        reconciledAt: "2026-07-30T12:00:00.000Z"
+        consistent: true
+        mismatches: []
+        streamSnapshot:
+          status: ACTIVE
+          totalVested: "10000"
+          claimed: "2500"
+          unclaimed: "7500"
+          pendingClawback: "0"
+        onChainSummary:
+          clawbackEventCount: 0
+          totalClawedBackOnChain: "0"
+        adminActionCount: 0
     AuthChallengeRequest:
       type: object
       properties:
@@ -1004,6 +1096,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/reconcile:
+    post:
+      tags: [Admin]
+      summary: Reconcile a stream's backend state against on-chain events
+      description: |-
+        Compares a stream's backend database record against ingested on-chain
+        contract events (StreamClawbackEvent, ProcessedEvent) and admin audit
+        actions, returning a structured reconciliation result.
+
+        Fields compared:
+        - `pendingClawback`: DB value vs sum of on-chain StreamClawbackEvent amounts
+        - `unclaimed`: computed (totalVested - claimed - onChainClawbacks) vs DB value
+        - `status`: checks if an admin terminate audit record exists but the stream is still live
+        - `claimed`: flags when on-chain clawbacks exist but claimed is zero
+
+        The response includes a snapshot of the current backend state and an
+        on-chain summary so the operator can see both sides at a glance.
+        Admin only. No request body required.
+        Error code references: `NOT_FOUND`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Reconciliation completed — check `consistent` field for result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamReconciliationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
   /health:
