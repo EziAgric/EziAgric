@@ -1,7 +1,8 @@
 import { Response, NextFunction } from "express";
 import { trace, SpanStatusCode } from "@opentelemetry/api";
 import { isMediatorAddress } from "../lib/accessControl";
-import { AuthRequest, AuthService } from "../services/auth.service";
+import { AuthRequest } from "../services/auth.service";
+import { AppError, ErrorCode } from "../errors/errorCodes";
 
 /**
  * Admin authentication middleware (adminAuth health guard).
@@ -14,6 +15,14 @@ export const adminMiddleware = async (
   next: NextFunction,
 ): Promise<void> => {
   const walletAddress = req.user?.walletAddress?.trim();
+  if (!walletAddress || !isMediatorAddress(walletAddress)) {
+    next(
+      new AppError(
+        ErrorCode.AUTH_ERROR,
+        "Forbidden: admin access required",
+        403,
+      ),
+    );
   if (!req.user || !walletAddress || !isMediatorAddress(walletAddress)) {
     try {
       const activeSpan = trace.getActiveSpan();

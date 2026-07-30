@@ -2534,6 +2534,168 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/clawback/preview:
+    post:
+      tags: [Admin]
+      summary: Preview the effect of a stream clawback
+      description: |-
+        Preview the balance impact of a clawback on a vesting stream before
+        execution. Concurrent clawback requests against the same stream are
+        serialized — if another clawback is in progress the request returns 409.
+        Gated by `ADMIN_ROUTES_ENABLED` env flag; returns 404 when disabled.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `DOMAIN_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Stream identifier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: string
+                  pattern: '^\d+$'
+                  description: Positive integer string representing the clawback amount.
+              required: [amount]
+      responses:
+        "200":
+          description: Clawback preview generated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  streamId:
+                    type: string
+                  remainingVested:
+                    type: string
+                  requestedClawback:
+                    type: string
+                  postClawbackBalance:
+                    type: string
+                  preview:
+                    type: boolean
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Validation error (standardized shape).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          description: Admin access required (standardized shape).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "404":
+          description: Admin routes are disabled via ADMIN_ROUTES_ENABLED flag.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "409":
+          description: A clawback is already in progress for this stream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/suspend:
+    post:
+      tags: [Admin]
+      summary: Suspend a vesting stream
+      description: |-
+        Suspend a stream without immediate clawback. Gated by `ADMIN_ROUTES_ENABLED`.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Stream suspended.
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/resume:
+    post:
+      tags: [Admin]
+      summary: Resume a suspended vesting stream
+      description: |-
+        Resume a previously suspended stream. Gated by `ADMIN_ROUTES_ENABLED`.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Stream resumed.
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /goals:
     get:
       tags: [Goals]

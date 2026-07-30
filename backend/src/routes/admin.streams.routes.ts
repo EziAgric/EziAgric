@@ -6,6 +6,8 @@ import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+import { streamClawbackService } from "../services/streamClawback.service";
+import { AppError, ErrorCode } from "../errors/errorCodes";
 import {
   StreamTerminationService,
   streamTerminationService,
@@ -70,8 +72,14 @@ export function createAdminStreamsRouter(
       body: clawbackPreviewBodySchema,
     }),
     async (req: AuthRequest, res: Response, next) => {
+      const { id: streamId } = req.params as { id: string };
       try {
-        const { id: streamId } = req.params as { id: string };
+        streamClawbackService.acquire(streamId);
+      } catch (error) {
+        return next(error);
+      }
+
+      try {
         const { amount } = req.body as { amount: string };
 
         // Mock implementation - replace with actual stream service logic
@@ -91,6 +99,8 @@ export function createAdminStreamsRouter(
         });
       } catch (error) {
         next(error);
+      } finally {
+        streamClawbackService.release(streamId);
       }
     },
   );
