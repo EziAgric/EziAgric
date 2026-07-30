@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { AppError, ErrorCode } from "../errors/errorCodes";
 
 type ParseAsyncSchema = {
   parseAsync: (input: unknown) => Promise<unknown>;
@@ -86,7 +87,15 @@ export const validateRequest = (schema: {
         const firstError = issues[0];
         const fieldName = firstError.path.join(".");
         const message = fieldName ? `${fieldName}: ${firstError.message}` : firstError.message;
-        return res.status(400).json({ error: message });
+        next(
+          new AppError(ErrorCode.VALIDATION_ERROR, message, 400, {
+            errors: issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            })),
+          }),
+        );
+        return;
       }
       next(error);
     }

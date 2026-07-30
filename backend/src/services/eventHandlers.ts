@@ -65,6 +65,7 @@ export async function handleTradeCreated(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
+  const status = EVENT_TO_STATUS[event.eventType];
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: (event.data.buyer as string) || "",
@@ -99,6 +100,7 @@ export async function handleTradeFunded(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
+  const status = EVENT_TO_STATUS[event.eventType];
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
@@ -142,6 +144,7 @@ export async function handleDeliveryConfirmed(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
+  const status = EVENT_TO_STATUS[event.eventType];
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
@@ -169,6 +172,7 @@ export async function handleFundsReleased(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
+  const status = EVENT_TO_STATUS[event.eventType];
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
@@ -201,6 +205,7 @@ export async function handleDisputeInitiated(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
+  const status = EVENT_TO_STATUS[event.eventType];
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
@@ -230,6 +235,7 @@ export async function handleDisputeResolved(
   tx: Prisma.TransactionClient,
   event: ParsedEvent,
 ): Promise<void> {
+  const status = EVENT_TO_STATUS[event.eventType];
   await applyStatusTransition(tx, event, {
     tradeId: event.tradeId,
     buyerAddress: "",
@@ -255,17 +261,17 @@ export async function handleDisputeResolved(
   });
 }
 
-export async function handleStreamClawback(
-  tx: Prisma.TransactionClient,
-  event: ParsedEvent,
-): Promise<void> {
-  const streamId = String(event.data.stream_id ?? event.tradeId);
+export async function handleStreamClawback(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
+  const streamId = String(event.data.stream_id ?? event.data.streamId ?? event.tradeId ?? "");
   const admin = String(event.data.admin ?? "");
   const amount = String(event.data.amount ?? "0");
+
+  if (!streamId) return;
 
   logEscrowEvent({
     tradeId: streamId,
     eventType: "StreamClawback",
+    toStatus: TradeStatus.CANCELLED,
     ledgerSequence: event.ledgerSequence,
     contractId: event.contractId,
     actor: admin,
@@ -273,32 +279,9 @@ export async function handleStreamClawback(
     extra: { stream_id: streamId },
   });
 
-  appLogger.debug(
-    { streamId, admin, amount, ledger: event.ledgerSequence },
-    "[EventHandler] StreamClawback",
-  );
-}
-
-export async function handleStreamClawback(tx: Prisma.TransactionClient, event: ParsedEvent): Promise<void> {
-  const streamId = String(event.data.stream_id || event.data.streamId || "");
-  const admin = String(event.data.admin || "");
-  const amount = String(event.data.amount || "0");
-  
-  if (!streamId) return;
-
-  // Ensure stream exists or handle appropriately
-  const stream = await tx.stream.findUnique({ where: { streamId } });
-  if (stream) {
-    // We could update the stream's pendingClawback or unclaimed here
-    // but the issue just says persist stream_clawback events and associate them.
-  }
-
   await tx.streamClawbackEvent.upsert({
     where: {
-      streamId_txHash: {
-        streamId,
-        txHash: event.eventId, // Using eventId (from horizon) as proxy for txHash/dedup
-      },
+      streamId_txHash: { streamId, txHash: event.eventId },
     },
     update: {},
     create: {
@@ -306,11 +289,11 @@ export async function handleStreamClawback(tx: Prisma.TransactionClient, event: 
       admin,
       amount,
       txHash: event.eventId,
-      timestamp: new Date(),
-    }
+    timestamp: new Date(),
+    },
   });
 
-  appLogger.debug({ streamId, ledger: event.ledgerSequence }, "[EventHandler] StreamClawback");
+  appLogger.debug({ streamId, admin, amount, ledger: event.ledgerSequence }, "[EventHandler] StreamClawback");
 }
 
 /** Dispatch a parsed event to the correct handler */
