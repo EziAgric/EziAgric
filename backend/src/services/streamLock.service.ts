@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../lib/db";
 import { AppError, ErrorCode } from "../errors/errorCodes";
+import { adminNotificationService as defaultAdminNotificationService, AdminNotificationService, extractErrorInfo } from "./adminNotification.service";
 
 export const ADMIN_ACTION_STREAM_LOCK = "STREAM_LOCK";
 export const ADMIN_ACTION_STREAM_UNLOCK = "STREAM_UNLOCK";
@@ -37,118 +38,161 @@ type StreamPrisma = Pick<PrismaClient, "stream" | "adminActionAudit">;
 
 export class StreamLockService {
   private prisma: StreamPrisma;
+  private adminNotification: AdminNotificationService;
 
-  constructor(prisma: StreamPrisma = defaultPrisma) {
+  constructor(prisma: StreamPrisma = defaultPrisma, adminNotification?: AdminNotificationService) {
     this.prisma = prisma;
+    this.adminNotification = adminNotification ?? defaultAdminNotificationService;
   }
 
   async lock(input: LockStreamInput): Promise<LockStreamResult> {
     const { streamId, adminAddress, reason } = input;
 
-    const stream = await this.prisma.stream.findUnique({
-      where: { streamId },
-      select: { streamId: true, lockedAt: true },
-    });
+    try {
+      const stream = await this.prisma.stream.findUnique({
+        where: { streamId },
+        select: { streamId: true, lockedAt: true },
+      });
 
-    if (!stream) {
-      throw new AppError(
-        ErrorCode.NOT_FOUND,
-        `Stream ${streamId} not found`,
-        404,
-        { streamId },
-      );
-    }
+      if (!stream) {
+        throw new AppError(
+          ErrorCode.NOT_FOUND,
+          `Stream ${streamId} not found`,
+          404,
+          { streamId },
+        );
+      }
 
-    if (stream.lockedAt) {
-      return {
+      if (stream.lockedAt) {
+        return {
+          streamId,
+          locked: true,
+          lockedBy: "",
+          lockedAt: stream.lockedAt.toISOString(),
+          reason: null,
+        };
+      }
+
+      const now = new Date();
+      await this.prisma.stream.update({
+        where: { streamId },
+        data: {
+          lockedAt: now,
+          lockedBy: adminAddress,
+          lockReason: reason ?? null,
+        },
+      });
+
+      await this.prisma.adminActionAudit.create({
+        data: {
+          action: ADMIN_ACTION_STREAM_LOCK,
+          actorAddress: adminAddress,
+          targetReference: streamId,
+          note: reason ?? null,
+        },
+      });
+
+      const result: LockStreamResult = {
         streamId,
         locked: true,
-        lockedBy: "",
-        lockedAt: stream.lockedAt.toISOString(),
-        reason: null,
-      };
-    }
-
-    const now = new Date();
-    await this.prisma.stream.update({
-      where: { streamId },
-      data: {
-        lockedAt: now,
         lockedBy: adminAddress,
-        lockReason: reason ?? null,
-      },
-    });
+        lockedAt: now.toISOString(),
+        reason: reason ?? null,
+      };
 
-    await this.prisma.adminActionAudit.create({
-      data: {
+      this.adminNotification.notifyStreamLocked({
+        streamId,
+        adminAddress,
+        reason: reason ?? null,
+        timestamp: now.toISOString(),
+      });
+
+      return result;
+    } catch (error) {
+      this.adminNotification.notifyOperationFailed({
+        streamId,
+        adminAddress,
         action: ADMIN_ACTION_STREAM_LOCK,
-        actorAddress: adminAddress,
-        targetReference: streamId,
-        note: reason ?? null,
-      },
-    });
-
-    return {
-      streamId,
-      locked: true,
-      lockedBy: adminAddress,
-      lockedAt: now.toISOString(),
-      reason: reason ?? null,
-    };
+        error: extractErrorInfo(error),
+        timestamp: new Date().toISOString(),
+      });
+      throw error;
+    }
   }
 
   async unlock(input: UnlockStreamInput): Promise<UnlockStreamResult> {
     const { streamId, adminAddress, reason } = input;
 
-    const stream = await this.prisma.stream.findUnique({
-      where: { streamId },
-      select: { streamId: true, lockedAt: true },
-    });
+    try {
+      const stream = await this.prisma.stream.findUnique({
+        where: { streamId },
+        select: { streamId: true, lockedAt: true },
+      });
 
-    if (!stream) {
-      throw new AppError(
-        ErrorCode.NOT_FOUND,
-        `Stream ${streamId} not found`,
-        404,
-        { streamId },
-      );
-    }
+      if (!stream) {
+        throw new AppError(
+          ErrorCode.NOT_FOUND,
+          `Stream ${streamId} not found`,
+          404,
+          { streamId },
+        );
+      }
 
-    if (!stream.lockedAt) {
-      return {
+      if (!stream.lockedAt) {
+        return {
+          streamId,
+          locked: false,
+          unlockedBy: "",
+          unlockedAt: new Date().toISOString(),
+          reason: null,
+        };
+      }
+
+      await this.prisma.stream.update({
+        where: { streamId },
+        data: {
+          lockedAt: null,
+          lockedBy: null,
+          lockReason: null,
+        },
+      });
+
+      await this.prisma.adminActionAudit.create({
+        data: {
+          action: ADMIN_ACTION_STREAM_UNLOCK,
+          actorAddress: adminAddress,
+          targetReference: streamId,
+          note: reason ?? null,
+        },
+      });
+
+      const now = new Date();
+      const result: UnlockStreamResult = {
         streamId,
         locked: false,
-        unlockedBy: "",
-        unlockedAt: new Date().toISOString(),
-        reason: null,
+        unlockedBy: adminAddress,
+        unlockedAt: now.toISOString(),
+        reason: reason ?? null,
       };
-    }
 
-    await this.prisma.stream.update({
-      where: { streamId },
-      data: {
-        lockedAt: null,
-        lockedBy: null,
-        lockReason: null,
-      },
-    });
+      this.adminNotification.notifyStreamUnlocked({
+        streamId,
+        adminAddress,
+        reason: reason ?? null,
+        timestamp: now.toISOString(),
+      });
 
-    await this.prisma.adminActionAudit.create({
-      data: {
+      return result;
+    } catch (error) {
+      this.adminNotification.notifyOperationFailed({
+        streamId,
+        adminAddress,
         action: ADMIN_ACTION_STREAM_UNLOCK,
-        actorAddress: adminAddress,
-        targetReference: streamId,
-        note: reason ?? null,
-      },
-    });
-
-    return {
-      streamId,
-      locked: false,
-      unlockedBy: adminAddress,
-      unlockedAt: new Date().toISOString(),
-      reason: reason ?? null,
-    };
+        error: extractErrorInfo(error),
+        timestamp: new Date().toISOString(),
+      });
+      throw error;
+    }
   }
 
   async requireStreamNotLocked(streamId: string): Promise<void> {

@@ -33,6 +33,31 @@ jest.mock("../services/auth.service", () => ({
   },
 }));
 
+jest.mock("../services/adminNotification.service", () => ({
+  AdminNotificationService: class {},
+  AdminNotificationEvents: {},
+  extractErrorInfo: (error: unknown) => {
+    if (error && typeof error === "object") {
+      const err = error as Record<string, unknown>;
+      return {
+        message: typeof err.message === "string" ? err.message : String(error),
+        code: typeof err.code === "string" ? err.code : undefined,
+        details: typeof err.details === "object" && err.details !== null ? err.details : undefined,
+      };
+    }
+    return { message: String(error) };
+  },
+  adminNotificationService: {
+    notifyStreamLocked: jest.fn(),
+    notifyStreamUnlocked: jest.fn(),
+    notifyStreamTerminated: jest.fn(),
+    notifyOperationFailed: jest.fn(),
+    onSuccess: jest.fn(),
+    onFailure: jest.fn(),
+    removeAllListeners: jest.fn(),
+  },
+}));
+
 const mockIsMediatorAddress = jest.fn();
 jest.mock("../lib/accessControl", () => ({
   isMediatorAddress: (address: string) => mockIsMediatorAddress(address),
@@ -46,6 +71,11 @@ import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import { StreamLockService } from "../services/streamLock.service";
 import { StreamTerminationService } from "../services/streamTermination.service";
 import { errorHandler } from "../middleware/errorHandler";
+import { adminNotificationService } from "../services/adminNotification.service";
+
+const notifyOperationFailedMock = adminNotificationService.notifyOperationFailed as jest.Mock;
+const notifyStreamLockedMock = adminNotificationService.notifyStreamLocked as jest.Mock;
+const notifyStreamUnlockedMock = adminNotificationService.notifyStreamUnlocked as jest.Mock;
 
 const JWT_SECRET = "test-jwt-secret-value-with-minimum-length-32";
 const ADMIN_ADDRESS = "GADMIN000000000000000000000000000000000000000000000000";
@@ -233,6 +263,26 @@ describe("POST /api/admin/streams/:id/lock", () => {
         },
       });
     });
+
+    it("emits a notification on successful lock", async () => {
+      const prisma = makePrisma(makeStream());
+      const lockService = new StreamLockService(prisma as never);
+      const app = buildApp(lockService);
+
+      await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/lock`)
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({ reason: "Scheduled migration" });
+
+      expect(notifyStreamLockedMock).toHaveBeenCalledTimes(1);
+      expect(notifyStreamLockedMock).toHaveBeenCalledWith({
+        streamId: STREAM_ID,
+        adminAddress: ADMIN_ADDRESS,
+        reason: "Scheduled migration",
+        timestamp: expect.any(String),
+      });
+      expect(notifyOperationFailedMock).not.toHaveBeenCalled();
+    });
   });
 
   // ── Idempotent re-lock ──────────────────────────────────────────────────
@@ -278,6 +328,24 @@ describe("POST /api/admin/streams/:id/lock", () => {
       expect(res.status).toBe(404);
       expect(prisma.stream.update).not.toHaveBeenCalled();
       expect(prisma.adminActionAudit.create).not.toHaveBeenCalled();
+    });
+
+    it("emits a failure notification when the stream is not found", async () => {
+      const prisma = makePrisma(null);
+      const lockService = new StreamLockService(prisma as never);
+      const app = buildApp(lockService);
+
+      await request(app)
+        .post("/api/admin/streams/does-not-exist/lock")
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({});
+
+      expect(notifyOperationFailedMock).toHaveBeenCalledTimes(1);
+      const call = notifyOperationFailedMock.mock.calls[0][0];
+      expect(call.streamId).toBe("does-not-exist");
+      expect(call.action).toBe("STREAM_LOCK");
+      expect(call.error.message).toContain("not found");
+      expect(notifyStreamLockedMock).not.toHaveBeenCalled();
     });
   });
 
@@ -413,6 +481,31 @@ describe("POST /api/admin/streams/:id/unlock", () => {
         },
       });
     });
+
+    it("emits a notification on successful unlock", async () => {
+      const prisma = makePrisma(
+        makeStream({
+          lockedAt: new Date("2026-07-30T10:00:00.000Z"),
+          lockedBy: ADMIN_ADDRESS,
+        }),
+      );
+      const lockService = new StreamLockService(prisma as never);
+      const app = buildApp(lockService);
+
+      await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/unlock`)
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({ reason: "Maintenance complete" });
+
+      expect(notifyStreamUnlockedMock).toHaveBeenCalledTimes(1);
+      expect(notifyStreamUnlockedMock).toHaveBeenCalledWith({
+        streamId: STREAM_ID,
+        adminAddress: ADMIN_ADDRESS,
+        reason: "Maintenance complete",
+        timestamp: expect.any(String),
+      });
+      expect(notifyOperationFailedMock).not.toHaveBeenCalled();
+    });
   });
 
   // ── Idempotent re-unlock ────────────────────────────────────────────────
@@ -450,6 +543,23 @@ describe("POST /api/admin/streams/:id/unlock", () => {
 
       expect(res.status).toBe(404);
       expect(prisma.stream.update).not.toHaveBeenCalled();
+    });
+
+    it("emits a failure notification when unlock stream is not found", async () => {
+      const prisma = makePrisma(null);
+      const lockService = new StreamLockService(prisma as never);
+      const app = buildApp(lockService);
+
+      await request(app)
+        .post("/api/admin/streams/does-not-exist/unlock")
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({});
+
+      expect(notifyOperationFailedMock).toHaveBeenCalledTimes(1);
+      const call = notifyOperationFailedMock.mock.calls[0][0];
+      expect(call.streamId).toBe("does-not-exist");
+      expect(call.action).toBe("STREAM_UNLOCK");
+      expect(call.error.message).toContain("not found");
     });
   });
 });

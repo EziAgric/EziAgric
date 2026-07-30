@@ -31,6 +31,31 @@ jest.mock("../services/auth.service", () => ({
   },
 }));
 
+jest.mock("../services/adminNotification.service", () => ({
+  AdminNotificationService: class {},
+  AdminNotificationEvents: {},
+  extractErrorInfo: (error: unknown) => {
+    if (error && typeof error === "object") {
+      const err = error as Record<string, unknown>;
+      return {
+        message: typeof err.message === "string" ? err.message : String(error),
+        code: typeof err.code === "string" ? err.code : undefined,
+        details: typeof err.details === "object" && err.details !== null ? err.details : undefined,
+      };
+    }
+    return { message: String(error) };
+  },
+  adminNotificationService: {
+    notifyStreamLocked: jest.fn(),
+    notifyStreamUnlocked: jest.fn(),
+    notifyStreamTerminated: jest.fn(),
+    notifyOperationFailed: jest.fn(),
+    onSuccess: jest.fn(),
+    onFailure: jest.fn(),
+    removeAllListeners: jest.fn(),
+  },
+}));
+
 const mockIsMediatorAddress = jest.fn();
 jest.mock("../lib/accessControl", () => ({
   isMediatorAddress: (address: string) => mockIsMediatorAddress(address),
@@ -48,6 +73,10 @@ import {
   StreamTerminationService,
 } from "../services/streamTermination.service";
 import { errorHandler } from "../middleware/errorHandler";
+import { adminNotificationService } from "../services/adminNotification.service";
+
+const notifyStreamTerminatedMock = adminNotificationService.notifyStreamTerminated as jest.Mock;
+const notifyOperationFailedMock = adminNotificationService.notifyOperationFailed as jest.Mock;
 
 const JWT_SECRET = "test-jwt-secret-value-with-minimum-length-32";
 const ADMIN_ADDRESS = "GADMIN000000000000000000000000000000000000000000000000";
@@ -253,6 +282,27 @@ describe("POST /api/admin/streams/:id/terminate", () => {
       });
     });
 
+    it("emits a notification on successful termination", async () => {
+      const prisma = makePrisma(makeStream());
+      const app = buildApp(prisma);
+
+      await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/terminate`)
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({ reason: "Recipient offboarded" });
+
+      expect(notifyStreamTerminatedMock).toHaveBeenCalledTimes(1);
+      expect(notifyStreamTerminatedMock).toHaveBeenCalledWith({
+        streamId: STREAM_ID,
+        adminAddress: ADMIN_ADDRESS,
+        reason: "Recipient offboarded",
+        previousStatus: StreamStatus.ACTIVE,
+        terminatedAt: expect.any(String),
+        unclaimed: "7500",
+      });
+      expect(notifyOperationFailedMock).not.toHaveBeenCalled();
+    });
+
     it("signs the supplied contract transaction and returns it", async () => {
       const prisma = makePrisma(makeStream());
       const signer = jest.fn().mockReturnValue("SIGNED_XDR");
@@ -300,6 +350,38 @@ describe("POST /api/admin/streams/:id/terminate", () => {
       expect(res.status).toBe(404);
       expect(prisma.stream.update).not.toHaveBeenCalled();
       expect(prisma.adminActionAudit.create).not.toHaveBeenCalled();
+    });
+
+    it("emits a failure notification when terminate stream not found", async () => {
+      const prisma = makePrisma(null);
+      const app = buildApp(prisma);
+
+      await request(app)
+        .post("/api/admin/streams/does-not-exist/terminate")
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({});
+
+      expect(notifyOperationFailedMock).toHaveBeenCalledTimes(1);
+      const call = notifyOperationFailedMock.mock.calls[0][0];
+      expect(call.streamId).toBe("does-not-exist");
+      expect(call.action).toBe(ADMIN_ACTION_STREAM_TERMINATE);
+      expect(call.error.message).toContain("not found");
+    });
+
+    it("emits a failure notification when stream is in non-terminable state", async () => {
+      const prisma = makePrisma(makeStream({ status: StreamStatus.TERMINATED }));
+      const app = buildApp(prisma);
+
+      await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/terminate`)
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({});
+
+      expect(notifyOperationFailedMock).toHaveBeenCalledTimes(1);
+      const call = notifyOperationFailedMock.mock.calls[0][0];
+      expect(call.streamId).toBe(STREAM_ID);
+      expect(call.action).toBe(ADMIN_ACTION_STREAM_TERMINATE);
+      expect(call.error.message).toContain("cannot be terminated");
     });
 
     it("returns 409 when the stream is already TERMINATED", async () => {
