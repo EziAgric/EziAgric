@@ -1189,6 +1189,21 @@ impl EscrowContract {
         Self::bump_instance_ttl(&env);
     }
 
+    /// Cancel a trade or perform an admin clawback.
+    ///
+    /// If the trade is in `Created` status, the buyer, seller, or admin can cancel without moving funds.
+    /// If the trade is in `Funded` status:
+    /// - If called by the `admin`, it acts as an immediate unilateral clawback/refund of escrowed funds to the buyer.
+    /// - If called by buyer or seller, both parties must submit cancellation requests before funds are returned to the buyer.
+    ///
+    /// # Cost Drivers for Admin Clawback (Funded status)
+    /// - Storage read for `Trade` record and `Admin` address instance storage.
+    /// - Auth verification for `caller` (`admin.require_auth()`).
+    /// - Token transfer (`token::Client::transfer`) from contract address back to buyer address.
+    /// - Persistent storage write to update `TradeStatus::Cancelled` and `updated_at`.
+    /// - Persistent storage write for `ReleaseSequence` tracking (`cancelled_at`).
+    /// - Contract event publication (`TradeCancelledEvent`).
+    /// - Instance storage TTL extension (`bump_instance_ttl`).
     pub fn cancel_trade(env: Env, trade_id: u64, caller: Address) {
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
