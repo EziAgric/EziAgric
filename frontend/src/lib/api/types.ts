@@ -128,3 +128,41 @@ export interface AdminAuditListResponse {
     totalPages: number;
   };
 }
+
+export type StreamStatus = "ACTIVE" | "SUSPENDED" | "TERMINATED" | "COMPLETED";
+
+/** Derived from claimed vs. totalVested — independent of the stream's lifecycle `status`. */
+export type VestingState = "not_started" | "vesting" | "fully_vested";
+
+export interface AdminStreamSummary {
+  streamId: string;
+  recipient: string;
+  status: StreamStatus;
+  vestingState: VestingState;
+  totalVested: string;
+  claimed: string;
+  unclaimed: string;
+  pendingClawback: string;
+  adminTags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminStreamListResponse {
+  items: AdminStreamSummary[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface StreamClawbackPreviewResponse {
+  streamId: string;
+  remainingVested: string;
+  requestedClawback: string;
+  postClawbackBalance: string;
+  preview: boolean;
+  timestamp: string;
+}
