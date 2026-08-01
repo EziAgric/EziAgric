@@ -77,7 +77,20 @@ const IMPLEMENTED_ROUTES = [
   "/admin/contract/mediators",
   "/admin/contract/mediators/{address}",
   "/admin/contract/fee",
+  "/api/admin/audit",
+  "/api/admin/features",
   "/api/admin/auth/claims",
+  "/api/admin/streams",
+  "/api/admin/streams/{id}",
+  "/api/admin/streams/{id}/clawback/preview",
+  "/api/admin/streams/{id}/suspend",
+  "/api/admin/streams/{id}/resume",
+  "/api/admin/streams/{id}/lock",
+  "/api/admin/streams/{id}/unlock",
+  "/api/admin/sessions/revoke",
+  "/api/admin/streams/{id}/terminate",
+  "/disputes",
+  "/disputes/{id}/transition",
 ];
 
 describe("OpenAPI drift detection", () => {
@@ -103,6 +116,29 @@ describe("OpenAPI drift detection", () => {
     const documented = specPaths(spec);
     const undocumented = IMPLEMENTED_ROUTES.filter((r) => !documented.includes(r));
     expect(undocumented).toEqual([]);
+  });
+
+  it("defines shared adminAuth security scheme in components (Issue #48)", () => {
+    const securitySchemes = (spec as any).components?.securitySchemes;
+    expect(securitySchemes).toBeDefined();
+    expect(securitySchemes).toHaveProperty("adminAuth");
+  });
+
+  it("documents adminAuth security requirement on admin endpoints (Issue #48)", () => {
+    const adminPaths = specPaths(spec).filter((p) => p.includes("/admin"));
+    expect(adminPaths.length).toBeGreaterThan(0);
+    for (const p of adminPaths) {
+      const pathObject = spec.paths[p] as any;
+      const methods = Object.keys(pathObject);
+      for (const m of methods) {
+        const op = pathObject[m];
+        if (op && typeof op === "object") {
+          expect(op.security).toBeDefined();
+          const hasAdminAuth = op.security.some((sec: any) => "adminAuth" in sec);
+          expect(hasAdminAuth).toBe(true);
+        }
+      }
+    }
   });
 
   describe("contract-critical endpoint response shapes", () => {

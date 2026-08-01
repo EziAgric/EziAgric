@@ -17,6 +17,8 @@ mod gas_footprint_tests {
     const BASELINE_DISPUTE_MEM: u64 = 2_000_000;
     const BASELINE_RESOLVE_CPU: u64 = 8_000_000;
     const BASELINE_RESOLVE_MEM: u64 = 4_000_000;
+    const BASELINE_ADMIN_CLAWBACK_CPU: u64 = 6_000_000;
+    const BASELINE_ADMIN_CLAWBACK_MEM: u64 = 3_500_000;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct CostEstimate {
@@ -44,6 +46,7 @@ mod gas_footprint_tests {
     struct Ctx {
         env: Env,
         contract_id: Address,
+        admin: Address,
         buyer: Address,
         seller: Address,
         mediator: Address,
@@ -75,6 +78,7 @@ mod gas_footprint_tests {
             Ctx {
                 env,
                 contract_id,
+                admin,
                 buyer,
                 seller,
                 mediator,
@@ -231,6 +235,31 @@ mod gas_footprint_tests {
                 + BASELINE_DEPOSIT_MEM
                 + BASELINE_DISPUTE_MEM
                 + BASELINE_RESOLVE_MEM,
+        );
+    }
+
+    #[test]
+    fn test_gas_admin_clawback() {
+        let ctx = Ctx::new(10_000);
+        let client = ctx.client();
+        let trade_id = client.create_trade(
+            &ctx.buyer,
+            &ctx.seller,
+            &10_000_i128,
+            &5000_u32,
+            &5000_u32,
+            &None,
+        );
+        client.deposit(&trade_id);
+
+        let cost = ctx.measure(|| {
+            client.cancel_trade(&trade_id, &ctx.admin);
+        });
+
+        cost.assert_under(
+            "admin_clawback",
+            BASELINE_ADMIN_CLAWBACK_CPU,
+            BASELINE_ADMIN_CLAWBACK_MEM,
         );
     }
 }

@@ -30,6 +30,77 @@ There is no separate "admin login" - the same challenge/verify flow in
 [overview.md](./overview.md#authentication) applies; admin status is purely
 a function of which wallet signed in.
 
+## Admin Audit Trail
+
+Every privileged admin action is recorded in the application logs with an
+`audit: true` marker for structured log querying. Each audit entry includes:
+
+| Field | Description |
+|---|---|
+| `audit` | Always `true` for audit events — filter with `audit=true` in your log aggregator |
+| `eventType` | Machine-readable event name (e.g., `FEATURE_FLAG_UPDATED`, `BATCH_TRADE_STATUS_UPDATE`, `TREASURY_WITHDRAWAL`) |
+| `actionName` | Dot-separated action identifier (e.g., `admin.features.update`, `admin.treasury.withdraw`) for filtering and alerting |
+| `adminAddress` | Stellar public key of the admin who performed the action (normalized) |
+| `traceId` | OpenTelemetry trace ID linking the audit log entry to the distributed trace span |
+| `spanId` | OpenTelemetry span ID for the specific admin request span |
+| `timestamp` | ISO-8601 timestamp of when the action was performed |
+
+### How admin identity flows through the system
+
+1. `authMiddleware` validates the JWT token and attaches the decoded payload
+   (including `walletAddress` and `sub`) to `req.user`.
+2. `adminMiddleware` checks the wallet address against the
+   `ADMIN_STELLAR_PUBKEYS` allowlist. If allowed, it sets
+   `req.user.isAdmin = true` on the request context.
+3. Downstream route handlers and controllers read `req.user.walletAddress`
+   (and the `isAdmin` flag) to record the invoking admin's identity in audit
+   log entries.
+
+### Audited admin actions
+
+| Action | Event Type | Route |
+|---|---|---|
+| Modify a feature flag | `FEATURE_FLAG_UPDATED` | `PATCH /admin/features/:name` |
+| Batch trade status update | `BATCH_TRADE_STATUS_UPDATE` | `POST /admin/trades/batch/status` |
+| Treasury withdrawal | `TREASURY_WITHDRAWAL` | `POST /treasury/withdraw` |
+
+### Example audit log entry
+
+```json
+{
+  "audit": true,
+  "eventType": "FEATURE_FLAG_UPDATED",
+  "actionName": "admin.features.update",
+  "featureName": "new-checkout",
+  "enabled": true,
+  "rolloutPercentage": 25,
+  "adminAddress": "gadmin...",
+  "traceId": "00000000000000000000000000000001",
+  "spanId": "0000000000000002",
+  "timestamp": "2026-07-27T10:30:00.000Z"
+}
+```
+
+Operators can query for all admin actions in a time window and trace every
+privileged change back to the specific admin who performed it.
+
+### Distributed tracing integration
+
+Every admin request is automatically instrumented with OpenTelemetry. The
+`adminMiddleware` annotates the active request span with:
+
+| Span Attribute | Value |
+|---|---|
+| `admin.action` | `"privileged"` |
+| `admin.address` | The admin's wallet address |
+| `admin.verdict` | `"granted"` or `"denied"` |
+| `is_admin` | `true` |
+
+These span attributes allow observability platforms (Jaeger, Zipkin, etc.)
+to filter and alert on all admin-level activity. The `traceId` and `spanId`
+in each audit log entry link the log back to the corresponding trace span
+for end-to-end distributed tracing.
+
 ## Auth diagnostics
 
 `GET /api/admin/auth/claims` - returns the sanitized JWT claims the backend
@@ -127,6 +198,122 @@ Persistent failures (invalid XDR, contract panics, definitive RPC rejections)
 are never retried and still return an error immediately. See
 [ADR-004](../adr/ADR-004-idempotency-and-retry-strategy.md#retry-and-circuit-breaking-for-server-to-dependency-calls-not-client-requests)
 for the full policy.
+
+## Streams
+
+Vested token streams the admin dashboard can act on.
+
+`GET /admin/streams` - paginated list of streams, newest first (#51).
+
+**Query params**
+
+| Param | Required | Notes |
+|---|---|---|
+| `page` | no | 1-indexed page number, defaults to `1` |
+| `limit` | no | Page size, defaults to `20`, capped at `100` |
+| `status` | no | Lifecycle state: `ACTIVE`, `SUSPENDED`, `TERMINATED`, `COMPLETED` |
+| `vestingState` | no | Derived from `claimed` vs. `totalVested`, independent of `status`: `not_started`, `vesting`, `fully_vested` |
+| `adminTag` | no | Operator-assigned label (e.g. `high-value`, `legal-hold`) |
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "streamId": "stream-abc-123",
+      "recipient": "GRECIPIENT...",
+      "status": "ACTIVE",
+      "vestingState": "vesting",
+      "totalVested": "10000",
+      "claimed": "2500",
+      "unclaimed": "7500",
+      "pendingClawback": "0",
+      "adminTags": ["high-value"],
+      "createdAt": "2026-07-01T00:00:00.000Z",
+      "updatedAt": "2026-07-05T00:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 1, "totalPages": 1 }
+}
+```
+
+`POST /admin/streams/:id/clawback/preview` - validates a requested clawback
+amount against the stream's real remaining vested (`unclaimed`) balance and
+returns the resulting post-clawback balance, without performing the
+clawback. This is what the admin confirmation modal calls before an operator
+confirms, and what the frontend's client-side amount validation mirrors so
+the "Confirm" button is disabled before a doomed request is even sent.
+
+```json
+{ "amount": "3000" }
+```
+
+**Response `200`**
+
+```json
+{
+  "streamId": "stream-abc-123",
+  "remainingVested": "7500",
+  "requestedClawback": "3000",
+  "postClawbackBalance": "4500",
+  "preview": true,
+  "timestamp": "2026-07-30T12:00:00.000Z"
+}
+```
+
+`POST /admin/streams/:id/suspend`, `POST /admin/streams/:id/resume`, and
+`POST /admin/streams/:id/terminate` change a stream's lifecycle `status`;
+see the [OpenAPI spec](../../backend/src/docs/openapi.yaml) for the full
+request/response shape of `terminate` (the only one of the three currently
+backed by real state and an `AdminActionAudit` record - `suspend`/`resume`
+are stubs pending their own tracked issues).
+
+### Event schemas (#52)
+
+Two admin-related payloads are validated with the schemas in
+`backend/src/types/adminEvents.schema.ts` (covered by
+`adminEvents.schema.test.ts`):
+
+**`StreamClawback` event** - written to `StreamClawbackEvent` by
+`handleStreamClawback` when the indexer picks up an on-chain clawback:
+
+| Field | Type | Required |
+|---|---|---|
+| `streamId` | string | yes |
+| `admin` | string | yes |
+| `amount` | string (`^\d+$`) | yes |
+| `txHash` | string | yes |
+| `timestamp` | date | yes |
+
+**Admin audit event (`AdminActionAudit`)** - written whenever an admin action
+needs a compliance record, e.g. `StreamTerminationService.terminate`:
+
+| Field | Type | Required |
+|---|---|---|
+| `action` | string | yes |
+| `actorAddress` | string | yes |
+| `targetReference` | string \| null | no |
+| `note` | string \| null | no |
+
+### Client-visible admin error states (#59)
+
+Stream/clawback routes use the same `{ code, message, details }` envelope as
+the rest of the API (see [overview.md](./overview.md)). The error codes a
+frontend should branch on for these routes:
+
+| Code | HTTP status | Meaning |
+|---|---|---|
+| `NOT_FOUND` | 404 | The stream id in the URL doesn't exist |
+| `CLAWBACK_INVALID_AMOUNT` | 400 | Requested amount is zero, negative, or not a valid integer string |
+| `CLAWBACK_TOO_LARGE` | 400 | Requested amount exceeds the stream's `unclaimed` (remaining vested) balance - `details.remainingVested` carries the actual limit |
+| `VALIDATION_ERROR` | 400 | Malformed request body/query (e.g. bad `page`/`limit`, unknown `status` enum value) |
+| n/a (`{ "error": "..." }`) | 403 | Caller is authenticated but not on the admin allowlist - see the [request timeouts](#request-timeouts) section above for the auth rules |
+| `INTERNAL_ERROR` | 500 | Unexpected backend failure; safe to show a generic retry message |
+
+For every other admin route in this document, the same envelope and the
+401/403 rules at the top of this page apply; route-specific codes are called
+out in each section (e.g. `ADMIN_QUOTA_EXCEEDED`, `FEATURE_DISABLED`).
 
 ## Contract maintenance
 

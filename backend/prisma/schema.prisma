@@ -35,6 +35,16 @@ enum GoalStatus {
   CANCELLED
 }
 
+/// Lifecycle of a vested token stream.
+/// ACTIVE/SUSPENDED are live states an admin may terminate from; TERMINATED and
+/// COMPLETED are terminal, so a second termination is rejected rather than replayed.
+enum StreamStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  COMPLETED
+}
+
 enum ChainEventSyncStatus {
   PENDING
   RETRYING
@@ -504,21 +514,35 @@ model EscrowReleaseMilestone {
 
 /// Stream model representing a vested token stream
 model Stream {
-  id              Int      @id @default(autoincrement())
-  streamId        String   @unique @db.VarChar(255)
-  recipient       String   @db.VarChar(255)
-  totalVested     String   @db.VarChar(100)
-  claimed         String   @default("0") @db.VarChar(100)
-  unclaimed       String   @default("0") @db.VarChar(100)
-  pendingClawback String   @default("0") @db.VarChar(100)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id              Int          @id @default(autoincrement())
+  streamId        String       @unique @db.VarChar(255)
+  recipient       String       @db.VarChar(255)
+  totalVested     String       @db.VarChar(100)
+  claimed         String       @default("0") @db.VarChar(100)
+  unclaimed       String       @default("0") @db.VarChar(100)
+  pendingClawback String       @default("0") @db.VarChar(100)
+  /// Lifecycle state. Only ACTIVE and SUSPENDED streams can be terminated.
+  status          StreamStatus @default(ACTIVE)
+  /// Set when an admin terminates the stream; null while it is still live.
+  terminatedAt      DateTime?
+  terminatedBy      String?    @db.VarChar(255)
+  terminationReason String?    @db.Text
+  /// Free-form operator labels (e.g. "high-value", "legal-hold") so admins can
+  /// group/filter streams in the admin stream list beyond lifecycle status.
+  adminTags       String[]     @default([])
+  /// Set when an admin locks the stream for maintenance; null when unlocked.
+  lockedAt          DateTime?
+  lockedBy          String?    @db.VarChar(255)
+  lockReason        String?    @db.Text
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   // Relations
   clawbackEvents  StreamClawbackEvent[]
 
   @@index([streamId])
   @@index([recipient])
+  @@index([status])
 }
 
 /// StreamClawbackEvent records audit events of clawbacks performed by admins

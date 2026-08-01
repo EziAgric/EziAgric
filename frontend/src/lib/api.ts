@@ -1,4 +1,5 @@
 import { adminAuditApi } from "./api/adminAudit";
+import { adminStreamsApi } from "./api/adminStreams";
 import { authApi } from "./api/auth";
 import { ApiError } from "./api/client";
 import { disputesApi } from "./api/disputes";
@@ -11,6 +12,11 @@ import { walletApi } from "./api/wallet";
 export type {
   AdminAuditEntry,
   AdminAuditListResponse,
+  AdminStreamSummary,
+  AdminStreamListResponse,
+  StreamClawbackPreviewResponse,
+  StreamStatus,
+  VestingState,
   ChallengeResponse,
   CreateTradeRequest,
   CreateTradeResponse,
@@ -44,6 +50,7 @@ export type {
 export const api = {
   auth: authApi,
   adminAudit: adminAuditApi,
+  adminStreams: adminStreamsApi,
   search: searchApi,
   streams: streamsApi,
   trades: tradesApi,

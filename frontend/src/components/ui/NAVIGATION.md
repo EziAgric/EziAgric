@@ -370,6 +370,39 @@ const breadcrumbs = generateBreadcrumbs("/streams/stream-123");
 
 ## Admin Access Patterns
 
+### Feature Flags
+
+Feature flags control the gradual rollout of features in the application.
+
+**Available Feature Flags:**
+- `adminUI` - Controls visibility and access to all admin features
+
+**Using Feature Flags:**
+
+```tsx
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+
+function MyComponent() {
+  const { adminUI, isFeatureEnabled } = useFeatureFlags();
+  
+  if (!adminUI) {
+    return <FeatureNotAvailable />;
+  }
+  
+  // Or check specific feature
+  if (!isFeatureEnabled("adminUI")) {
+    return <FeatureNotAvailable />;
+  }
+  
+  return <AdminFeature />;
+}
+```
+
+**Safety First:**
+- All feature flags default to `false` (disabled)
+- Features must be explicitly enabled via environment variables
+- This ensures new features are not accidentally exposed
+
 ### useAdmin Hook
 
 Check if the current user has admin privileges based on their wallet address.
@@ -378,14 +411,24 @@ Check if the current user has admin privileges based on their wallet address.
 import { useAdmin } from "@/hooks/useAdmin";
 
 function MyComponent() {
-  const { isAdmin, adminAddresses } = useAdmin();
+  const { isAdmin, isAdminUIEnabled, canAccessAdmin, adminAddresses } = useAdmin();
   
-  if (!isAdmin) {
+  // isAdmin: User's wallet is in admin list
+  // isAdminUIEnabled: Admin UI feature flag is enabled
+  // canAccessAdmin: BOTH conditions must be true
+  
+  if (!canAccessAdmin) {
     return <AccessDenied />;
   }
   
   return <AdminPanel />;
 }
+```
+
+**Breaking Down Access Control:**
+1. **isAdmin** - Checks if user's wallet is in `NEXT_PUBLIC_ADMIN_WALLETS`
+2. **isAdminUIEnabled** - Checks if `NEXT_PUBLIC_ENABLE_ADMIN_UI=true`
+3. **canAccessAdmin** - Returns `true` only if both above are `true`
 ```
 
 ### Admin-Only Links
@@ -491,6 +534,42 @@ NEXT_PUBLIC_ADMIN_WALLETS=GADMIN123,GADMIN456,GADMIN789
 ```
 
 Multiple addresses should be comma-separated. Whitespace is automatically trimmed.
+
+### Admin UI Feature Flag
+
+The admin UI is controlled by a feature flag for gradual rollout:
+
+```env
+NEXT_PUBLIC_ENABLE_ADMIN_UI=true
+```
+
+**Important:** The admin UI feature flag defaults to `false` (disabled) for safety. You must explicitly enable it to access admin features.
+
+**Feature Flag Behavior:**
+- When `NEXT_PUBLIC_ENABLE_ADMIN_UI=true`: Admin users can access admin pages
+- When `NEXT_PUBLIC_ENABLE_ADMIN_UI=false` or unset: Admin pages are hidden from all users
+- Admin links in navigation are automatically hidden when the feature is disabled
+- Access attempts to admin pages show "Feature Not Available" message
+
+**Example:**
+
+```tsx
+import { useAdmin } from "@/hooks/useAdmin";
+
+function MyComponent() {
+  const { isAdmin, isAdminUIEnabled, canAccessAdmin } = useAdmin();
+  
+  // isAdmin: true if user's wallet is in NEXT_PUBLIC_ADMIN_WALLETS
+  // isAdminUIEnabled: true if NEXT_PUBLIC_ENABLE_ADMIN_UI=true
+  // canAccessAdmin: true only if BOTH isAdmin AND isAdminUIEnabled are true
+  
+  if (!canAccessAdmin) {
+    return <AccessDenied />;
+  }
+  
+  return <AdminPanel />;
+}
+```
 
 **Adding custom assets:**
 

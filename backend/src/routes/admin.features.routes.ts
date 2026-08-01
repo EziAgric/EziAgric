@@ -4,10 +4,20 @@ import { z } from "zod";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { validateRequest } from "../middleware/validateRequest";
+import { getTraceContext } from "../middleware/tracing.middleware";
 import { AuthRequest } from "../services/auth.service";
 import { featureFlagService } from "../services/feature-flags.service";
+import { appLogger } from "../middleware/logger";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+
+const featureNameParamSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Feature name is required")
+    .max(100, "Feature name must be at most 100 characters")
+    .regex(/^[a-zA-Z0-9._-]+$/, "Feature name must contain only alphanumeric characters, dots, hyphens, or underscores"),
+});
 
 const updateFlagBodySchema = z.object({
   enabled: z.boolean(),
@@ -39,7 +49,7 @@ export function createAdminFeaturesRouter() {
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
-    validateRequest({ body: updateFlagBodySchema }),
+    validateRequest({ params: featureNameParamSchema, body: updateFlagBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
         const name = String(req.params.name);
@@ -52,6 +62,24 @@ export function createAdminFeaturesRouter() {
           enabled,
           rolloutPercentage,
         });
+
+        // Admin audit: record which admin changed a feature flag
+        const traceCtx = getTraceContext();
+        appLogger.info(
+          {
+            audit: true,
+            eventType: "FEATURE_FLAG_UPDATED",
+            actionName: "admin.features.update",
+            featureName: name,
+            enabled,
+            rolloutPercentage: rolloutPercentage ?? null,
+            adminAddress: req.user?.walletAddress,
+            traceId: traceCtx?.traceId,
+            spanId: traceCtx?.spanId,
+            timestamp: new Date().toISOString(),
+          },
+          `[AdminAudit] Feature flag '${name}' set to enabled=${enabled} by ${req.user?.walletAddress}`,
+        );
         res.status(200).json({ name, flag });
       } catch (error) {
         next(error);

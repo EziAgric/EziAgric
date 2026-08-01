@@ -149,6 +149,21 @@ export function addRequestSpanEvent(req: Request, name: string, attributes?: Rec
 }
 
 /**
+ * Extract trace context (traceId, spanId) from the current active span.
+ * Returns { traceId, spanId } or null if no active span exists.
+ * Use this to include distributed tracing identifiers in structured logs.
+ */
+export function getTraceContext(): { traceId: string; spanId: string } | null {
+  const activeSpan = trace.getActiveSpan();
+  if (!activeSpan) return null;
+  const ctx = activeSpan.spanContext();
+  return {
+    traceId: ctx.traceId,
+    spanId: ctx.spanId,
+  };
+}
+
+/**
  * Middleware to add business logic tracing
  */
 export function businessLogicTracing(operationName: string) {

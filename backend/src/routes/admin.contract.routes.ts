@@ -6,9 +6,11 @@ import { adminMiddleware } from "../middleware/admin.middleware";
 import { adminTimeoutMiddleware } from "../middleware/adminTimeout.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
+import { traceContextFrom } from "../middleware/correlationId.middleware";
 import { ContractService } from "../services/contract.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+import { classifyAdminSubmissionError } from "../errors/adminSubmissionError";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 const stellarAddress = z
@@ -49,15 +51,16 @@ export function createAdminContractRouter(
         const result = await contractService.buildAddMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
-        await prisma.adminActionAudit.create({
+        await prisma?.adminActionAudit.create({
           data: { action: "ADD_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
         });
         if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
-        next(error);
+        next(classifyAdminSubmissionError(error, "add_mediator"));
       }
     },
   );
@@ -75,15 +78,16 @@ export function createAdminContractRouter(
         const result = await contractService.buildRemoveMediatorTx({
           adminAddress,
           mediatorAddress,
+          trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
-        await prisma.adminActionAudit.create({
+        await prisma?.adminActionAudit.create({
           data: { action: "REMOVE_MEDIATOR", actorAddress: adminAddress, targetReference: mediatorAddress },
         });
         if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
-        next(error);
+        next(classifyAdminSubmissionError(error, "remove_mediator"));
       }
     },
   );
@@ -101,15 +105,16 @@ export function createAdminContractRouter(
         const result = await contractService.buildUpdateFeeBpsTx({
           adminAddress,
           feeBps,
+          trace: traceContextFrom(req),
         });
         if (res.headersSent) return;
-        await prisma.adminActionAudit.create({
+        await prisma?.adminActionAudit.create({
           data: { action: "UPDATE_FEE_BPS", actorAddress: adminAddress, targetReference: String(feeBps) },
         });
         if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
-        next(error);
+        next(classifyAdminSubmissionError(error, "update_fee_bps"));
       }
     },
   );
