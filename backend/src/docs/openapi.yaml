@@ -191,6 +191,28 @@ components:
       description: Optional idempotency key cached for mutation requests for up to 24 hours.
       schema:
         type: string
+    StreamIdPath:
+      in: path
+      name: id
+      required: true
+      description: Stream identifier. Must be alphanumeric with optional hyphens or underscores, max 128 characters.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[a-zA-Z0-9_-]+$"
+      example: stream-abc-123
+    FeatureNamePath:
+      in: path
+      name: name
+      required: true
+      description: Feature flag name. Must be alphanumeric with optional dots, hyphens, or underscores, max 100 characters.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        pattern: "^[a-zA-Z0-9._-]+$"
+      example: beta
   schemas:
     ErrorEnvelope:
       type: object
@@ -212,6 +234,18 @@ components:
             - INFRA_ERROR
             - NOT_FOUND
             - INTERNAL_ERROR
+            - CLAWBACK_TOO_LARGE
+            - CLAWBACK_INVALID_AMOUNT
+            - SUBMISSION_VALIDATION_ERROR
+            - SUBMISSION_NETWORK_ERROR
+            - SUBMISSION_CONTRACT_ERROR
+            - SUBMISSION_AUTHORIZATION_ERROR
+          description: |-
+            Error code classifying the failure type. Submission error codes:
+            - `SUBMISSION_VALIDATION_ERROR`: Malformed transaction XDR (400)
+            - `SUBMISSION_NETWORK_ERROR`: Network timeout, connection refused, or rate limiting (429/502/503/504)
+            - `SUBMISSION_CONTRACT_ERROR`: Smart contract rejected the transaction (404/502)
+            - `SUBMISSION_AUTHORIZATION_ERROR`: Transaction was not authorized (401/403)
         message:
           type: string
         details:
@@ -295,98 +329,204 @@ components:
         signedTxXdr: null
         unclaimed: "7500"
         reversible: false
-    StreamReconciliationMismatch:
-      type: object
-      properties:
-        field:
-          type: string
-          description: The field that differs between expected and actual.
-        expected:
-          type: string
-          description: The value computed from on-chain events or derived from them.
-        actual:
-          type: string
-          description: The value currently stored in the backend database.
-        source:
-          type: string
-          enum: [on-chain, backend, computed]
-          description: Where the expected value comes from.
-        description:
-          type: string
-          description: Human-readable explanation of the mismatch.
-      required: [field, expected, actual, source, description]
-      example:
-        field: pendingClawback
-        expected: "5000"
-        actual: "0"
-        source: on-chain
-        description: Sum of StreamClawbackEvent amounts does not match the stream's pendingClawback field
-    StreamReconciliationResponse:
-      type: object
+    VestingState:
+      type: string
       description: |-
-        Result of comparing a stream's backend state against on-chain contract
-        events. `consistent` is true when no mismatches were found.
+        Derived from `claimed` vs. `totalVested` — independent of the stream's
+        lifecycle `status`, since e.g. a SUSPENDED stream may already be
+        fully vested.
+      enum: [not_started, vesting, fully_vested]
+    AdminStreamSummary:
+      type: object
       properties:
         streamId:
           type: string
-        reconciledAt:
+        recipient:
           type: string
-          format: date-time
-          description: ISO-8601 timestamp of when the reconciliation was performed.
-        consistent:
-          type: boolean
-          description: True when no mismatches were found.
-        mismatches:
+        status:
+          $ref: "#/components/schemas/StreamStatus"
+        vestingState:
+          $ref: "#/components/schemas/VestingState"
+        totalVested:
+          type: string
+        claimed:
+          type: string
+        unclaimed:
+          type: string
+        pendingClawback:
+          type: string
+        adminTags:
           type: array
           items:
-            $ref: "#/components/schemas/StreamReconciliationMismatch"
-        streamSnapshot:
-          type: object
-          properties:
-            status:
-              type: string
-            totalVested:
-              type: string
-            claimed:
-              type: string
-            unclaimed:
-              type: string
-            pendingClawback:
-              type: string
-          required: [status, totalVested, claimed, unclaimed, pendingClawback]
-        onChainSummary:
-          type: object
-          properties:
-            clawbackEventCount:
-              type: integer
-            totalClawedBackOnChain:
-              type: string
-          required: [clawbackEventCount, totalClawedBackOnChain]
-        adminActionCount:
-          type: integer
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
       required:
         - streamId
-        - reconciledAt
-        - consistent
-        - mismatches
-        - streamSnapshot
-        - onChainSummary
-        - adminActionCount
+        - recipient
+        - status
+        - vestingState
+        - totalVested
+        - claimed
+        - unclaimed
+        - pendingClawback
+        - adminTags
+        - createdAt
+        - updatedAt
       example:
         streamId: stream-abc-123
-        reconciledAt: "2026-07-30T12:00:00.000Z"
-        consistent: true
-        mismatches: []
-        streamSnapshot:
-          status: ACTIVE
-          totalVested: "10000"
-          claimed: "2500"
-          unclaimed: "7500"
-          pendingClawback: "0"
-        onChainSummary:
-          clawbackEventCount: 0
-          totalClawedBackOnChain: "0"
-        adminActionCount: 0
+        recipient: GRECIPIENT000000000000000000000000000000000000000000
+        status: ACTIVE
+        vestingState: vesting
+        totalVested: "10000"
+        claimed: "2500"
+        unclaimed: "7500"
+        pendingClawback: "0"
+        adminTags: ["high-value"]
+        createdAt: "2026-07-01T00:00:00.000Z"
+        updatedAt: "2026-07-05T00:00:00.000Z"
+    AdminStreamListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminStreamSummary"
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer
+          required: [page, limit, total, totalPages]
+      required: [items, pagination]
+    StreamClawbackPreviewRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          pattern: "^\\d+$"
+          description: Requested clawback amount as a positive integer string.
+      required: [amount]
+      example:
+        amount: "3000"
+    StreamClawbackPreviewResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        remainingVested:
+          type: string
+          description: The stream's actual unclaimed vested balance before this clawback.
+        requestedClawback:
+          type: string
+        postClawbackBalance:
+          type: string
+          description: remainingVested minus requestedClawback.
+        preview:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - streamId
+        - remainingVested
+        - requestedClawback
+        - postClawbackBalance
+        - preview
+        - timestamp
+      example:
+        streamId: stream-abc-123
+        remainingVested: "7500"
+        requestedClawback: "3000"
+        postClawbackBalance: "4500"
+        preview: true
+        timestamp: "2026-07-30T12:00:00.000Z"
+    StreamLockRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Operator-supplied reason for the maintenance lock.
+      example:
+        reason: Scheduled database migration
+    StreamLockResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        locked:
+          type: boolean
+          description: Always true for a successful lock.
+        lockedBy:
+          type: string
+          description: Wallet address of the admin who locked the stream.
+        lockedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+      required:
+        - streamId
+        - locked
+        - lockedBy
+        - lockedAt
+      example:
+        streamId: stream-abc-123
+        locked: true
+        lockedBy: GADMIN000000000000000000000000000000000000000000000000
+        lockedAt: "2026-07-30T12:00:00.000Z"
+        reason: Scheduled database migration
+    StreamUnlockRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Optional note for the unlock action.
+      example:
+        reason: Maintenance complete
+    StreamUnlockResponse:
+      type: object
+      properties:
+        streamId:
+          type: string
+        locked:
+          type: boolean
+          description: Always false for a successful unlock.
+        unlockedBy:
+          type: string
+          description: Wallet address of the admin who unlocked the stream.
+        unlockedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          nullable: true
+      required:
+        - streamId
+        - locked
+        - unlockedBy
+        - unlockedAt
+      example:
+        streamId: stream-abc-123
+        locked: false
+        unlockedBy: GADMIN000000000000000000000000000000000000000000000000
+        unlockedAt: "2026-07-30T12:00:00.000Z"
+        reason: null
     AuthChallengeRequest:
       type: object
       properties:
@@ -1037,6 +1177,156 @@ paths:
           description: Feature flag status map returned.
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+  /api/admin/streams:
+    get:
+      tags: [Admin]
+      summary: List admin-accessible streams (#51)
+      description: |-
+        Paginated list of vested token streams, newest first. Supports
+        filtering by lifecycle `status`, derived `vestingState` (how much of
+        the stream has actually vested, independent of lifecycle status),
+        and `adminTag` (operator-assigned label). Backs the admin stream
+        list UI that the clawback confirmation flow (#56, #57) is launched
+        from.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/StreamStatus"
+        - name: vestingState
+          in: query
+          schema:
+            $ref: "#/components/schemas/VestingState"
+        - name: adminTag
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: Paginated stream summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStreamListResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}:
+    get:
+      tags: [Admin]
+      summary: Get stream state by ID
+      description: |-
+        Retrieve cached stream state for admin queries. Returns cached result
+        when fresh, otherwise fetches from DB and caches it.
+
+        Error code references: `NOT_FOUND` (unknown stream), `VALIDATION_ERROR` (invalid stream ID format).
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StreamIdPath"
+      responses:
+        "200":
+          description: Stream state.
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid stream ID format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/clawback/preview:
+    post:
+      tags: [Admin]
+      summary: Preview a stream clawback before execution
+      description: |-
+        Validates a requested clawback amount against the stream's actual
+        remaining vested (unclaimed) balance and returns the resulting
+        post-clawback balance, without performing the clawback. Powers the
+        admin confirmation modal (#56) and client-side amount validation
+        (#57) — the frontend calls this before letting the operator confirm.
+
+        Concurrent clawback requests against the same stream are serialized;
+        a request against a stream with a clawback already in flight gets
+        `409`. All routes in this section return `404` when the
+        `ADMIN_ROUTES_ENABLED` feature flag is off.
+
+        Error code references: `NOT_FOUND` (unknown stream),
+        `CLAWBACK_INVALID_AMOUNT` (zero/negative amount),
+        `CLAWBACK_TOO_LARGE` (amount exceeds `remainingVested`),
+        `DOMAIN_ERROR` (clawback already in progress for this stream).
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StreamIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamClawbackPreviewRequest"
+      responses:
+        "200":
+          description: Clawback preview computed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamClawbackPreviewResponse"
+        "400":
+          description: Invalid stream ID format, invalid amount, or amount exceeds the remaining vested balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: A clawback is already in progress for this stream.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/streams/{id}/terminate:
     post:
       tags: [Admin]
@@ -1062,13 +1352,7 @@ paths:
         - bearerAuth: []
         - adminAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Stream identifier.
-          schema:
-            type: string
-            minLength: 1
+        - $ref: "#/components/parameters/StreamIdPath"
       requestBody:
         required: false
         content:
@@ -1083,7 +1367,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StreamTerminateResponse"
         "400":
-          $ref: "#/components/responses/LegacyValidationError"
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -1091,11 +1379,99 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          description: Stream is not in a state that can be terminated.
+          description: Stream is not in a state that can be terminated, or the stream is locked for maintenance.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/lock:
+    post:
+      tags: [Admin]
+      summary: Lock a stream for maintenance (admin only)
+      description: |-
+        Marks a stream as locked for operational maintenance. Idempotent —
+        locking an already-locked stream returns 200 without changing state.
+
+        Locked streams reject other admin mutations (suspend, resume,
+        terminate, clawback) with `409 Conflict` until unlocked.
+        User-facing operations are unaffected.
+
+        Every successful lock writes an `AdminActionAudit` record
+        (`STREAM_LOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StreamIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamLockRequest"
+      responses:
+        "200":
+          description: Stream locked (or already locked).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamLockResponse"
+        "400":
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/unlock:
+    post:
+      tags: [Admin]
+      summary: Unlock a previously locked stream (admin only)
+      description: |-
+        Removes the maintenance lock from a stream. Idempotent — unlocking an
+        already-unlocked stream returns 200 without changing state.
+
+        Every successful unlock writes an `AdminActionAudit` record
+        (`STREAM_UNLOCK`). Error code references: `NOT_FOUND`, `VALIDATION_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StreamIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamUnlockRequest"
+      responses:
+        "200":
+          description: Stream unlocked (or already unlocked).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamUnlockResponse"
+        "400":
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/admin/streams/{id}/reconcile:
@@ -2501,6 +2877,84 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/suspend:
+    post:
+      tags: [Admin]
+      summary: Suspend a vesting stream
+      description: |-
+        Suspend a stream without immediate clawback. Gated by `ADMIN_ROUTES_ENABLED`.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StreamIdPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Stream suspended.
+        "400":
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/resume:
+    post:
+      tags: [Admin]
+      summary: Resume a suspended vesting stream
+      description: |-
+        Resume a previously suspended stream. Gated by `ADMIN_ROUTES_ENABLED`.
+        Error code references: `AUTH_ERROR`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StreamIdPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Stream resumed.
+        "400":
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
   /goals:

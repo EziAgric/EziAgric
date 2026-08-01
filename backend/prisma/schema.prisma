@@ -527,6 +527,13 @@ model Stream {
   terminatedAt      DateTime?
   terminatedBy      String?    @db.VarChar(255)
   terminationReason String?    @db.Text
+  /// Free-form operator labels (e.g. "high-value", "legal-hold") so admins can
+  /// group/filter streams in the admin stream list beyond lifecycle status.
+  adminTags       String[]     @default([])
+  /// Set when an admin locks the stream for maintenance; null when unlocked.
+  lockedAt          DateTime?
+  lockedBy          String?    @db.VarChar(255)
+  lockReason        String?    @db.Text
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 

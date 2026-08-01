@@ -24,6 +24,11 @@ jest.mock('../screens/TradeDetailScreen', () => 'TradeDetailScreen');
 jest.mock('../screens/DisputeDetailScreen', () => 'DisputeDetailScreen');
 jest.mock('../screens/CreateTradeScreen', () => 'CreateTradeScreen');
 jest.mock('../screens/EvidenceCaptureScreen', () => 'EvidenceCaptureScreen');
+jest.mock('../screens/VaultDashboard', () => 'VaultDashboard');
+jest.mock('../screens/AdminStreamsOverviewScreen', () => 'AdminStreamsOverviewScreen');
+jest.mock('../screens/AdminTradesBatchScreen', () => 'AdminTradesBatchScreen');
+jest.mock('../screens/AdminContractScreen', () => 'AdminContractScreen');
+jest.mock('../screens/AdminFeaturesScreen', () => 'AdminFeaturesScreen');
 
 // Mock useDeepLink
 jest.mock('../hooks/useDeepLink', () => ({

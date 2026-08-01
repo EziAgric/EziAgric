@@ -77,7 +77,8 @@ describe("GET /api/admin/auth/claims", () => {
       .get("/api/admin/auth/claims")
       .set("Authorization", `Bearer ${nonAdminToken}`);
     expect(res.status).toBe(403);
-    expect(res.body.error).toMatch(/admin access required/i);
+    expect(res.body.message).toMatch(/admin access required/i);
+    expect(res.body.code).toBe("AUTH_ERROR");
   });
 
   it("returns sanitized claims for an authorized admin wallet", async () => {
