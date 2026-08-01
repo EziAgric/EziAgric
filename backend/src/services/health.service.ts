@@ -1,3 +1,4 @@
+import { Keypair } from "@stellar/stellar-sdk";
 import { prisma as defaultPrisma } from "../lib/db";
 import { redis } from "../lib/redis";
 import { appLogger } from "../middleware/logger";
@@ -24,6 +25,7 @@ interface HealthCheckResponse {
     ipfs: HealthIndicatorResult;
     redis: HealthIndicatorResult;
     config: HealthIndicatorResult;
+    adminSigningKey?: HealthIndicatorResult;
   };
   details: {
     databaseLatency: number;
@@ -292,6 +294,44 @@ export class HealthService {
     };
   }
 
+  /**
+   * Check Soroban admin signing key validity
+   * Verifies that ADMIN_SECRET_KEY is configured and can derive a valid public address
+   */
+  public async checkAdminSigningKey(): Promise<HealthIndicatorResult> {
+    const startTime = Date.now();
+    try {
+      const secret = env.ADMIN_SECRET_KEY;
+      if (!secret) {
+        return {
+          status: "down",
+          message: "ADMIN_SECRET_KEY is missing",
+          responseTime: Date.now() - startTime,
+        };
+      }
+      const keypair = Keypair.fromSecret(secret);
+      const publicKey = keypair.publicKey();
+      if (!publicKey) {
+        return {
+          status: "down",
+          message: "Unable to derive public key from ADMIN_SECRET_KEY",
+          responseTime: Date.now() - startTime,
+        };
+      }
+      return {
+        status: "up",
+        message: "Admin signing key valid",
+        responseTime: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        status: "down",
+        message: `Admin signing key check failed: ${error instanceof Error ? error.message : "Invalid key format"}`,
+        responseTime: Date.now() - startTime,
+      };
+    }
+  }
+
   private async dispatchAlerts(
     databaseCheck: HealthIndicatorResult,
     redisCheck: HealthIndicatorResult,
@@ -334,6 +374,7 @@ export class HealthService {
       ipfsCheck,
       redisCheck,
       configCheck,
+      adminSigningKeyCheck,
     ] = await Promise.all([
       this.checkDatabase(),
       this.checkIndexer(),
@@ -341,6 +382,7 @@ export class HealthService {
       this.checkIPFS(),
       this.checkRedis(),
       this.checkConfig(),
+      this.checkAdminSigningKey(),
     ]);
 
     await this.dispatchAlerts(databaseCheck, redisCheck);
@@ -352,6 +394,7 @@ export class HealthService {
       || indexerCheck.status === "down"
       || stellarCheck.status === "down"
       || configCheck.status === "down"
+      || adminSigningKeyCheck.status === "down"
     ) {
       status = "unhealthy";
     } else if (
@@ -398,6 +441,7 @@ export class HealthService {
         ipfs: ipfsCheck,
         redis: redisCheck,
         config: configCheck,
+        adminSigningKey: adminSigningKeyCheck,
       },
       details: {
         databaseLatency: databaseCheck.responseTime,
@@ -423,19 +467,21 @@ export class HealthService {
   }> {
     const timestamp = new Date().toISOString();
 
-    const [databaseCheck, redisCheck, configCheck] = await Promise.all([
+    const [databaseCheck, redisCheck, configCheck, adminKeyCheck] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
       this.checkConfig(),
+      this.checkAdminSigningKey(),
     ]);
 
     const checks = {
       database: databaseCheck,
       redis: redisCheck,
       config: configCheck,
+      adminSigningKey: adminKeyCheck,
     };
 
-    const status = databaseCheck.status === "up" && redisCheck.status === "up" && configCheck.status === "up"
+    const status = databaseCheck.status === "up" && redisCheck.status === "up" && configCheck.status === "up" && adminKeyCheck.status === "up"
       ? "ready"
       : "not_ready";
 
