@@ -20,9 +20,18 @@ import {
   getCachedStreamState,
 } from "../services/streamCache.service";
 import {
+  ADMIN_ACTION_STREAM_LOCK,
+  ADMIN_ACTION_STREAM_UNLOCK,
   StreamLockService,
   streamLockService,
 } from "../services/streamLock.service";
+import {
+  LIVE_STATUSES,
+  RESUMABLE_STATUSES,
+  StreamValidationService,
+  SUSPENDABLE_STATUSES,
+  streamValidationService,
+} from "../services/streamValidation.service";
 
 const streamIdParamSchema = z.object({
   id: z.string().min(1, "Stream ID is required"),
@@ -71,11 +80,13 @@ const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
  * database or an admin signing key.
  * @param lockService injected so tests can exercise the route without a database.
  * @param streamsService injected so tests can exercise the route without a database.
+ * @param validationService injected so tests can exercise the route without a database.
  */
 export function createAdminStreamsRouter(
   terminationService: StreamTerminationService = streamTerminationService,
   lockService: StreamLockService = streamLockService,
   streamsService: AdminStreamsService = adminStreamsService,
+  validationService: StreamValidationService = streamValidationService,
 ) {
   const router = Router();
 
@@ -161,12 +172,11 @@ export function createAdminStreamsRouter(
       try {
         const { amount } = req.body as { amount: string };
 
-        const stream = await streamsService.getByStreamId(streamId);
-        if (!stream) {
-          throw new AppError(ErrorCode.NOT_FOUND, `Stream ${streamId} not found`, 404, {
-            streamId,
-          });
-        }
+        const stream = await validationService.requireActionableStream(
+          streamId,
+          LIVE_STATUSES,
+          "clawed back from",
+        );
 
         const requestedClawback = BigInt(amount);
         if (requestedClawback <= BigInt(0)) {
@@ -222,7 +232,11 @@ export function createAdminStreamsRouter(
         const { reason } = req.body as { reason?: string };
         const adminAddress = req.user!.walletAddress;
 
-        await lockService.requireStreamNotLocked(streamId);
+        await validationService.requireActionableStream(
+          streamId,
+          SUSPENDABLE_STATUSES,
+          "suspended from",
+        );
 
         // Mock implementation - replace with actual stream service logic
         // This should mark the stream as suspended in the database
@@ -256,7 +270,11 @@ export function createAdminStreamsRouter(
         const { note } = req.body as { note?: string };
         const adminAddress = req.user!.walletAddress;
 
-        await lockService.requireStreamNotLocked(streamId);
+        await validationService.requireActionableStream(
+          streamId,
+          RESUMABLE_STATUSES,
+          "resumed from",
+        );
 
         // Mock implementation - replace with actual stream service logic
         res.status(200).json({
@@ -297,7 +315,8 @@ export function createAdminStreamsRouter(
         };
         const adminAddress = req.user!.walletAddress;
 
-        await lockService.requireStreamNotLocked(streamId);
+        const stream = await validationService.getStreamOrThrow(streamId);
+        validationService.assertNotLocked(stream);
 
         const result = await terminationService.terminate({
           streamId,
@@ -344,6 +363,8 @@ export function createAdminStreamsRouter(
         const { reason } = req.body as { reason?: string };
         const adminAddress = req.user!.walletAddress;
 
+        await validationService.getStreamOrThrow(streamId);
+
         const result = await lockService.lock({
           streamId,
           adminAddress,
@@ -352,6 +373,16 @@ export function createAdminStreamsRouter(
 
         res.status(200).json(result);
       } catch (error) {
+        if (error instanceof AppError && error.statusCode === 404) {
+          const { id } = req.params as { id: string };
+          adminNotificationService.notifyOperationFailed({
+            streamId: id,
+            adminAddress: req.user!.walletAddress,
+            action: ADMIN_ACTION_STREAM_LOCK,
+            error: extractErrorInfo(error),
+            timestamp: new Date().toISOString(),
+          });
+        }
         next(error);
       }
     },
@@ -374,6 +405,8 @@ export function createAdminStreamsRouter(
         const { reason } = req.body as { reason?: string };
         const adminAddress = req.user!.walletAddress;
 
+        await validationService.getStreamOrThrow(streamId);
+
         const result = await lockService.unlock({
           streamId,
           adminAddress,
@@ -382,6 +415,16 @@ export function createAdminStreamsRouter(
 
         res.status(200).json(result);
       } catch (error) {
+        if (error instanceof AppError && error.statusCode === 404) {
+          const { id } = req.params as { id: string };
+          adminNotificationService.notifyOperationFailed({
+            streamId: id,
+            adminAddress: req.user!.walletAddress,
+            action: ADMIN_ACTION_STREAM_UNLOCK,
+            error: extractErrorInfo(error),
+            timestamp: new Date().toISOString(),
+          });
+        }
         next(error);
       }
     },
