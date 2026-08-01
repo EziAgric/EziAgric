@@ -270,6 +270,37 @@ pub struct PathPaymentExecutedEvent {
     pub dest_amount: i128,
 }
 
+/// Emitted when an admin performs a clawback on an escrowed trade.
+/// The full trade amount is returned to the buyer; the trade transitions to Cancelled.
+#[contractevent(topics = ["ADMCLW"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdminClawbackEvent {
+    pub trade_id: u64,
+    pub amount: i128,
+    pub admin: Address,
+    pub timestamp: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Contract error codes for admin clawback failures (Issue #97)
+// ---------------------------------------------------------------------------
+
+/// Structured error code constants for admin clawback operations.
+/// These strings are emitted in panic messages so the backend can parse them
+/// deterministically and map them to structured AppError responses.
+pub mod clawback_errors {
+    /// Caller is not the registered contract admin.
+    pub const UNAUTHORIZED: &str = "CLAWBACK_UNAUTHORIZED";
+    /// The vested (escrowed) amount is less than the requested clawback amount.
+    pub const INSUFFICIENT_VESTED: &str = "CLAWBACK_INSUFFICIENT_VESTED";
+    /// The requested clawback amount is zero or negative.
+    pub const INVALID_AMOUNT: &str = "CLAWBACK_INVALID_AMOUNT";
+    /// No trade record was found for the given trade ID (stream not found).
+    pub const STREAM_NOT_FOUND: &str = "CLAWBACK_STREAM_NOT_FOUND";
+    /// The trade is not in a clawback-eligible status (must be Funded).
+    pub const INVALID_STATUS: &str = "CLAWBACK_INVALID_STATUS";
+}
+
 /// Emitted when the admin performs a partial or full clawback on an escrowed trade.
 ///
 /// A clawback recovers `clawback_amount` from the escrow, crediting it to `destination`.
@@ -2228,6 +2259,98 @@ impl EscrowContract {
             .get(&DataKey::TotalResolved)
             .unwrap_or(0);
         (total_trades, total_disputes, total_resolved)
+    }
+
+    // -----------------------------------------------------------------------
+    // Admin clawback (Issue #97)
+    // -----------------------------------------------------------------------
+
+    /// Perform an emergency admin clawback on a funded trade.
+    ///
+    /// Only the contract admin may call this. The full escrowed `amount` is
+    /// transferred back to the buyer and the trade is transitioned to
+    /// `Cancelled`. This is an irreversible emergency operation intended for
+    /// situations where normal dispute resolution is not possible.
+    ///
+    /// # Error codes (emitted as panic message strings)
+    ///
+    /// | Code                            | Meaning                                          |
+    /// |----------------------------------|--------------------------------------------------|
+    /// | `CLAWBACK_UNAUTHORIZED`          | Caller is not the registered admin               |
+    /// | `CLAWBACK_STREAM_NOT_FOUND`      | No trade found for the given `trade_id`          |
+    /// | `CLAWBACK_INVALID_AMOUNT`        | `amount` is zero or negative                     |
+    /// | `CLAWBACK_INSUFFICIENT_VESTED`   | `amount` exceeds the escrowed trade amount       |
+    /// | `CLAWBACK_INVALID_STATUS`        | Trade is not in `Funded` status                  |
+    pub fn admin_clawback(env: Env, trade_id: u64, amount: i128, admin: Address) {
+        // 1. Authenticate admin
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+
+        if admin != stored_admin {
+            panic!("{}", clawback_errors::UNAUTHORIZED);
+        }
+        admin.require_auth();
+
+        // 2. Validate amount
+        if amount <= 0 {
+            panic!("{}", clawback_errors::INVALID_AMOUNT);
+        }
+
+        // 3. Load trade — panic with STREAM_NOT_FOUND if missing
+        let key = DataKey::Trade(trade_id);
+        if !env.storage().persistent().has(&key) {
+            panic!("{}", clawback_errors::STREAM_NOT_FOUND);
+        }
+        let mut trade: Trade = Self::load_trade(&env, &key);
+
+        // 4. Check trade is in Funded status
+        if !matches!(trade.status, TradeStatus::Funded) {
+            panic!("{}", clawback_errors::INVALID_STATUS);
+        }
+
+        // 5. Check sufficient escrowed balance
+        if amount > trade.amount {
+            panic!("{}", clawback_errors::INSUFFICIENT_VESTED);
+        }
+
+        // 6. Transfer clawback amount to buyer
+        let token_client = token::Client::new(&env, &trade.token);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &trade.buyer,
+            &amount,
+        );
+
+        // 7. Update trade state
+        let now = env.ledger().timestamp();
+        trade.status = TradeStatus::Cancelled;
+        trade.updated_at = now;
+        Self::save_trade(&env, &key, &trade);
+        Self::update_release_sequence(&env, &trade, |sequence, at| {
+            sequence.cancelled_at = Some(at);
+        });
+
+        Self::record_trade_event(
+            &env,
+            trade_id,
+            "admin_clawback",
+            admin.clone(),
+            "admin emergency clawback executed",
+        );
+
+        // 8. Emit structured clawback event
+        AdminClawbackEvent {
+            trade_id,
+            amount,
+            admin,
+            timestamp: now,
+        }
+        .publish(&env);
+
+        Self::bump_instance_ttl(&env);
     }
 }
 
