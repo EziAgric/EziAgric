@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Linking,
   View,
   Text,
   FlatList,
   RefreshControl,
   StyleSheet,
-  TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTradeStore } from '../stores/tradeStore';
 import { useAuthStore } from '../stores/authStore';
+import { AdminErrorBanner } from '../components/AdminErrorBanner';
+import { buildSupportMailto } from '../constants/support';
 import type { Trade } from '../types/trade';
 
 const ACTIVE_STATUSES = new Set(['FUNDED', 'IN_TRANSIT'] as const);
@@ -47,20 +49,38 @@ function TradeRow({ trade }: { trade: Trade }) {
 
 export default function VaultDashboard() {
   const insets = useSafeAreaInsets();
-  const { trades, isLoading, error, fetchTrades } = useTradeStore();
-  const { walletAddress } = useAuthStore();
+  const {
+    trades,
+    isLoading,
+    errorView,
+    lastActionErrorView,
+    fetchTrades,
+    clearErrorView,
+  } = useTradeStore();
+  const { walletAddress, clearAuth } = useAuthStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [retryKey, setRetryKey] = useState(0);
+
+  // Action errors take precedence over stale load errors so a
+  // background poll doesn't bury a still-relevant mutation banner.
+  const visibleErrorView = lastActionErrorView ?? errorView;
 
   useEffect(() => {
-    fetchTrades();
-  }, [fetchTrades, retryKey]);
+    void fetchTrades();
+  }, [fetchTrades]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchTrades();
     setRefreshing(false);
   }, [fetchTrades]);
+
+  const handleClearAuth = useCallback(async () => {
+    await clearAuth();
+  }, [clearAuth]);
+
+  const openSupportMailto = useCallback(() => {
+    void Linking.openURL(buildSupportMailto(visibleErrorView, 'vault dashboard'));
+  }, [visibleErrorView]);
 
   const activeTrades = useMemo(
     () => trades.filter((t) => ACTIVE_STATUSES.has(t.status as 'FUNDED' | 'IN_TRANSIT')),
@@ -89,13 +109,21 @@ export default function VaultDashboard() {
     );
   }
 
-  if (error && trades.length === 0) {
+  if (visibleErrorView && trades.length === 0) {
     return (
-      <View style={[styles.container, styles.center, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => setRetryKey((k) => k + 1)}>
-          <Text style={styles.retryLabel}>Retry</Text>
-        </TouchableOpacity>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Vault Dashboard</Text>
+        </View>
+        <View style={styles.bannerWrap}>
+          <AdminErrorBanner
+            view={visibleErrorView}
+            onRetry={() => void fetchTrades()}
+            onSignOut={handleClearAuth}
+            onContactSupport={openSupportMailto}
+            onGoBack={clearErrorView}
+          />
+        </View>
       </View>
     );
   }
@@ -110,6 +138,18 @@ export default function VaultDashboard() {
           </Text>
         </View>
       </View>
+
+      {visibleErrorView ? (
+        <View style={styles.bannerWrap}>
+          <AdminErrorBanner
+            view={visibleErrorView}
+            onRetry={() => void fetchTrades()}
+            onSignOut={handleClearAuth}
+            onContactSupport={openSupportMailto}
+            onGoBack={clearErrorView}
+          />
+        </View>
+      ) : null}
 
       <FlatList
         data={recentTrades}
@@ -159,6 +199,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e0e8e0',
   },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#1a3a1a' },
+  bannerWrap: { paddingHorizontal: 16, paddingTop: 12 },
   connectionBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -183,7 +224,14 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
   statValue: { fontSize: 26, fontWeight: '800', color: '#1a3a1a' },
   statUnit: { fontSize: 11, color: '#9ca3af', marginTop: 2 },
-  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   tradeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -200,9 +248,6 @@ const styles = StyleSheet.create({
   separator: { height: 8 },
   empty: { alignItems: 'center', paddingVertical: 32 },
   emptyText: { color: '#6b7280', fontSize: 14 },
-  errorText: { color: '#dc2626', fontSize: 15, textAlign: 'center', marginBottom: 16 },
-  retryButton: { backgroundColor: '#2d6a2d', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 },
-  retryLabel: { color: '#fff', fontWeight: '600' },
   skeletonContainer: { padding: 16, gap: 12 },
   skeleton: { backgroundColor: '#e5e7eb', borderRadius: 8 },
 });

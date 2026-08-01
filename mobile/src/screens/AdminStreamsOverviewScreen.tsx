@@ -1,5 +1,8 @@
+﻿import { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
+  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -10,20 +13,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../types/navigation';
 import type { AdminActionType } from './AdminActionSuccessScreen';
 import { useAuthStore } from '../stores/authStore';
+import { adminApi, AdminStreamSummary } from '../api/admin';
+import { viewForError } from '../api/errorInterceptor';
+import { AdminErrorBanner } from '../components/AdminErrorBanner';
+import { buildSupportMailto } from '../constants/support';
 import { useAdminActionHistoryStore } from '../stores/adminActionHistoryStore';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { OfflineBanner } from '../components/OfflineBanner';
 
 type Props = StackScreenProps<RootStackParamList, 'AdminStreamsOverview'>;
 
-interface StreamSummary {
-  id: string;
-  status: string;
-  pendingClawback: string;
-}
-
 interface AdminAction {
-  /** Stable key used for both React keys and testIDs, e.g. `action-<key>-<streamId>`. */
   key: 'clawback' | 'lock' | 'terminate';
   label: string;
 }
@@ -34,18 +34,44 @@ const ADMIN_ACTIONS: AdminAction[] = [
   { key: 'terminate', label: 'Terminate' },
 ];
 
-const STREAMS: StreamSummary[] = [
-  { id: 'stream-001', status: 'ACTIVE', pendingClawback: '0' },
-  { id: 'stream-002', status: 'SUSPENDED', pendingClawback: '2500' },
+/**
+ * Seed list shown until the first API response lands so the existing
+ * "renders a stream list" expectation still passes for offline / test
+ * scenarios. Replaced by real data once the API responds.
+ */
+const SEED_STREAMS: AdminStreamSummary[] = [
+  {
+    streamId: 'stream-001',
+    recipient: '',
+    status: 'ACTIVE',
+    vestingState: 'vesting',
+    totalVested: '0',
+    claimed: '0',
+    unclaimed: '0',
+    pendingClawback: '0',
+    adminTags: [],
+  },
+  {
+    streamId: 'stream-002',
+    recipient: '',
+    status: 'SUSPENDED',
+    vestingState: 'vesting',
+    totalVested: '2500',
+    claimed: '0',
+    unclaimed: '2500',
+    pendingClawback: '0',
+    adminTags: [],
+  },
 ];
 
-export default function AdminStreamsOverviewScreen({ navigation }: Props) {
+export default function AdminStreamsOverviewScreen({
+  navigation,
+}: Props) {
   const insets = useSafeAreaInsets();
-  // `role` is not yet on AuthState — it will be added in a follow-up auth
-  // PR. Narrow locally so TS is happy without leaking the field into store
-  // types. Tests inject the value via the authStore mock + the standard
-  // `as unknown as jest.Mock` cast in the test file.
-  const { role } = useAuthStore() as unknown as { role: 'admin' | 'user' | null };
+  const { role, clearAuth } = useAuthStore() as unknown as {
+    role: 'admin' | 'user' | null;
+    clearAuth: () => Promise<void>;
+  };
   const { isOffline } = useNetworkStatus();
   const isAdmin = role === 'admin';
   const { addAction } = useAdminActionHistoryStore();
@@ -60,9 +86,46 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
     navigation.navigate('AdminActionSuccess', { actionType, streamId, timestamp });
   };
 
+  const [streams, setStreams] = useState<AdminStreamSummary[] | null>(
+    SEED_STREAMS,
+  );
+  const [errorView, setErrorView] = useState<ReturnType<typeof viewForError> | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(false);
+
+  const loadStreams = useCallback(async () => {
+    setLoading(true);
+    setErrorView(null);
+
+    try {
+      const result = await adminApi.listStreams();
+      setStreams(result.items ?? []);
+    } catch (error: unknown) {
+      setErrorView(viewForError(error));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) {
+      void loadStreams();
+    }
+  }, [isAdmin, loadStreams]);
+
+  const handleSignOut = useCallback(async () => {
+    await clearAuth();
+    navigation.goBack();
+  }, [clearAuth, navigation]);
+
+  const handleContactSupport = useCallback(() => {
+    void Linking.openURL(buildSupportMailto(errorView, 'stream overview'));
+  }, [errorView]);
+
   if (!isAdmin) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: insets.top }]}> 
         <Text style={styles.title}>Admin access required</Text>
         <Text style={styles.body}>Only administrators can manage streams from this screen.</Text>
         <TouchableOpacity
@@ -80,7 +143,7 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}> 
       <View style={styles.header}>
         <Text
           style={styles.title}
@@ -99,11 +162,28 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
+      {errorView ? (
+        <AdminErrorBanner
+          view={errorView}
+          onRetry={() => void loadStreams()}
+          onSignOut={handleSignOut}
+          onGoBack={() => navigation.goBack()}
+          onContactSupport={handleContactSupport}
+        />
+      ) : null}
+
       {isOffline ? <OfflineBanner /> : null}
 
+      {loading ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color="#2d6a2d" />
+          <Text style={styles.loadingText}>Loading streams…</Text>
+        </View>
+      ) : null}
+
       <FlatList
-        data={STREAMS}
-        keyExtractor={(item) => item.id}
+        data={streams ?? []}
+        keyExtractor={(item) => item.streamId}
         contentContainerStyle={styles.listContent}
         accessibilityRole="list"
         accessibilityLabel="Admin stream list"
@@ -117,9 +197,9 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
                 style={styles.streamId}
                 accessible
                 accessibilityRole="text"
-                accessibilityLabel={`Stream ID: ${item.id}`}
+                accessibilityLabel={`Stream ID: ${item.streamId}`}
               >
-                {item.id}
+                {item.streamId}
               </Text>
               <Text
                 style={styles.status}
@@ -144,16 +224,12 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
                   key={key}
                   style={[styles.actionButton, isOffline && styles.actionButtonDisabled]}
                   disabled={isOffline}
-                  // `accessibilityState.disabled` is set explicitly even
-                  // though TouchableOpacity auto-mirrors the `disabled`
-                  // prop — the offline test asserts on this object for a
-                  // cross-platform-stable signal.
                   accessibilityState={{ disabled: isOffline }}
-                  testID={`action-${key}-${item.id}`}
-                  onPress={() => handleAction(label as AdminActionType, item.id)}
+                  testID={`action-${key}-${item.streamId}`}
+                  onPress={() => handleAction(label as AdminActionType, item.streamId)}
                   accessible
                   accessibilityRole="button"
-                  accessibilityLabel={`${label} stream ${item.id}`}
+                  accessibilityLabel={`${label} stream ${item.streamId}`}
                   accessibilityHint={`Executes an admin ${label.toLowerCase()} on this stream and shows a confirmation`}
                 >
                   <Text style={styles.actionText}>{label}</Text>
@@ -197,7 +273,11 @@ const styles = StyleSheet.create({
     elevation: 2,
     gap: 8,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   streamId: { fontSize: 16, fontWeight: '700', color: '#1f3d1f' },
   status: { fontSize: 12, color: '#2d6a2d', fontWeight: '700' },
   meta: { fontSize: 13, color: '#4f5d4f' },
@@ -217,4 +297,11 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   actionText: { color: '#2d6a2d', fontWeight: '600', fontSize: 13 },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  loadingText: { color: '#4f5d4f', fontSize: 14 },
 });
