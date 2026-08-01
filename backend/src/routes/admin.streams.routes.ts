@@ -9,6 +9,7 @@ import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 import { streamClawbackService } from "../services/streamClawback.service";
 import { AppError, ErrorCode } from "../errors/errorCodes";
+import { classifyAdminSubmissionError } from "../errors/adminSubmissionError";
 import { adminNotificationService, extractErrorInfo } from "../services/adminNotification.service";
 import {
   StreamTerminationService,
@@ -25,7 +26,11 @@ import {
 } from "../services/streamLock.service";
 
 const streamIdParamSchema = z.object({
-  id: z.string().min(1, "Stream ID is required"),
+  id: z
+    .string()
+    .min(1, "Stream ID is required")
+    .max(128, "Stream ID must be at most 128 characters")
+    .regex(/^[a-zA-Z0-9_-]+$/, "Stream ID must contain only alphanumeric characters, hyphens, or underscores"),
 });
 
 const streamListQuerySchema = z.object({
@@ -114,6 +119,7 @@ export function createAdminStreamsRouter(
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
+    validateRequest({ params: streamIdParamSchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
         const { id: streamId } = req.params as { id: string };
@@ -311,8 +317,8 @@ export function createAdminStreamsRouter(
           reversible: false,
         });
       } catch (error) {
+        const { id } = req.params as { id: string };
         if (error instanceof AppError && error.statusCode === 404) {
-          const { id } = req.params as { id: string };
           adminNotificationService.notifyOperationFailed({
             streamId: id,
             adminAddress: req.user!.walletAddress,
@@ -321,7 +327,12 @@ export function createAdminStreamsRouter(
             timestamp: new Date().toISOString(),
           });
         }
-        next(error);
+        const hasUnsignedTx = !!(req.body as { unsignedTxXdr?: string })?.unsignedTxXdr;
+        if (hasUnsignedTx && !(error instanceof AppError && (error.statusCode === 404 || error.statusCode === 409))) {
+          next(classifyAdminSubmissionError(error, "stream_terminate"));
+        } else {
+          next(error);
+        }
       }
     },
   );

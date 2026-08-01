@@ -11,6 +11,14 @@ import { appLogger } from "../middleware/logger";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 
+const featureNameParamSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Feature name is required")
+    .max(100, "Feature name must be at most 100 characters")
+    .regex(/^[a-zA-Z0-9._-]+$/, "Feature name must contain only alphanumeric characters, dots, hyphens, or underscores"),
+});
+
 const updateFlagBodySchema = z.object({
   enabled: z.boolean(),
   rolloutPercentage: z.number().min(0).max(100).optional(),
@@ -41,7 +49,7 @@ export function createAdminFeaturesRouter() {
     authMiddleware,
     adminMiddleware,
     adminRateLimit,
-    validateRequest({ body: updateFlagBodySchema }),
+    validateRequest({ params: featureNameParamSchema, body: updateFlagBodySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {
         const name = String(req.params.name);
