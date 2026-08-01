@@ -10,6 +10,7 @@ import { traceContextFrom } from "../middleware/correlationId.middleware";
 import { ContractService } from "../services/contract.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+import { classifyAdminSubmissionError } from "../errors/adminSubmissionError";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 const stellarAddress = z
@@ -59,7 +60,7 @@ export function createAdminContractRouter(
         if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
-        next(error);
+        next(classifyAdminSubmissionError(error, "add_mediator"));
       }
     },
   );
@@ -86,7 +87,7 @@ export function createAdminContractRouter(
         if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
-        next(error);
+        next(classifyAdminSubmissionError(error, "remove_mediator"));
       }
     },
   );
@@ -113,7 +114,7 @@ export function createAdminContractRouter(
         if (res.headersSent) return;
         res.status(200).json(result);
       } catch (error) {
-        next(error);
+        next(classifyAdminSubmissionError(error, "update_fee_bps"));
       }
     },
   );

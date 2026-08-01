@@ -191,6 +191,28 @@ components:
       description: Optional idempotency key cached for mutation requests for up to 24 hours.
       schema:
         type: string
+    StreamIdPath:
+      in: path
+      name: id
+      required: true
+      description: Stream identifier. Must be alphanumeric with optional hyphens or underscores, max 128 characters.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[a-zA-Z0-9_-]+$"
+      example: stream-abc-123
+    FeatureNamePath:
+      in: path
+      name: name
+      required: true
+      description: Feature flag name. Must be alphanumeric with optional dots, hyphens, or underscores, max 100 characters.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        pattern: "^[a-zA-Z0-9._-]+$"
+      example: beta
   schemas:
     ErrorEnvelope:
       type: object
@@ -214,6 +236,16 @@ components:
             - INTERNAL_ERROR
             - CLAWBACK_TOO_LARGE
             - CLAWBACK_INVALID_AMOUNT
+            - SUBMISSION_VALIDATION_ERROR
+            - SUBMISSION_NETWORK_ERROR
+            - SUBMISSION_CONTRACT_ERROR
+            - SUBMISSION_AUTHORIZATION_ERROR
+          description: |-
+            Error code classifying the failure type. Submission error codes:
+            - `SUBMISSION_VALIDATION_ERROR`: Malformed transaction XDR (400)
+            - `SUBMISSION_NETWORK_ERROR`: Network timeout, connection refused, or rate limiting (429/502/503/504)
+            - `SUBMISSION_CONTRACT_ERROR`: Smart contract rejected the transaction (404/502)
+            - `SUBMISSION_AUTHORIZATION_ERROR`: Transaction was not authorized (401/403)
         message:
           type: string
         details:
@@ -1202,6 +1234,41 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}:
+    get:
+      tags: [Admin]
+      summary: Get stream state by ID
+      description: |-
+        Retrieve cached stream state for admin queries. Returns cached result
+        when fresh, otherwise fetches from DB and caches it.
+
+        Error code references: `NOT_FOUND` (unknown stream), `VALIDATION_ERROR` (invalid stream ID format).
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StreamIdPath"
+      responses:
+        "200":
+          description: Stream state.
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid stream ID format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/streams/{id}/clawback/preview:
     post:
       tags: [Admin]
@@ -1226,13 +1293,7 @@ paths:
         - bearerAuth: []
         - adminAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Stream identifier.
-          schema:
-            type: string
-            minLength: 1
+        - $ref: "#/components/parameters/StreamIdPath"
       requestBody:
         required: true
         content:
@@ -1247,7 +1308,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/StreamClawbackPreviewResponse"
         "400":
-          description: Invalid amount, or amount exceeds the remaining vested balance.
+          description: Invalid stream ID format, invalid amount, or amount exceeds the remaining vested balance.
           content:
             application/json:
               schema:
@@ -1291,13 +1352,7 @@ paths:
         - bearerAuth: []
         - adminAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Stream identifier.
-          schema:
-            type: string
-            minLength: 1
+        - $ref: "#/components/parameters/StreamIdPath"
       requestBody:
         required: false
         content:
@@ -1312,7 +1367,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StreamTerminateResponse"
         "400":
-          $ref: "#/components/responses/LegacyValidationError"
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -1345,13 +1404,7 @@ paths:
         - bearerAuth: []
         - adminAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Stream identifier.
-          schema:
-            type: string
-            minLength: 1
+        - $ref: "#/components/parameters/StreamIdPath"
       requestBody:
         required: false
         content:
@@ -1366,7 +1419,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StreamLockResponse"
         "400":
-          $ref: "#/components/responses/LegacyValidationError"
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -1389,13 +1446,7 @@ paths:
         - bearerAuth: []
         - adminAuth: []
       parameters:
-        - name: id
-          in: path
-          required: true
-          description: Stream identifier.
-          schema:
-            type: string
-            minLength: 1
+        - $ref: "#/components/parameters/StreamIdPath"
       requestBody:
         required: false
         content:
@@ -1410,7 +1461,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/StreamUnlockResponse"
         "400":
-          $ref: "#/components/responses/LegacyValidationError"
+          description: Invalid stream ID format or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppErrorResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -2790,11 +2845,7 @@ paths:
         - bearerAuth: []
         - adminAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/StreamIdPath"
       requestBody:
         content:
           application/json:
@@ -2808,6 +2859,7 @@ paths:
         "200":
           description: Stream suspended.
         "400":
+          description: Invalid stream ID format or validation error.
           content:
             application/json:
               schema:
@@ -2832,11 +2884,7 @@ paths:
         - bearerAuth: []
         - adminAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
+        - $ref: "#/components/parameters/StreamIdPath"
       requestBody:
         content:
           application/json:
@@ -2850,6 +2898,7 @@ paths:
         "200":
           description: Stream resumed.
         "400":
+          description: Invalid stream ID format or validation error.
           content:
             application/json:
               schema:

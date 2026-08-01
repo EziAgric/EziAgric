@@ -451,7 +451,8 @@ describe("POST /api/admin/streams/:id/terminate", () => {
         .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
         .send({ unsignedTxXdr: "GARBAGE" });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("SUBMISSION_VALIDATION_ERROR");
       expect(prisma.stream.update).not.toHaveBeenCalled();
       expect(prisma.adminActionAudit.create).not.toHaveBeenCalled();
     });

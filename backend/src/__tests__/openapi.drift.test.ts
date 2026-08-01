@@ -81,6 +81,7 @@ const IMPLEMENTED_ROUTES = [
   "/api/admin/features",
   "/api/admin/auth/claims",
   "/api/admin/streams",
+  "/api/admin/streams/{id}",
   "/api/admin/streams/{id}/clawback/preview",
   "/api/admin/streams/{id}/suspend",
   "/api/admin/streams/{id}/resume",
