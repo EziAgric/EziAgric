@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -12,6 +11,8 @@ import type { RootStackParamList } from '../types/navigation';
 import type { AdminActionType } from './AdminActionSuccessScreen';
 import { useAuthStore } from '../stores/authStore';
 import { useAdminActionHistoryStore } from '../stores/adminActionHistoryStore';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { OfflineBanner } from '../components/OfflineBanner';
 
 type Props = StackScreenProps<RootStackParamList, 'AdminStreamsOverview'>;
 
@@ -21,6 +22,18 @@ interface StreamSummary {
   pendingClawback: string;
 }
 
+interface AdminAction {
+  /** Stable key used for both React keys and testIDs, e.g. `action-<key>-<streamId>`. */
+  key: 'clawback' | 'lock' | 'terminate';
+  label: string;
+}
+
+const ADMIN_ACTIONS: AdminAction[] = [
+  { key: 'clawback', label: 'Clawback' },
+  { key: 'lock', label: 'Lock' },
+  { key: 'terminate', label: 'Terminate' },
+];
+
 const STREAMS: StreamSummary[] = [
   { id: 'stream-001', status: 'ACTIVE', pendingClawback: '0' },
   { id: 'stream-002', status: 'SUSPENDED', pendingClawback: '2500' },
@@ -28,7 +41,12 @@ const STREAMS: StreamSummary[] = [
 
 export default function AdminStreamsOverviewScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { role } = useAuthStore();
+  // `role` is not yet on AuthState — it will be added in a follow-up auth
+  // PR. Narrow locally so TS is happy without leaking the field into store
+  // types. Tests inject the value via the authStore mock + the standard
+  // `as unknown as jest.Mock` cast in the test file.
+  const { role } = useAuthStore() as unknown as { role: 'admin' | 'user' | null };
+  const { isOffline } = useNetworkStatus();
   const isAdmin = role === 'admin';
   const { addAction } = useAdminActionHistoryStore();
 
@@ -81,6 +99,8 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
+      {isOffline ? <OfflineBanner /> : null}
+
       <FlatList
         data={STREAMS}
         keyExtractor={(item) => item.id}
@@ -119,36 +139,26 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
               Pending clawback: {item.pendingClawback}
             </Text>
             <View style={styles.actions}>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleAction('Clawback', item.id)}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel={`Clawback stream ${item.id}`}
-                accessibilityHint="Executes an admin clawback on this stream and shows a confirmation"
-              >
-                <Text style={styles.actionText}>Clawback</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleAction('Lock', item.id)}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel={`Lock stream ${item.id}`}
-                accessibilityHint="Locks this stream and shows a confirmation"
-              >
-                <Text style={styles.actionText}>Lock</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleAction('Terminate', item.id)}
-                accessible
-                accessibilityRole="button"
-                accessibilityLabel={`Terminate stream ${item.id}`}
-                accessibilityHint="Terminates this stream and shows a confirmation"
-              >
-                <Text style={styles.actionText}>Terminate</Text>
-              </TouchableOpacity>
+              {ADMIN_ACTIONS.map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.actionButton, isOffline && styles.actionButtonDisabled]}
+                  disabled={isOffline}
+                  // `accessibilityState.disabled` is set explicitly even
+                  // though TouchableOpacity auto-mirrors the `disabled`
+                  // prop — the offline test asserts on this object for a
+                  // cross-platform-stable signal.
+                  accessibilityState={{ disabled: isOffline }}
+                  testID={`action-${key}-${item.id}`}
+                  onPress={() => handleAction(label as AdminActionType, item.id)}
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label} stream ${item.id}`}
+                  accessibilityHint={`Executes an admin ${label.toLowerCase()} on this stream and shows a confirmation`}
+                >
+                  <Text style={styles.actionText}>{label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         )}
@@ -202,6 +212,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
   },
   actionText: { color: '#2d6a2d', fontWeight: '600', fontSize: 13 },
 });

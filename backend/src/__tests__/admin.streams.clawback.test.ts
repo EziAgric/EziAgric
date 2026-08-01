@@ -7,6 +7,7 @@ import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import { streamClawbackService } from "../services/streamClawback.service";
 import { errorHandler } from "../middleware/errorHandler";
 import { AdminStreamsService } from "../services/adminStreams.service";
+import { StreamValidationService } from "../services/streamValidation.service";
 
 /**
  * The clawback preview route validates the requested amount against the
@@ -34,6 +35,26 @@ function fakeStreamsService(): AdminStreamsService {
   return new AdminStreamsService(prisma as never);
 }
 
+function fakeValidationService(): StreamValidationService {
+  const prisma = {
+    stream: {
+      findUnique: jest.fn(async ({ where }: { where: { streamId: string } }) => ({
+        streamId: where.streamId,
+        recipient: "GRECIPIENT000000000000000000000000000000000000000000",
+        totalVested: "1000000",
+        claimed: "0",
+        unclaimed: "1000000",
+        pendingClawback: "0",
+        status: "ACTIVE",
+        adminTags: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+    },
+  };
+  return new StreamValidationService(prisma as never);
+}
+
 jest.mock("../services/auth.service", () => ({
   AuthService: {
     validateToken: jest.fn(async (token: string) => {
@@ -59,7 +80,10 @@ function signToken(walletAddress: string): string {
 function buildApp(): Express {
   const app = express();
   app.use(express.json());
-  app.use("/api", createAdminStreamsRouter(undefined, undefined, fakeStreamsService()));
+  app.use(
+    "/api",
+    createAdminStreamsRouter(undefined, undefined, fakeStreamsService(), fakeValidationService()),
+  );
   app.use(errorHandler);
   return app;
 }

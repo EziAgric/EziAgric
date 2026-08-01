@@ -2,6 +2,12 @@
 
 #[cfg(test)]
 mod tests;
+
+/// Admin transaction payload builder — issue #98.
+/// Provides strongly-typed helpers for constructing admin contract call arguments.
+/// Available in test builds and as an `rlib` dependency for off-chain tooling.
+pub mod admin_payload;
+
 use soroban_sdk::{
     Address, Bytes, BytesN, Env, String, Symbol, Vec, contract, contractevent, contractimpl,
     contracttype, symbol_short, token,
@@ -26,6 +32,23 @@ pub const MAX_HASH_LEN: u32 = 256;
 /// persistent layout changes so a future upgrade can branch on
 /// `get_schema_version()` and run the matching migration. See SECURITY.md.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+/// Event schema version, distinct from the storage schema version.
+///
+/// This constant is embedded in the `ClawbackExecutedEvent` (and any new event
+/// type added after it) as a `schema_version` field so downstream listeners can
+/// detect structural changes and apply the appropriate parser.
+///
+/// Policy:
+/// - Bump when a **new field is added** to any event struct.
+/// - Never remove or reorder existing fields on a bump — always additive.
+/// - Old listeners that ignore unknown trailing fields remain compatible.
+/// - Document every bump in `docs/event-schema-migration-plan.md`.
+///
+/// Events predating this constant (all v1 events) have a stable, locked shape
+/// documented in `src/tests/event_schema_tests.rs`. They are not retrofitted
+/// with this field to preserve backward compatibility with deployed listeners.
+pub const EVENT_SCHEMA_VERSION: u32 = 1;
 
 /// Maximum single-trade escrow value in stroops (i128). Set to 1 trillion cNGN
 /// to guard against fat-finger amounts that would exhaust token supply.
@@ -247,6 +270,33 @@ pub struct PathPaymentExecutedEvent {
     pub dest_amount: i128,
 }
 
+/// Emitted when the admin performs a partial or full clawback on an escrowed trade.
+///
+/// A clawback recovers `clawback_amount` from the escrow, crediting it to `destination`.
+/// The remaining funds (`trade_amount - clawback_amount`) stay in escrow under the same
+/// trade and may be released or refunded through normal channels. A clawback that leaves
+/// zero funds in escrow also transitions the trade to `Cancelled`.
+///
+/// # Schema versioning
+/// This event includes `schema_version` so downstream listeners can detect structural
+/// additions in future releases.  See [`EVENT_SCHEMA_VERSION`] and
+/// `docs/event-schema-migration-plan.md` for the versioning policy.
+///
+/// # Safety
+/// - Only the admin may call `admin_clawback`.
+/// - `clawback_amount` must be ≤ the currently escrowed `trade.amount`.
+/// - The trade must be in `Funded` or `Disputed` status.
+#[contractevent(topics = ["CLWBCK"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClawbackExecutedEvent {
+    pub trade_id: u64,
+    pub clawback_amount: i128,
+    pub remaining_amount: i128,
+    pub destination: Address,
+    pub admin: Address,
+    pub schema_version: u32,
+}
+
 // ---------------------------------------------------------------------------
 // Trade history — stored event record
 // ---------------------------------------------------------------------------
@@ -421,6 +471,10 @@ pub enum DataKey {
     /// disturbing any existing key. Appended last so the XDR encoding of every
     /// pre-existing variant is unchanged (variants are keyed by name).
     SchemaVersion,
+    /// Cumulative amount clawed back from a given trade by the admin.
+    /// Used to prevent over-clawback: all partial clawbacks summed must not
+    /// exceed the original escrowed amount.
+    ClawbackTotal(u64),
 }
 
 #[contracttype]
@@ -644,6 +698,118 @@ impl EscrowContract {
             .instance()
             .get(&DataKey::AccruedFees)
             .unwrap_or(0)
+    }
+
+    /// Perform a partial (or full) admin clawback on an escrowed trade.
+    ///
+    /// The admin may call this any number of times as long as funds remain in
+    /// escrow. Each call reduces `trade.amount` by `clawback_amount` and
+    /// transfers that amount to `destination`. When the remaining balance
+    /// reaches zero the trade is transitioned to `Cancelled`.
+    ///
+    /// # Safety invariants
+    /// - Trade must be in `Funded` or `Disputed` status.
+    /// - `clawback_amount` must be > 0.
+    /// - `clawback_amount` must be ≤ remaining `trade.amount` (no over-clawback).
+    /// - Cumulative `ClawbackTotal` is updated on every call for auditability.
+    ///
+    /// Emits [`ClawbackExecutedEvent`] including the `schema_version` field so
+    /// listeners can detect future structural additions.
+    pub fn admin_clawback(env: Env, trade_id: u64, clawback_amount: i128, destination: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        assert!(clawback_amount > 0, "clawback_amount must be greater than zero");
+
+        let key = DataKey::Trade(trade_id);
+        let mut trade: Trade = Self::load_trade(&env, &key);
+
+        assert!(
+            matches!(trade.status, TradeStatus::Funded | TradeStatus::Disputed),
+            "Trade must be in Funded or Disputed status for clawback"
+        );
+        assert!(
+            clawback_amount <= trade.amount,
+            "clawback_amount exceeds remaining escrowed amount"
+        );
+
+        // Transfer clawback funds out of escrow
+        let token_client = token::Client::new(&env, &trade.token);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &destination,
+            &clawback_amount,
+        );
+
+        // Track cumulative clawback for this trade
+        let clawback_key = DataKey::ClawbackTotal(trade_id);
+        let prior_clawback_total: i128 = env
+            .storage()
+            .persistent()
+            .get(&clawback_key)
+            .unwrap_or(0_i128);
+        let new_clawback_total = prior_clawback_total
+            .checked_add(clawback_amount)
+            .expect("clawback total overflow");
+        env.storage()
+            .persistent()
+            .set(&clawback_key, &new_clawback_total);
+
+        // Reduce the escrowed amount
+        let remaining_amount = trade.amount - clawback_amount;
+        trade.amount = remaining_amount;
+        let now = env.ledger().timestamp();
+        trade.updated_at = now;
+
+        // If nothing remains, transition to Cancelled
+        if remaining_amount == 0 {
+            trade.status = TradeStatus::Cancelled;
+            Self::update_release_sequence(&env, &trade, |sequence, at| {
+                sequence.cancelled_at = Some(at);
+            });
+            Self::record_trade_event(
+                &env,
+                trade_id,
+                "clawback_full",
+                admin.clone(),
+                "admin full clawback — trade cancelled",
+            );
+        } else {
+            Self::record_trade_event(
+                &env,
+                trade_id,
+                "clawback_partial",
+                admin.clone(),
+                "admin partial clawback",
+            );
+        }
+
+        Self::save_trade(&env, &key, &trade);
+
+        ClawbackExecutedEvent {
+            trade_id,
+            clawback_amount,
+            remaining_amount,
+            destination,
+            admin,
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+        .publish(&env);
+
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Return the cumulative amount clawed back from a given trade by the admin.
+    /// Returns 0 if no clawback has been performed on this trade.
+    pub fn get_clawback_total(env: Env, trade_id: u64) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ClawbackTotal(trade_id))
+            .unwrap_or(0_i128)
     }
 
     // -----------------------------------------------------------------------
@@ -1170,6 +1336,21 @@ impl EscrowContract {
         Self::bump_instance_ttl(&env);
     }
 
+    /// Cancel a trade or perform an admin clawback.
+    ///
+    /// If the trade is in `Created` status, the buyer, seller, or admin can cancel without moving funds.
+    /// If the trade is in `Funded` status:
+    /// - If called by the `admin`, it acts as an immediate unilateral clawback/refund of escrowed funds to the buyer.
+    /// - If called by buyer or seller, both parties must submit cancellation requests before funds are returned to the buyer.
+    ///
+    /// # Cost Drivers for Admin Clawback (Funded status)
+    /// - Storage read for `Trade` record and `Admin` address instance storage.
+    /// - Auth verification for `caller` (`admin.require_auth()`).
+    /// - Token transfer (`token::Client::transfer`) from contract address back to buyer address.
+    /// - Persistent storage write to update `TradeStatus::Cancelled` and `updated_at`.
+    /// - Persistent storage write for `ReleaseSequence` tracking (`cancelled_at`).
+    /// - Contract event publication (`TradeCancelledEvent`).
+    /// - Instance storage TTL extension (`bump_instance_ttl`).
     pub fn cancel_trade(env: Env, trade_id: u64, caller: Address) {
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);

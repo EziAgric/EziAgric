@@ -371,6 +371,89 @@ mod event_schema_tests {
     }
 
     // -----------------------------------------------------------------------
+    // #93  ClawbackExecutedEvent  topics = ["CLWBCK"]
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_event_schema_clawback_executed() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (contract_id, _, buyer, seller, _) = setup(&env, 10_000, 100);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let trade_id =
+            client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+        client.deposit(&trade_id);
+
+        let admin = Address::generate(&env);
+        client.admin_clawback(&trade_id, &3_000_i128, &admin);
+
+        assert_last_event_topics(&env, &[symbol_short!("CLWBCK").into_val(&env)]);
+    }
+
+    // -----------------------------------------------------------------------
+    // #93  ClawbackExecutedEvent carries schema_version field = EVENT_SCHEMA_VERSION
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_event_schema_clawback_has_schema_version() {
+        use crate::EVENT_SCHEMA_VERSION;
+        let env = Env::default();
+        env.mock_all_auths();
+        let (contract_id, _, buyer, seller, _) = setup(&env, 10_000, 100);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let trade_id =
+            client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+        client.deposit(&trade_id);
+
+        let destination = Address::generate(&env);
+        client.admin_clawback(&trade_id, &4_000_i128, &destination);
+
+        // Retrieve raw event data to confirm schema_version is present
+        let all = env.events().all();
+        let events = all.events();
+        let last = events.last().unwrap();
+        let data = match &last.body {
+            ContractEventBody::V0(v0) => match &v0.data {
+                ScVal::Map(Some(map)) => {
+                    let mut vals = Vec::new();
+                    for entry in map.iter() {
+                        vals.push(entry.val.clone());
+                    }
+                    vals
+                }
+                ScVal::Vec(Some(fields)) => fields.to_vec(),
+                _ => panic!("unexpected event data shape"),
+            },
+        };
+        // ClawbackExecutedEvent has 6 fields:
+        // admin, clawback_amount, destination, remaining_amount, schema_version, trade_id
+        assert_eq!(
+            data.len(),
+            6,
+            "ClawbackExecutedEvent must have 6 payload fields (including schema_version)"
+        );
+
+        // Verify schema_version field equals EVENT_SCHEMA_VERSION (u32 = 1)
+        // Fields are XDR-sorted by name; schema_version sorts after remaining_amount and before trade_id.
+        // Safest check: scan for a U32 entry with value == EVENT_SCHEMA_VERSION
+        let schema_version_found = data.iter().any(|v| {
+            matches!(v, ScVal::U32(n) if *n == EVENT_SCHEMA_VERSION)
+        });
+        assert!(
+            schema_version_found,
+            "ClawbackExecutedEvent must contain schema_version = {EVENT_SCHEMA_VERSION}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // #93  EVENT_SCHEMA_VERSION constant is publicly exported
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_event_schema_version_constant_exported() {
+        use crate::EVENT_SCHEMA_VERSION;
+        // The constant exists and has the documented baseline value.
+        assert_eq!(EVENT_SCHEMA_VERSION, 1, "EVENT_SCHEMA_VERSION must start at 1");
+    }
+
+    // -----------------------------------------------------------------------
     // #383-14  Golden snapshot: full lifecycle emits events in correct order
     // -----------------------------------------------------------------------
     #[test]
@@ -405,5 +488,36 @@ mod event_schema_tests {
         // Event schema coverage for each individual lifecycle event is handled by the
         // dedicated tests above. This golden path now focuses on ensuring the full
         // lifecycle completes without regressions.
+    }
+
+    // -----------------------------------------------------------------------
+    // #93  Golden snapshot: clawback path emits CLWBCK after partial clawback
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_event_schema_golden_clawback_path() {
+        let env = Env::default();
+        env.mock_all_auths();
+        // Need extra funds for two trades
+        let (contract_id, _, buyer, seller, _) = setup(&env, 20_000, 100);
+        let client = EscrowContractClient::new(&env, &contract_id);
+
+        // Fund a trade, then partial-clawback
+        let trade_id = client.create_trade(
+            &buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None,
+        );
+        client.deposit(&trade_id);
+        assert_last_event_topics(&env, &[symbol_short!("TRDFND").into_val(&env)]);
+
+        let destination = Address::generate(&env);
+        client.admin_clawback(&trade_id, &3_000_i128, &destination);
+        // After partial clawback, last event must be CLWBCK
+        assert_last_event_topics(&env, &[symbol_short!("CLWBCK").into_val(&env)]);
+
+        // Trade still funded; normal release can proceed on remaining 7 000
+        client.confirm_delivery(&trade_id);
+        assert_last_event_topics(&env, &[symbol_short!("DELCNF").into_val(&env)]);
+
+        client.release_funds(&trade_id, &buyer);
+        assert_last_event_topics(&env, &[symbol_short!("RELSD").into_val(&env)]);
     }
 }
