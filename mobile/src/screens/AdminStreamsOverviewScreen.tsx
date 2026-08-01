@@ -1,6 +1,4 @@
-import React from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
@@ -11,6 +9,8 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuthStore } from '../stores/authStore';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { OfflineBanner } from '../components/OfflineBanner';
 
 type Props = StackScreenProps<RootStackParamList, 'AdminStreamsOverview'>;
 
@@ -20,6 +20,18 @@ interface StreamSummary {
   pendingClawback: string;
 }
 
+interface AdminAction {
+  /** Stable key used for both React keys and testIDs, e.g. `action-<key>-<streamId>`. */
+  key: 'clawback' | 'lock' | 'terminate';
+  label: string;
+}
+
+const ADMIN_ACTIONS: AdminAction[] = [
+  { key: 'clawback', label: 'Clawback' },
+  { key: 'lock', label: 'Lock' },
+  { key: 'terminate', label: 'Terminate' },
+];
+
 const STREAMS: StreamSummary[] = [
   { id: 'stream-001', status: 'ACTIVE', pendingClawback: '0' },
   { id: 'stream-002', status: 'SUSPENDED', pendingClawback: '2500' },
@@ -27,12 +39,17 @@ const STREAMS: StreamSummary[] = [
 
 export default function AdminStreamsOverviewScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { role } = useAuthStore();
+  // `role` is not yet on AuthState — it will be added in a follow-up auth
+  // PR. Narrow locally so TS is happy without leaking the field into store
+  // types. Tests inject the value via the authStore mock + the standard
+  // `as unknown as jest.Mock` cast in the test file.
+  const { role } = useAuthStore() as unknown as { role: 'admin' | 'user' | null };
+  const { isOffline } = useNetworkStatus();
   const isAdmin = role === 'admin';
 
   if (!isAdmin) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}> 
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <Text style={styles.title}>Admin access required</Text>
         <Text style={styles.body}>Only administrators can manage streams from this screen.</Text>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -43,13 +60,15 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}> 
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Admin stream overview</Text>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
       </View>
+
+      {isOffline ? <OfflineBanner /> : null}
 
       <FlatList
         data={STREAMS}
@@ -63,15 +82,21 @@ export default function AdminStreamsOverviewScreen({ navigation }: Props) {
             </View>
             <Text style={styles.meta}>Pending clawback: {item.pendingClawback}</Text>
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.actionButton}>
-                <Text style={styles.actionText}>Clawback</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton}>
-                <Text style={styles.actionText}>Lock</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton}>
-                <Text style={styles.actionText}>Terminate</Text>
-              </TouchableOpacity>
+              {ADMIN_ACTIONS.map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.actionButton, isOffline && styles.actionButtonDisabled]}
+                  disabled={isOffline}
+                  // `accessibilityState.disabled` is set explicitly even
+                  // though TouchableOpacity auto-mirrors the `disabled`
+                  // prop — the offline test asserts on this object for a
+                  // cross-platform-stable signal.
+                  accessibilityState={{ disabled: isOffline }}
+                  testID={`action-${key}-${item.id}`}
+                >
+                  <Text style={styles.actionText}>{label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         )}
@@ -125,6 +150,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
   },
   actionText: { color: '#2d6a2d', fontWeight: '600', fontSize: 13 },
 });
