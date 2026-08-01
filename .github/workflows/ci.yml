@@ -27,6 +27,9 @@ on:
       - "contracts/**"
       - "scripts/**"
       - "infra/**"
+      - "mobile/**"
+      - "mobile/package-lock.json"
+      - "pnpm-lock.yaml"
 
 jobs:
   changes:

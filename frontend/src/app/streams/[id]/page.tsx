@@ -16,7 +16,7 @@ export default function StreamDetailPage() {
   const params = useParams();
   const streamId = params.id as string;
   const { token, isAuthenticated, isLoading: authLoading } = useAuth();
-  const { isAdmin } = useAdmin();
+  const { canAccessAdmin } = useAdmin();
 
   const [streamData, setStreamData] = useState<StreamRemainingResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,7 +98,7 @@ export default function StreamDetailPage() {
         <Breadcrumb
           items={breadcrumbItems}
           adminAction={
-            isAdmin
+            canAccessAdmin
               ? {
                   label: "Manage Stream",
                   href: `/admin/streams/${streamId}`,

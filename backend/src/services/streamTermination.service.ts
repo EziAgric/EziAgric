@@ -52,15 +52,24 @@ export type TransactionSigner = (unsignedTxXdr: string) => string;
 
 type StreamPrisma = Pick<PrismaClient, "stream" | "adminActionAudit">;
 
+export type CacheInvalidator = (streamId: string) => Promise<void>;
+
 export class StreamTerminationService {
   private prisma: StreamPrisma;
   private signTransaction?: TransactionSigner;
   private adminNotification: AdminNotificationService;
+  private invalidateCache?: CacheInvalidator;
 
-  constructor(prisma: StreamPrisma = defaultPrisma, signTransaction?: TransactionSigner, adminNotification?: AdminNotificationService) {
+  constructor(
+    prisma: StreamPrisma = defaultPrisma,
+    signTransaction?: TransactionSigner,
+    adminNotification?: AdminNotificationService,
+    invalidateCache?: CacheInvalidator,
+  ) {
     this.prisma = prisma;
     this.signTransaction = signTransaction;
     this.adminNotification = adminNotification ?? defaultAdminNotificationService;
+    this.invalidateCache = invalidateCache;
   }
 
   /**
@@ -74,6 +83,14 @@ export class StreamTerminationService {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { sorobanAdminService } = require("./sorobanAdmin.service");
     return (xdr: string) => sorobanAdminService.signTransaction(xdr);
+  }
+
+  private getCacheInvalidator(): CacheInvalidator {
+    if (this.invalidateCache) return this.invalidateCache;
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { invalidateStreamCache } = require("./streamCache.service");
+    return invalidateStreamCache;
   }
 
   async terminate(input: TerminateStreamInput): Promise<TerminateStreamResult> {
@@ -149,6 +166,12 @@ export class StreamTerminationService {
         unclaimed: updated.unclaimed,
       });
 
+      try {
+        await this.getCacheInvalidator()(streamId);
+      } catch {
+        // Cache invalidation is best-effort; do not fail the termination
+      }
+
       return result;
     } catch (error) {
       this.adminNotification.notifyOperationFailed({
@@ -163,4 +186,10 @@ export class StreamTerminationService {
   }
 }
 
-export const streamTerminationService = new StreamTerminationService();
+export const streamTerminationService = new StreamTerminationService(
+  defaultPrisma,
+  undefined,
+  undefined,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("./streamCache.service").invalidateStreamCache,
+);

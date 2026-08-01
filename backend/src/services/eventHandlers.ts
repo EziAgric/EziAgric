@@ -281,10 +281,7 @@ export async function handleStreamClawback(tx: Prisma.TransactionClient, event: 
 
   await tx.streamClawbackEvent.upsert({
     where: {
-      streamId_txHash: {
-        streamId,
-        txHash: event.eventId,
-      },
+      streamId_txHash: { streamId, txHash: event.eventId },
     },
     update: {},
     create: {
@@ -292,7 +289,7 @@ export async function handleStreamClawback(tx: Prisma.TransactionClient, event: 
       admin,
       amount,
       txHash: event.eventId,
-      timestamp: new Date(),
+    timestamp: new Date(),
     },
   });
 

@@ -6,6 +6,54 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import { streamClawbackService } from "../services/streamClawback.service";
 import { errorHandler } from "../middleware/errorHandler";
+import { AdminStreamsService } from "../services/adminStreams.service";
+import { StreamValidationService } from "../services/streamValidation.service";
+
+/**
+ * The clawback preview route validates the requested amount against the
+ * stream's real `unclaimed` balance (#51/#59), so this concurrency suite
+ * needs every stream id it exercises to resolve to a stream with plenty of
+ * headroom — the assertions here are about locking, not amount validation.
+ */
+function fakeStreamsService(): AdminStreamsService {
+  const prisma = {
+    stream: {
+      findUnique: jest.fn(async ({ where }: { where: { streamId: string } }) => ({
+        streamId: where.streamId,
+        recipient: "GRECIPIENT000000000000000000000000000000000000000000",
+        totalVested: "1000000",
+        claimed: "0",
+        unclaimed: "1000000",
+        pendingClawback: "0",
+        status: "ACTIVE",
+        adminTags: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+    },
+  };
+  return new AdminStreamsService(prisma as never);
+}
+
+function fakeValidationService(): StreamValidationService {
+  const prisma = {
+    stream: {
+      findUnique: jest.fn(async ({ where }: { where: { streamId: string } }) => ({
+        streamId: where.streamId,
+        recipient: "GRECIPIENT000000000000000000000000000000000000000000",
+        totalVested: "1000000",
+        claimed: "0",
+        unclaimed: "1000000",
+        pendingClawback: "0",
+        status: "ACTIVE",
+        adminTags: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+    },
+  };
+  return new StreamValidationService(prisma as never);
+}
 
 jest.mock("../services/auth.service", () => ({
   AuthService: {
@@ -32,7 +80,10 @@ function signToken(walletAddress: string): string {
 function buildApp(): Express {
   const app = express();
   app.use(express.json());
-  app.use("/api", createAdminStreamsRouter());
+  app.use(
+    "/api",
+    createAdminStreamsRouter(undefined, undefined, fakeStreamsService(), fakeValidationService()),
+  );
   app.use(errorHandler);
   return app;
 }

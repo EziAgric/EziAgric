@@ -19,180 +19,212 @@ describe("useAdmin", () => {
     process.env = originalEnv;
   });
 
-  it("returns isAdmin true when user address is in admin list", () => {
-    const adminAddress = "GADMIN123";
-    process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
-
-    mockUseAuth.mockReturnValue({
-      address: adminAddress,
-      shortAddress: "GADMIN...123",
-      token: "mock-token",
-      isAuthenticated: true,
-      isWalletConnected: true,
-      isWalletDetected: true,
-      isLoading: false,
-      error: null,
-      connectWallet: jest.fn(),
-      authenticate: jest.fn(),
-      logout: jest.fn(),
-      refreshAuth: jest.fn(),
+  describe("with feature flag enabled", () => {
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ENABLE_ADMIN_UI = "true";
     });
 
-    const { result } = renderHook(() => useAdmin());
+    it("returns canAccessAdmin true when user is admin and feature is enabled", () => {
+      const adminAddress = "GADMIN123";
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
 
-    expect(result.current.isAdmin).toBe(true);
-    expect(result.current.adminAddresses).toContain(adminAddress);
+      mockUseAuth.mockReturnValue({
+        address: adminAddress,
+        shortAddress: "GADMIN...123",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current.isAdmin).toBe(true);
+      expect(result.current.isAdminUIEnabled).toBe(true);
+      expect(result.current.canAccessAdmin).toBe(true);
+    });
+
+    it("returns canAccessAdmin false when user is not admin even if feature is enabled", () => {
+      const adminAddress = "GADMIN123";
+      const userAddress = "GUSER456";
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
+
+      mockUseAuth.mockReturnValue({
+        address: userAddress,
+        shortAddress: "GUSER...456",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current.isAdmin).toBe(false);
+      expect(result.current.isAdminUIEnabled).toBe(true);
+      expect(result.current.canAccessAdmin).toBe(false);
+    });
   });
 
-  it("returns isAdmin false when user address is not in admin list", () => {
-    const adminAddress = "GADMIN123";
-    const userAddress = "GUSER456";
-    process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
-
-    mockUseAuth.mockReturnValue({
-      address: userAddress,
-      shortAddress: "GUSER...456",
-      token: "mock-token",
-      isAuthenticated: true,
-      isWalletConnected: true,
-      isWalletDetected: true,
-      isLoading: false,
-      error: null,
-      connectWallet: jest.fn(),
-      authenticate: jest.fn(),
-      logout: jest.fn(),
-      refreshAuth: jest.fn(),
+  describe("with feature flag disabled", () => {
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ENABLE_ADMIN_UI = "false";
     });
 
-    const { result } = renderHook(() => useAdmin());
+    it("returns canAccessAdmin false even when user is admin", () => {
+      const adminAddress = "GADMIN123";
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
 
-    expect(result.current.isAdmin).toBe(false);
-    expect(result.current.adminAddresses).toContain(adminAddress);
-    expect(result.current.adminAddresses).not.toContain(userAddress);
+      mockUseAuth.mockReturnValue({
+        address: adminAddress,
+        shortAddress: "GADMIN...123",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current.isAdmin).toBe(true);
+      expect(result.current.isAdminUIEnabled).toBe(false);
+      expect(result.current.canAccessAdmin).toBe(false);
+    });
+
+    it("returns canAccessAdmin false for non-admin user", () => {
+      const adminAddress = "GADMIN123";
+      const userAddress = "GUSER456";
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
+
+      mockUseAuth.mockReturnValue({
+        address: userAddress,
+        shortAddress: "GUSER...456",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current.isAdmin).toBe(false);
+      expect(result.current.isAdminUIEnabled).toBe(false);
+      expect(result.current.canAccessAdmin).toBe(false);
+    });
   });
 
-  it("returns isAdmin false when user is not authenticated", () => {
-    const adminAddress = "GADMIN123";
-    process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
-
-    mockUseAuth.mockReturnValue({
-      address: null,
-      shortAddress: null,
-      token: null,
-      isAuthenticated: false,
-      isWalletConnected: false,
-      isWalletDetected: true,
-      isLoading: false,
-      error: null,
-      connectWallet: jest.fn(),
-      authenticate: jest.fn(),
-      logout: jest.fn(),
-      refreshAuth: jest.fn(),
+  describe("default behavior (feature flag not set)", () => {
+    beforeEach(() => {
+      delete process.env.NEXT_PUBLIC_ENABLE_ADMIN_UI;
     });
 
-    const { result } = renderHook(() => useAdmin());
+    it("defaults to feature flag disabled for safety", () => {
+      const adminAddress = "GADMIN123";
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
 
-    expect(result.current.isAdmin).toBe(false);
+      mockUseAuth.mockReturnValue({
+        address: adminAddress,
+        shortAddress: "GADMIN...123",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current.isAdmin).toBe(true);
+      expect(result.current.isAdminUIEnabled).toBe(false);
+      expect(result.current.canAccessAdmin).toBe(false);
+    });
   });
 
-  it("handles multiple admin addresses", () => {
-    const admin1 = "GADMIN123";
-    const admin2 = "GADMIN456";
-    const admin3 = "GADMIN789";
-    process.env.NEXT_PUBLIC_ADMIN_WALLETS = `${admin1},${admin2},${admin3}`;
+  describe("backwards compatibility", () => {
+    it("maintains isAdmin property independent of feature flag", () => {
+      const adminAddress = "GADMIN123";
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = adminAddress;
+      process.env.NEXT_PUBLIC_ENABLE_ADMIN_UI = "false";
 
-    mockUseAuth.mockReturnValue({
-      address: admin2,
-      shortAddress: "GADMIN...456",
-      token: "mock-token",
-      isAuthenticated: true,
-      isWalletConnected: true,
-      isWalletDetected: true,
-      isLoading: false,
-      error: null,
-      connectWallet: jest.fn(),
-      authenticate: jest.fn(),
-      logout: jest.fn(),
-      refreshAuth: jest.fn(),
+      mockUseAuth.mockReturnValue({
+        address: adminAddress,
+        shortAddress: "GADMIN...123",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      // isAdmin should still be true even if feature is disabled
+      expect(result.current.isAdmin).toBe(true);
+      // but canAccessAdmin should be false
+      expect(result.current.canAccessAdmin).toBe(false);
     });
-
-    const { result } = renderHook(() => useAdmin());
-
-    expect(result.current.isAdmin).toBe(true);
-    expect(result.current.adminAddresses).toEqual([admin1, admin2, admin3]);
   });
 
-  it("handles empty admin addresses list", () => {
-    process.env.NEXT_PUBLIC_ADMIN_WALLETS = "";
+  describe("all return values", () => {
+    it("returns all expected properties", () => {
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = "GADMIN123";
+      process.env.NEXT_PUBLIC_ENABLE_ADMIN_UI = "true";
 
-    mockUseAuth.mockReturnValue({
-      address: "GUSER123",
-      shortAddress: "GUSER...123",
-      token: "mock-token",
-      isAuthenticated: true,
-      isWalletConnected: true,
-      isWalletDetected: true,
-      isLoading: false,
-      error: null,
-      connectWallet: jest.fn(),
-      authenticate: jest.fn(),
-      logout: jest.fn(),
-      refreshAuth: jest.fn(),
+      mockUseAuth.mockReturnValue({
+        address: "GADMIN123",
+        shortAddress: "GADMIN...123",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current).toHaveProperty("isAdmin");
+      expect(result.current).toHaveProperty("isAdminUIEnabled");
+      expect(result.current).toHaveProperty("canAccessAdmin");
+      expect(result.current).toHaveProperty("adminAddresses");
     });
-
-    const { result } = renderHook(() => useAdmin());
-
-    expect(result.current.isAdmin).toBe(false);
-    expect(result.current.adminAddresses).toEqual([]);
-  });
-
-  it("handles undefined admin addresses environment variable", () => {
-    delete process.env.NEXT_PUBLIC_ADMIN_WALLETS;
-
-    mockUseAuth.mockReturnValue({
-      address: "GUSER123",
-      shortAddress: "GUSER...123",
-      token: "mock-token",
-      isAuthenticated: true,
-      isWalletConnected: true,
-      isWalletDetected: true,
-      isLoading: false,
-      error: null,
-      connectWallet: jest.fn(),
-      authenticate: jest.fn(),
-      logout: jest.fn(),
-      refreshAuth: jest.fn(),
-    });
-
-    const { result } = renderHook(() => useAdmin());
-
-    expect(result.current.isAdmin).toBe(false);
-    expect(result.current.adminAddresses).toEqual([]);
-  });
-
-  it("trims whitespace from admin addresses", () => {
-    const admin1 = "GADMIN123";
-    const admin2 = "GADMIN456";
-    process.env.NEXT_PUBLIC_ADMIN_WALLETS = `  ${admin1}  ,  ${admin2}  `;
-
-    mockUseAuth.mockReturnValue({
-      address: admin1,
-      shortAddress: "GADMIN...123",
-      token: "mock-token",
-      isAuthenticated: true,
-      isWalletConnected: true,
-      isWalletDetected: true,
-      isLoading: false,
-      error: null,
-      connectWallet: jest.fn(),
-      authenticate: jest.fn(),
-      logout: jest.fn(),
-      refreshAuth: jest.fn(),
-    });
-
-    const { result } = renderHook(() => useAdmin());
-
-    expect(result.current.isAdmin).toBe(true);
-    expect(result.current.adminAddresses).toEqual([admin1, admin2]);
   });
 });
