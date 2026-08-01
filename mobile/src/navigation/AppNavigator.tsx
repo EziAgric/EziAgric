@@ -13,6 +13,7 @@ import CreateTradeScreen from '../screens/CreateTradeScreen';
 import EvidenceCaptureScreen from '../screens/EvidenceCaptureScreen';
 import VaultDashboard from '../screens/VaultDashboard';
 import AdminStreamsOverviewScreen from '../screens/AdminStreamsOverviewScreen';
+import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -69,6 +70,7 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="EvidenceCapture" component={EvidenceCaptureScreen} />
         <Stack.Screen name="VaultDashboard" component={VaultDashboard} />
         <Stack.Screen name="AdminStreamsOverview" component={AdminStreamsOverviewScreen} />
+        <Stack.Screen name="AdminActionSuccess" component={AdminActionSuccessScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -63,6 +63,14 @@ path = "tests/metrics_tests.rs"
 name = "state_machine_fuzz_tests"
 path = "tests/state_machine_fuzz_tests.rs"
 
+[[test]]
+name = "clawback_invariant_tests"
+path = "tests/clawback_invariant_tests.rs"
+
+[[test]]
+name = "clawback_access_control_tests"
+path = "tests/clawback_access_control_tests.rs"
+
 # Issue #94 — partial clawback coverage
 [[test]]
 name = "partial_clawback_tests"
