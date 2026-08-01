@@ -56,6 +56,10 @@ name = "schema_version_tests"
 path = "tests/schema_version_tests.rs"
 
 [[test]]
+name = "clawback_error_tests"
+path = "tests/clawback_error_tests.rs"
+
+[[test]]
 name = "metrics_tests"
 path = "tests/metrics_tests.rs"
 
