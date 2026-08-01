@@ -47,7 +47,6 @@ export const envSchema = z.object({
 
   // Access control
   ADMIN_STELLAR_PUBKEYS: z.string().default(''),
-  ADMIN_SECRET_KEY: z.string().optional(),
 
   // Pinata / IPFS
   PINATA_API_KEY: z.string().optional(),

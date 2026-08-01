@@ -29,6 +29,9 @@ export enum ErrorCode {
   CLAWBACK_INVALID_AMOUNT = "CLAWBACK_INVALID_AMOUNT",
   CLAWBACK_STREAM_NOT_FOUND = "CLAWBACK_STREAM_NOT_FOUND",
   CLAWBACK_INVALID_STATUS = "CLAWBACK_INVALID_STATUS",
+
+  // Stream clawback-specific codes
+  CLAWBACK_TOO_LARGE = "CLAWBACK_TOO_LARGE",
 }
 
 export interface StructuredErrorPayload {

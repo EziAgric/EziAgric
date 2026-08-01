@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
   StyleSheet,
   TextInput,
   Modal,
@@ -15,6 +16,10 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types/navigation';
 import type { Trade, TradeStatus } from '../types/trade';
 import { useTradeStore } from '../stores/tradeStore';
+import { useAuthStore } from '../stores/authStore';
+import { AdminErrorBanner } from '../components/AdminErrorBanner';
+import { buildSupportMailto } from '../constants/support';
+import type { AdminErrorView } from '../api/errors';
 
 type Props = StackScreenProps<RootStackParamList, 'TradeDetail'>;
 
@@ -105,8 +110,19 @@ function TradeTimeline({ trade }: { trade: Trade }) {
 export default function TradeDetailScreen({ route, navigation }: Props) {
   const { tradeId } = route.params;
   const insets = useSafeAreaInsets();
-  const { currentTrade, isLoading, error, fetchTrade, confirmDelivery, initiateDispute, releaseFunds, deposit, clearError } =
-    useTradeStore();
+  const {
+    currentTrade,
+    isLoading,
+    errorView,
+    lastActionErrorView,
+    fetchTrade,
+    confirmDelivery,
+    initiateDispute,
+    releaseFunds,
+    deposit,
+    clearErrorView,
+  } = useTradeStore();
+  const { clearAuth } = useAuthStore();
 
   const [disputeModalVisible, setDisputeModalVisible] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
@@ -115,6 +131,21 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
   useEffect(() => {
     fetchTrade(tradeId);
   }, [tradeId, fetchTrade]);
+
+  // Action errors take precedence over stale load errors so a
+  // background poll doesn't bury a still-relevant mutation banner —
+  // mirrors the dual-state pattern used by the admin screens.
+  const visibleErrorView: AdminErrorView | null =
+    lastActionErrorView ?? errorView;
+
+  const isActionError = lastActionErrorView !== null;
+
+  const openSupportMailto = useCallback(
+    (view: AdminErrorView | null) => {
+      void Linking.openURL(buildSupportMailto(view, 'trade detail'));
+    },
+    []
+  );
 
   const handleDeposit = useCallback(() => {
     Alert.alert(
@@ -204,12 +235,46 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
   }
 
   if (!currentTrade) {
+    // Fallback banner for trades the server won't return (404, removed,
+    // etc.). When `errorView` is null (e.g. cold-load race) we surface a
+    // synthetic `TRADE_NOT_FOUND` view so the banner buttons are still
+    // meaningful; `action === 'go_back'` renders a single "Go back" CTA.
+    const notFoundView: AdminErrorView = errorView ?? {
+      title: 'Trade not found',
+      message:
+        'This trade could not be loaded. It may have been completed or removed — go back to your trade list and try again.',
+      action: 'go_back',
+      code: 'TRADE_NOT_FOUND',
+    };
+
+    // Banner wires the same set of hooks as the inline banner below so
+    // any action in the map (sign-out, retry, etc.) renders correctly.
     return (
-      <View style={[styles.center, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>{error ?? 'Trade not found'}</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backBtnText}>← Go back</Text>
-        </TouchableOpacity>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Trade Detail</Text>
+          <View style={{ width: 60 }} />
+        </View>
+        <View style={styles.bannerWrap}>
+          <AdminErrorBanner
+            view={notFoundView}
+            onGoBack={() => navigation.goBack()}
+            onRetry={
+              notFoundView.action === 'retry' || notFoundView.action === 'wait_then_retry'
+                ? () => void fetchTrade(tradeId)
+                : undefined
+            }
+            onSignOut={
+              notFoundView.action === 'sign_out_required'
+                ? () => void clearAuth()
+                : undefined
+            }
+            onContactSupport={() => openSupportMailto(notFoundView)}
+          />
+        </View>
       </View>
     );
   }
@@ -240,12 +305,31 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
           )}
         </View>
 
-        {/* Error banner */}
-        {error && (
-          <TouchableOpacity style={styles.errorBanner} onPress={clearError}>
-            <Text style={styles.errorBannerText}>{error} — tap to dismiss</Text>
-          </TouchableOpacity>
-        )}
+        {/* Error banner — dual-slot display via `lastActionErrorView
+            ?? errorView` above. Successful loads do NOT wipe a stale
+            action banner, so we explicitly clear as needed. */}
+        {visibleErrorView ? (
+          <View style={styles.bannerWrap}>
+            <AdminErrorBanner
+              view={visibleErrorView}
+              // Only offer "Try again" when the error came from a load
+              // action; action errors must be re-fired from the action
+              // row itself (which the user still sees intact).
+              onRetry={
+                !isActionError && visibleErrorView.action !== 'go_back'
+                  ? () => void fetchTrade(tradeId)
+                  : undefined
+              }
+              onSignOut={
+                visibleErrorView.action === 'sign_out_required'
+                  ? () => void clearAuth()
+                  : undefined
+              }
+              onGoBack={clearErrorView}
+              onContactSupport={() => openSupportMailto(visibleErrorView)}
+            />
+          </View>
+        ) : null}
 
         {/* Trade info */}
         <View style={styles.section}>
@@ -416,15 +500,7 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 13, fontWeight: '700' },
   amountText: { fontSize: 28, fontWeight: '800', color: '#1a3a1a' },
   commodityText: { fontSize: 14, color: '#555', marginTop: 4 },
-  errorBanner: {
-    backgroundColor: '#FEE2E2',
-    padding: 12,
-    borderRadius: 8,
-  },
-  errorBannerText: { color: '#DC2626', fontSize: 13 },
-  errorText: { fontSize: 16, color: '#DC2626', marginBottom: 16 },
-  backBtn: { padding: 12 },
-  backBtnText: { color: '#2d6a2d', fontSize: 15 },
+  bannerWrap: { paddingHorizontal: 0 },
   section: {
     backgroundColor: '#fff',
     borderRadius: 12,

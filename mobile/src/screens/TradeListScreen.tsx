@@ -7,6 +7,7 @@ import {
   RefreshControl,
   StyleSheet,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { StackScreenProps } from '@react-navigation/stack';
@@ -14,6 +15,8 @@ import type { RootStackParamList } from '../types/navigation';
 import type { Trade, TradeStatus } from '../types/trade';
 import { useTradeStore } from '../stores/tradeStore';
 import { useAuthStore } from '../stores/authStore';
+import { AdminErrorBanner } from '../components/AdminErrorBanner';
+import { buildSupportMailto } from '../constants/support';
 
 type Props = StackScreenProps<RootStackParamList, 'TradeList'>;
 
@@ -59,7 +62,7 @@ function TradeCard({ trade, onPress }: { trade: Trade; onPress: () => void }) {
 
 export default function TradeListScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { trades, isLoading, error, fetchTrades, clearError } = useTradeStore();
+  const { trades, isLoading, errorView, fetchTrades, clearErrorView } = useTradeStore();
   const { clearAuth } = useAuthStore();
   const [activeFilter, setActiveFilter] = useState<TradeStatus | 'ALL'>('ALL');
   const [refreshing, setRefreshing] = useState(false);
@@ -92,6 +95,14 @@ export default function TradeListScreen({ navigation }: Props) {
     navigation.replace('WalletConnect');
   };
 
+  // TradeListScreen only triggers load actions (`fetchTrades`), so a
+  // single slot is enough — no dual-slot `lastActionErrorView` here.
+  const visibleErrorView = errorView;
+
+  const openSupportMailto = useCallback(() => {
+    void Linking.openURL(buildSupportMailto(visibleErrorView, 'trade list'));
+  }, [visibleErrorView]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -122,12 +133,22 @@ export default function TradeListScreen({ navigation }: Props) {
         ))}
       </View>
 
-      {/* Error banner */}
-      {error && (
-        <TouchableOpacity style={styles.errorBanner} onPress={clearError}>
-          <Text style={styles.errorText}>{error} — tap to dismiss</Text>
-        </TouchableOpacity>
-      )}
+      {/* Error banner — renders an inline AdminErrorBanner above the
+          list using the load slot from the store. */}
+      {visibleErrorView ? (
+        <View style={styles.bannerWrap}>
+          <AdminErrorBanner
+            view={visibleErrorView}
+            onRetry={() => {
+              const s = activeFilter;
+              void fetchTrades(s === 'ALL' ? undefined : { status: s });
+            }}
+            onSignOut={handleLogout}
+            onGoBack={clearErrorView}
+            onContactSupport={openSupportMailto}
+          />
+        </View>
+      ) : null}
 
       {/* List */}
       {isLoading && !refreshing ? (
@@ -197,14 +218,7 @@ const styles = StyleSheet.create({
   filterTabActive: { backgroundColor: '#2d6a2d' },
   filterLabel: { fontSize: 13, color: '#4a6a4a', fontWeight: '500' },
   filterLabelActive: { color: '#fff' },
-  errorBanner: {
-    backgroundColor: '#FEE2E2',
-    padding: 12,
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 8,
-  },
-  errorText: { color: '#DC2626', fontSize: 13 },
+  bannerWrap: { paddingHorizontal: 16, paddingTop: 12 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { padding: 16, gap: 12 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },

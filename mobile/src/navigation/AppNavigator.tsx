@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+﻿import { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import type { LinkingOptions } from '@react-navigation/native';
@@ -12,6 +12,11 @@ import DisputeDetailScreen from '../screens/DisputeDetailScreen';
 import CreateTradeScreen from '../screens/CreateTradeScreen';
 import EvidenceCaptureScreen from '../screens/EvidenceCaptureScreen';
 import VaultDashboard from '../screens/VaultDashboard';
+import AdminStreamsOverviewScreen from '../screens/AdminStreamsOverviewScreen';
+import AdminTradesBatchScreen from '../screens/AdminTradesBatchScreen';
+import AdminContractScreen from '../screens/AdminContractScreen';
+import AdminFeaturesScreen from '../screens/AdminFeaturesScreen';
+import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -67,6 +72,11 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="CreateTrade" component={CreateTradeScreen} />
         <Stack.Screen name="EvidenceCapture" component={EvidenceCaptureScreen} />
         <Stack.Screen name="VaultDashboard" component={VaultDashboard} />
+        <Stack.Screen name="AdminStreamsOverview" component={AdminStreamsOverviewScreen} />
+        <Stack.Screen name="AdminTradesBatch" component={AdminTradesBatchScreen} />
+        <Stack.Screen name="AdminContract" component={AdminContractScreen} />
+        <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
+        <Stack.Screen name="AdminActionSuccess" component={AdminActionSuccessScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

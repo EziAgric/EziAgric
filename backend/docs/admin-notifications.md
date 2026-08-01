@@ -61,8 +61,8 @@ added without changing the producer sites.
   action: string;          // e.g. "STREAM_LOCK", "STREAM_UNLOCK", "STREAM_TERMINATE"
   error: {
     message: string;
-    code?: string;         // error code from AppError (e.g. "NOT_FOUND", "DOMAIN_ERROR")
-    details?: Record<string, unknown>;  // extra context from the error
+    code?: string;         // error code from AppError
+    details?: Record<string, unknown>;
   };
   timestamp: string;       // ISO 8601
 }
@@ -70,35 +70,11 @@ added without changing the producer sites.
 
 ## Consuming Events
 
-### In Tests
-
-```typescript
-import { adminNotificationService, AdminNotificationEvents } from "../services/adminNotification.service";
-
-// Attach a listener before the action
-const listener = jest.fn();
-adminNotificationService.onSuccess(AdminNotificationEvents.STREAM_LOCKED, listener);
-
-// Perform the action
-await lockService.lock({ streamId: "s1", adminAddress: "GA", reason: "test" });
-
-// Assert
-expect(listener).toHaveBeenCalledWith({
-  streamId: "s1",
-  adminAddress: "GA",
-  reason: "test",
-  timestamp: expect.any(String),
-});
-```
-
-### In Application Code (future sinks)
-
 ```typescript
 import { adminNotificationService, AdminNotificationEvents } from "./adminNotification.service";
 
 adminNotificationService.onSuccess(AdminNotificationEvents.STREAM_LOCKED, (payload) => {
-  // Push to WebSocket, write to a separate notification queue, etc.
-  myWebSocketServer.broadcast("admin.stream.locked", payload);
+  // Push to WebSocket, queue, etc.
 });
 
 adminNotificationService.onFailure(AdminNotificationEvents.OPERATION_FAILED, (payload) => {
@@ -110,8 +86,6 @@ adminNotificationService.onFailure(AdminNotificationEvents.OPERATION_FAILED, (pa
 
 The service registers one default listener per event that writes a structured
 log entry via `appLogger.info` (success) or `appLogger.error` (failure).
-This ensures every admin action is at least visible in the application logs
-without any additional configuration.
 
 ## Covered Endpoints
 
@@ -120,10 +94,3 @@ without any additional configuration.
 | `POST /api/admin/streams/:id/lock`                | Maintenance lock        | `admin:stream:locked`         |
 | `POST /api/admin/streams/:id/unlock`              | Maintenance unlock      | `admin:stream:unlocked`       |
 | `POST /api/admin/streams/:id/terminate`           | Admin clawback          | `admin:stream:terminated`     |
-
-## Idempotent Operations
-
-Idempotent re-lock / re-unlock calls (stream is already in the requested state)
-do **not** emit success notifications — only actual state changes trigger them.
-Failure notifications are emitted for all error paths, including validation
-errors (stream not found, wrong state) and unexpected exceptions.
