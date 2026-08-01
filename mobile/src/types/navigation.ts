@@ -1,3 +1,5 @@
+﻿import type { AdminActionType } from '../screens/AdminActionSuccessScreen';
+
 export type RootStackParamList = {
   WalletConnect: undefined;
   TradeList: undefined;
@@ -10,4 +12,10 @@ export type RootStackParamList = {
   AdminTradesBatch: undefined;
   AdminContract: undefined;
   AdminFeatures: undefined;
+  /** #85 — confirmation screen after a completed admin operation. */
+  AdminActionSuccess: {
+    actionType: AdminActionType;
+    streamId: string;
+    timestamp: string;
+  };
 };

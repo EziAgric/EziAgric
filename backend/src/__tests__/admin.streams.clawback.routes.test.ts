@@ -40,6 +40,7 @@ import { StreamStatus } from "@prisma/client";
 import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import { StreamTerminationService } from "../services/streamTermination.service";
 import { AdminStreamsService } from "../services/adminStreams.service";
+import { StreamValidationService } from "../services/streamValidation.service";
 import { errorHandler } from "../middleware/errorHandler";
 
 const JWT_SECRET = "test-jwt-secret-value-with-minimum-length-32";
@@ -78,12 +79,17 @@ function tokenFor(walletAddress: string): string {
   return jwt.sign({ walletAddress, tokenId: "test-token-id" }, JWT_SECRET, { expiresIn: "1h" });
 }
 
-function buildApp(streamsService: AdminStreamsService): Express {
+function buildApp(prisma: unknown): Express {
   const app = express();
   app.use(express.json());
   app.use(
     "/api",
-    createAdminStreamsRouter(new StreamTerminationService({} as never), undefined, streamsService),
+    createAdminStreamsRouter(
+      new StreamTerminationService({} as never),
+      undefined,
+      new AdminStreamsService(prisma as never),
+      new StreamValidationService(prisma as never),
+    ),
   );
   app.use(errorHandler);
   return app;
@@ -98,7 +104,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
   describe("admin protection", () => {
     it("rejects a request with no bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)
@@ -109,7 +115,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
 
     it("rejects an authenticated non-admin caller (403)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)
@@ -124,7 +130,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
   describe("valid preview", () => {
     it("returns the real remaining vested amount and post-clawback balance", async () => {
       const prisma = makePrisma(makeStream({ unclaimed: "7500" }));
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)
@@ -143,7 +149,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
 
     it("allows a clawback of exactly the remaining vested amount", async () => {
       const prisma = makePrisma(makeStream({ unclaimed: "7500" }));
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)
@@ -158,7 +164,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
   describe("invalid amount", () => {
     it("returns 404 CLAWBACK-unrelated NOT_FOUND for an unknown stream", async () => {
       const prisma = makePrisma(null);
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post("/api/admin/streams/does-not-exist/clawback/preview")
@@ -171,7 +177,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
 
     it("returns 400 CLAWBACK_TOO_LARGE when amount exceeds remaining vested", async () => {
       const prisma = makePrisma(makeStream({ unclaimed: "7500" }));
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)
@@ -185,7 +191,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
 
     it("returns 400 CLAWBACK_INVALID_AMOUNT for a zero amount", async () => {
       const prisma = makePrisma(makeStream({ unclaimed: "7500" }));
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)
@@ -198,7 +204,7 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
 
     it("rejects a non-numeric amount at the schema level (400)", async () => {
       const prisma = makePrisma(makeStream());
-      const app = buildApp(new AdminStreamsService(prisma as never));
+      const app = buildApp(prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)

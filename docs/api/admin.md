@@ -269,6 +269,33 @@ request/response shape of `terminate` (the only one of the three currently
 backed by real state and an `AdminActionAudit` record - `suspend`/`resume`
 are stubs pending their own tracked issues).
 
+### Event schemas (#52)
+
+Two admin-related payloads are validated with the schemas in
+`backend/src/types/adminEvents.schema.ts` (covered by
+`adminEvents.schema.test.ts`):
+
+**`StreamClawback` event** - written to `StreamClawbackEvent` by
+`handleStreamClawback` when the indexer picks up an on-chain clawback:
+
+| Field | Type | Required |
+|---|---|---|
+| `streamId` | string | yes |
+| `admin` | string | yes |
+| `amount` | string (`^\d+$`) | yes |
+| `txHash` | string | yes |
+| `timestamp` | date | yes |
+
+**Admin audit event (`AdminActionAudit`)** - written whenever an admin action
+needs a compliance record, e.g. `StreamTerminationService.terminate`:
+
+| Field | Type | Required |
+|---|---|---|
+| `action` | string | yes |
+| `actorAddress` | string | yes |
+| `targetReference` | string \| null | no |
+| `note` | string \| null | no |
+
 ### Client-visible admin error states (#59)
 
 Stream/clawback routes use the same `{ code, message, details }` envelope as

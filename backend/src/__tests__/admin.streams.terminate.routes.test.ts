@@ -68,6 +68,7 @@ import { StreamStatus } from "@prisma/client";
 
 import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import { StreamLockService } from "../services/streamLock.service";
+import { StreamValidationService } from "../services/streamValidation.service";
 import {
   ADMIN_ACTION_STREAM_TERMINATE,
   StreamTerminationService,
@@ -159,6 +160,8 @@ function buildApp(
     createAdminStreamsRouter(
       new StreamTerminationService(prismaMock as never, signer, undefined, noopCacheInvalidator),
       new StreamLockService(prismaMock as never),
+      undefined,
+      new StreamValidationService(prismaMock as never),
     ),
   );
   app.use(errorHandler);

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+﻿import { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import type { LinkingOptions } from '@react-navigation/native';
@@ -16,6 +16,7 @@ import AdminStreamsOverviewScreen from '../screens/AdminStreamsOverviewScreen';
 import AdminTradesBatchScreen from '../screens/AdminTradesBatchScreen';
 import AdminContractScreen from '../screens/AdminContractScreen';
 import AdminFeaturesScreen from '../screens/AdminFeaturesScreen';
+import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -75,6 +76,7 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="AdminTradesBatch" component={AdminTradesBatchScreen} />
         <Stack.Screen name="AdminContract" component={AdminContractScreen} />
         <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
+        <Stack.Screen name="AdminActionSuccess" component={AdminActionSuccessScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

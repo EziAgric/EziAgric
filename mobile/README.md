@@ -21,6 +21,43 @@ Amana eliminates the "Trust Gap" between buyers and sellers using Soroban Smart 
 - Offline-aware state management
 - Mediator dispute resolution
 
+## Offline handling
+
+Admin operations (stream clawback, lock, terminate) are guarded against
+accidental submission when the mobile device is offline.
+
+- **Detection** — built on `@react-native-community/netinfo`. The custom
+  hook at `src/hooks/useNetworkStatus.ts` exposes a simple
+  `{ isOffline: boolean }` derived from `isInternetReachable` and
+  `isConnected`, so the admin screen reacts the moment connectivity is
+  lost or restored.
+- **Admin UX** — `src/screens/AdminStreamsOverviewScreen.tsx` renders an
+  `OfflineBanner` (see `src/components/OfflineBanner.tsx`) at the top of
+  the list and disables the **Clawback**, **Lock**, and **Terminate**
+  buttons. Disabled buttons carry `accessibilityState={{ disabled: true }}`
+  for screen-reader users and drop taps natively, so no submission is
+  attempted while offline.
+- **Why a hook wrapper** — the hook hides the full `useNetInfo` state,
+  which keeps unit tests trivial: mock
+  `src/hooks/useNetworkStatus.ts` with one function returning the
+  desired `isOffline` value.
+- **Caching** — for read-only screens the existing `offlineService`
+  (`src/services/offline.service.ts`) already serves cached trades
+  from SQLite while offline. Write paths (such as admin actions) are
+  intentionally *not* queued and must wait until the device is back
+  online.
+
+### Tests
+
+```bash
+cd mobile
+pnpm test
+```
+
+`AdminStreamsOverviewScreen.test.tsx` includes offline scenarios that
+assert the banner is shown and that admin submit buttons are disabled
+when `useNetworkStatus()` reports `isOffline: true`.
+
 ## Tech Stack
 
 - **Framework**: React Native with Expo

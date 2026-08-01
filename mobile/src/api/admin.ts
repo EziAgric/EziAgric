@@ -1,4 +1,4 @@
-import apiClient from './client';
+﻿import apiClient from './client';
 
 /**
  * Shape mirrors `backend/src/services/adminStreams.service.ts`.
@@ -83,6 +83,20 @@ export interface FeatureFlagListResult {
 export interface FeatureFlagSetResult {
   name: string;
   flag: FeatureFlag;
+}
+
+export interface AdminAuditRecord {
+  id: number;
+  action: string;
+  actorAddress: string;
+  targetReference: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AdminAuditListResult {
+  items: AdminAuditRecord[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
 export const adminApi = {
@@ -212,6 +226,13 @@ export const adminApi = {
       `/admin/features/${name}`,
       opts,
     );
+    return response.data;
+  },
+
+  async getAuditTrail(
+    params?: { page?: number; limit?: number },
+  ): Promise<AdminAuditListResult> {
+    const response = await apiClient.get('/api/admin/audit', { params });
     return response.data;
   },
 };
