@@ -1,76 +1,39 @@
-/**
- * Admin stream management API helpers.
- *
- * "Streams" in the admin context refer to active trade streams / payment
- * channels that an admin can monitor and act on (pause, resume, terminate).
- *
- * All calls are routed through `adminRequest` so the admin token guard and
- * correlation-ID forwarding apply automatically.
- */
+import { createQueryString, request } from "./client";
+import type {
+  AdminStreamListResponse,
+  StreamClawbackPreviewResponse,
+  StreamStatus,
+  VestingState,
+} from "./types";
 
-import { adminRequest, type AdminRequestOptions } from "./admin";
-import { createQueryString } from "./client";
-
-export type StreamStatus = "active" | "paused" | "closed" | "pending";
-
-export interface AdminStream {
-  id: string;
-  tradeId: string;
-  sellerAddress: string;
-  buyerAddress: string;
-  amountCngn: string;
-  status: StreamStatus;
-  createdAt: string;
-  updatedAt: string;
-  note?: string;
+export interface AdminStreamListParams {
+  page?: number;
+  limit?: number;
+  status?: StreamStatus;
+  vestingState?: VestingState;
+  adminTag?: string;
 }
 
-export interface AdminStreamListResponse {
-  items: AdminStream[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-export interface AdminStreamUpdateBody {
-  status: StreamStatus;
-  note?: string;
-}
-
-export const adminStreamApi = {
-  /**
-   * List all admin-visible streams with optional pagination and status filter.
-   */
-  list: (
-    token: string,
-    params?: { page?: number; limit?: number; status?: StreamStatus },
-    options?: AdminRequestOptions,
-  ) =>
-    adminRequest<AdminStreamListResponse>(
+export const adminStreamsApi = {
+  list: (token: string, params?: AdminStreamListParams) =>
+    request<AdminStreamListResponse>(
       `/admin/streams${createQueryString({
         page: params?.page,
         limit: params?.limit,
         status: params?.status,
+        vestingState: params?.vestingState,
+        adminTag: params?.adminTag,
       })}`,
-      token,
-      options,
+      { token },
     ),
 
-  /**
-   * Update a single stream's status (pause / resume / close).
-   */
-  update: (
-    token: string,
-    streamId: string,
-    body: AdminStreamUpdateBody,
-    options?: AdminRequestOptions,
-  ) =>
-    adminRequest<AdminStream>(
-      `/admin/streams/${encodeURIComponent(streamId)}`,
-      token,
-      { ...options, method: "PATCH", body: JSON.stringify(body) },
+  clawbackPreview: (token: string, streamId: string, amount: string) =>
+    request<StreamClawbackPreviewResponse>(
+      `/admin/streams/${encodeURIComponent(streamId)}/clawback/preview`,
+      {
+        token,
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      },
     ),
 };

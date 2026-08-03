@@ -70,6 +70,7 @@ import request from "supertest";
 import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import { StreamLockService } from "../services/streamLock.service";
 import { StreamTerminationService } from "../services/streamTermination.service";
+import { StreamValidationService } from "../services/streamValidation.service";
 import { errorHandler } from "../middleware/errorHandler";
 import { adminNotificationService } from "../services/adminNotification.service";
 
@@ -149,13 +150,21 @@ function makePrisma(stream: StreamRecord | null) {
   };
 }
 
-function buildApp(lockService?: StreamLockService): Express {
+function buildApp(lockService?: StreamLockService, prisma?: unknown): Express {
   const app = express();
   app.use(express.json());
   const termService = new StreamTerminationService(
-    makePrisma(makeStream()) as never,
+    (prisma ?? makePrisma(makeStream())) as never,
   );
-  app.use("/api", createAdminStreamsRouter(termService, lockService));
+  app.use(
+    "/api",
+    createAdminStreamsRouter(
+      termService,
+      lockService,
+      undefined,
+      new StreamValidationService((prisma ?? makePrisma(makeStream())) as never),
+    ),
+  );
   app.use(errorHandler);
   return app;
 }
@@ -174,7 +183,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("rejects a request with no bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -187,7 +196,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("rejects a malformed bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -201,7 +210,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("rejects an authenticated non-admin caller (403)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -220,7 +229,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("locks an unlocked stream and records who did it", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -247,7 +256,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("writes an admin audit record for the lock", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -267,7 +276,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("emits a notification on successful lock", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -297,7 +306,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
         }),
       );
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -318,7 +327,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("returns 404 for a non-existent stream", async () => {
       const prisma = makePrisma(null);
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post("/api/admin/streams/does-not-exist/lock")
@@ -333,7 +342,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("emits a failure notification when the stream is not found", async () => {
       const prisma = makePrisma(null);
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       await request(app)
         .post("/api/admin/streams/does-not-exist/lock")
@@ -355,7 +364,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("rejects a non-string reason (400)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -369,7 +378,7 @@ describe("POST /api/admin/streams/:id/lock", () => {
     it("rejects a reason longer than 500 characters (400)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/lock`)
@@ -396,7 +405,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
     it("rejects a request with no bearer token (401)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/unlock`)
@@ -409,7 +418,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
     it("rejects an authenticated non-admin caller (403)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/unlock`)
@@ -432,7 +441,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
         }),
       );
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/unlock`)
@@ -465,7 +474,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
         }),
       );
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/unlock`)
@@ -490,7 +499,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
         }),
       );
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/unlock`)
@@ -514,7 +523,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
     it("returns 200 when the stream is already unlocked (idempotent)", async () => {
       const prisma = makePrisma(makeStream());
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post(`/api/admin/streams/${STREAM_ID}/unlock`)
@@ -534,7 +543,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
     it("returns 404 for a non-existent stream", async () => {
       const prisma = makePrisma(null);
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       const res = await request(app)
         .post("/api/admin/streams/does-not-exist/unlock")
@@ -548,7 +557,7 @@ describe("POST /api/admin/streams/:id/unlock", () => {
     it("emits a failure notification when unlock stream is not found", async () => {
       const prisma = makePrisma(null);
       const lockService = new StreamLockService(prisma as never);
-      const app = buildApp(lockService);
+      const app = buildApp(lockService, prisma);
 
       await request(app)
         .post("/api/admin/streams/does-not-exist/unlock")
@@ -587,7 +596,15 @@ describe("Lock enforcement — locked streams reject mutations", () => {
     const termService = new StreamTerminationService(prisma as never);
     const app = express();
     app.use(express.json());
-    app.use("/api", createAdminStreamsRouter(termService, lockService));
+    app.use(
+      "/api",
+      createAdminStreamsRouter(
+        termService,
+        lockService,
+        undefined,
+        new StreamValidationService(prisma as never),
+      ),
+    );
     app.use(errorHandler);
     return { app, prisma };
   }

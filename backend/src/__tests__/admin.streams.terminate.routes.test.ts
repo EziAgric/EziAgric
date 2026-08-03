@@ -68,6 +68,7 @@ import { StreamStatus } from "@prisma/client";
 
 import { createAdminStreamsRouter } from "../routes/admin.streams.routes";
 import { StreamLockService } from "../services/streamLock.service";
+import { StreamValidationService } from "../services/streamValidation.service";
 import {
   ADMIN_ACTION_STREAM_TERMINATE,
   StreamTerminationService,
@@ -159,6 +160,8 @@ function buildApp(
     createAdminStreamsRouter(
       new StreamTerminationService(prismaMock as never, signer, undefined, noopCacheInvalidator),
       new StreamLockService(prismaMock as never),
+      undefined,
+      new StreamValidationService(prismaMock as never),
     ),
   );
   app.use(errorHandler);
@@ -448,7 +451,8 @@ describe("POST /api/admin/streams/:id/terminate", () => {
         .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
         .send({ unsignedTxXdr: "GARBAGE" });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("SUBMISSION_VALIDATION_ERROR");
       expect(prisma.stream.update).not.toHaveBeenCalled();
       expect(prisma.adminActionAudit.create).not.toHaveBeenCalled();
     });

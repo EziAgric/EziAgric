@@ -1,40 +1,31 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
+
 /**
- * Admin section layout — applies to all /admin/* pages.
- *
- * #63 — Route metadata:
- *   Provides a default page title for the admin section. Individual admin
- *   pages that need a more specific title can export their own `metadata`
- *   object which will override this default (Next.js metadata merging).
- *
- *   Navigation structure:
- *     /admin              → Admin Dashboard (future)
- *     /admin/audit        → Admin Action History
- *     /admin/streams      → Stream Management
- *
- *   Breadcrumbs are rendered by each page component using the shared
- *   `generateBreadcrumbs()` utility and `<Breadcrumbs>` component so they
- *   are fully client-side and path-aware without requiring a Server Component
- *   to pass the pathname down.
+ * Route guard for every page under `/admin`. Unlike each page's own
+ * `ForbiddenState` fallback (defense in depth once already on the page),
+ * this redirects away before an unauthenticated or non-admin caller ever
+ * sees admin content rendered.
  */
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
+  const isAdmin = useIsAdmin();
 
-import type { Metadata } from "next";
-import type { ReactNode } from "react";
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isAuthenticated || !isAdmin) {
+      router.replace("/access-denied");
+    }
+  }, [isLoading, isAuthenticated, isAdmin, router]);
 
-export const metadata: Metadata = {
-  title: {
-    template: "%s | Admin — Amana",
-    default: "Admin — Amana",
-  },
-  description: "Amana admin management area",
-  robots: {
-    index: false,
-    follow: false,
-  },
-};
+  if (isLoading || !isAuthenticated || !isAdmin) {
+    return null;
+  }
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  // The admin layout is intentionally thin — it delegates visual chrome
-  // (top nav, sidebar) to the root AppShell and only contributes metadata
-  // and any future admin-specific shell elements (e.g. a sub-navigation bar).
   return <>{children}</>;
 }
