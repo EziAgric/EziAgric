@@ -441,5 +441,32 @@ export function createAdminStreamsRouter(
     },
   );
 
+  /**
+   * POST /api/admin/streams/:id/reconcile
+   * Reconcile a stream's backend state against on-chain contract events.
+   *
+   * Compares the stream's DB record against ingested on-chain events
+   * (StreamClawbackEvent, ProcessedEvent) and admin audit actions, returning
+   * a structured reconciliation result with any mismatches. Admin only.
+   */
+  router.post(
+    "/admin/streams/:id/reconcile",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    validateRequest({ params: streamIdParamSchema }),
+    async (req: AuthRequest, res: Response, next) => {
+      try {
+        const { id: streamId } = req.params as { id: string };
+
+        const result = await reconciliationService.reconcile(streamId);
+
+        res.status(200).json(result);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   return router;
 }

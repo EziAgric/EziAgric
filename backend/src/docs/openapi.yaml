@@ -1474,6 +1474,51 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/streams/{id}/reconcile:
+    post:
+      tags: [Admin]
+      summary: Reconcile a stream's backend state against on-chain events
+      description: |-
+        Compares a stream's backend database record against ingested on-chain
+        contract events (StreamClawbackEvent, ProcessedEvent) and admin audit
+        actions, returning a structured reconciliation result.
+
+        Fields compared:
+        - `pendingClawback`: DB value vs sum of on-chain StreamClawbackEvent amounts
+        - `unclaimed`: computed (totalVested - claimed - onChainClawbacks) vs DB value
+        - `status`: checks if an admin terminate audit record exists but the stream is still live
+        - `claimed`: flags when on-chain clawbacks exist but claimed is zero
+
+        The response includes a snapshot of the current backend state and an
+        on-chain summary so the operator can see both sides at a glance.
+        Admin only. No request body required.
+        Error code references: `NOT_FOUND`.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Stream identifier.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Reconciliation completed — check `consistent` field for result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamReconciliationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /health:
     get:
       tags: [Health]
