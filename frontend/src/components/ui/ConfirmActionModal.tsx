@@ -23,7 +23,6 @@ import {
   ModalHeader,
   ModalTitle,
   ModalDescription,
-  ModalBody,
   ModalFooter,
 } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";

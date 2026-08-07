@@ -48,7 +48,9 @@ describe("ConfirmActionModal (#61 — keyboard-accessible confirmations)", () =>
 
   it("shows title and message", () => {
     renderModal();
-    expect(screen.getByText("Close Stream")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Close Stream" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("This will permanently close the stream. Are you sure?"),
     ).toBeInTheDocument();

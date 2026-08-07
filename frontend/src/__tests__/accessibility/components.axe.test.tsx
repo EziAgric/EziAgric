@@ -4,7 +4,6 @@ import { axe, toHaveNoViolations } from "jest-axe";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { Tabs } from "@/components/ui/Tabs";
-import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TradeListItem } from "@/components/trade/TradeListItem";

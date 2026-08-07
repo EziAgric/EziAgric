@@ -295,12 +295,11 @@ describe('Step2Negotiation', () => {
         });
 
         it('should handle very long notes text', async () => {
-            const user = userEvent.setup();
             renderWithProvider();
 
             const textarea = screen.getByPlaceholderText(/goods must be bagged/i);
             const longText = 'A'.repeat(1000);
-            await user.type(textarea, longText);
+            fireEvent.change(textarea, { target: { value: longText } });
 
             expect(textarea).toHaveValue(longText);
         });

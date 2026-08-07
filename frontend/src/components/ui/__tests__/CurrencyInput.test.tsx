@@ -315,7 +315,6 @@ describe("CurrencyInput", () => {
       );
 
       const label = screen.getByText("Clawback Amount");
-      const input = screen.getByRole("textbox");
 
       expect(label.tagName).toBe("LABEL");
     });

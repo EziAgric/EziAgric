@@ -63,7 +63,8 @@ describe("TradeSchema", () => {
   });
 
   it("rejects missing required fields", () => {
-    const { tradeId: _omit, ...rest } = valid;
+    const rest: Partial<typeof valid> = { ...valid };
+    delete rest.tradeId;
     const result = TradeSchema.safeParse(rest);
     expect(result.success).toBe(false);
   });
@@ -110,7 +111,8 @@ describe("WalletSchema", () => {
   });
 
   it("rejects missing balance", () => {
-    const { balance: _omit, ...rest } = valid;
+    const rest: Partial<typeof valid> = { ...valid };
+    delete rest.balance;
     const result = WalletSchema.safeParse(rest);
     expect(result.success).toBe(false);
   });
@@ -254,7 +256,8 @@ describe("NotificationPreferencesSchema", () => {
   });
 
   it("rejects missing required fields", () => {
-    const { email: _omit, ...rest } = valid;
+    const rest: Partial<typeof valid> = { ...valid };
+    delete rest.email;
     const result = NotificationPreferencesSchema.safeParse(rest);
     expect(result.success).toBe(false);
   });

@@ -20,7 +20,7 @@ async function mockFreighter(page: Page, address: string) {
     isAllowed: async () => ({ isAllowed: true }),
     getAddress: async () => ({ address }),
     requestAccess: async () => ({ address }),
-    signMessage: async (_msg: string) => ({ signedMessage: "mock-signed" }),
+    signMessage: async () => ({ signedMessage: "mock-signed" }),
     signTransaction: async (xdr: string) => ({ signedTxXdr: `signed-${xdr}` }),
   };
 
