@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { useParams } from "next/navigation";
 import StreamDetailPage from "../[id]/page";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,6 +38,8 @@ const mockUseAdmin = useAdmin as jest.MockedFunction<typeof useAdmin>;
 describe("StreamDetailPage", () => {
   const mockStreamId = "stream-123";
   const mockStreamData = {
+    assetCode: "USDC",
+    decimals: 7,
     totalVested: "1000000",
     claimed: "250000",
     unclaimed: "750000",
@@ -214,13 +216,9 @@ describe("StreamDetailPage", () => {
 
       render(<StreamDetailPage />);
 
-      await waitFor(() => {
-        expect(screen.getByText("Stream Details")).toBeInTheDocument();
-      });
-
-      expect(screen.getByText("1,000,000")).toBeInTheDocument(); // Total Vested
-      expect(screen.getByText("250,000")).toBeInTheDocument(); // Claimed
-      expect(screen.getByText("750,000")).toBeInTheDocument(); // Unclaimed
+      expect(await screen.findByText("0.1")).toBeInTheDocument(); // Total Vested
+      expect(screen.getByText("0.025")).toBeInTheDocument(); // Claimed
+      expect(screen.getByText("0.075")).toBeInTheDocument(); // Unclaimed
     });
 
     it("shows error state when stream fetch fails", async () => {
@@ -271,7 +269,9 @@ describe("StreamDetailPage", () => {
       });
 
       expect(screen.getByText("Streams")).toBeInTheDocument();
-      expect(screen.getByText(mockStreamId)).toBeInTheDocument();
+      expect(
+        within(screen.getByLabelText("Breadcrumb")).getByText(mockStreamId),
+      ).toBeInTheDocument();
     });
   });
 });

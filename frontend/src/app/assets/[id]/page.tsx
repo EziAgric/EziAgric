@@ -205,7 +205,6 @@ export default function TradeDetailPage() {
 
   useEffect(() => {
     if (isAuthenticated && token) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       void fetchTrade();
     } else {
       setLoading(false);

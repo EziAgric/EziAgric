@@ -9,7 +9,6 @@ import { Breadcrumb, LoadingState, ErrorState } from "@/components/ui";
 import {
   getAssetInfo,
   stroopsToAmount,
-  formatAmountWithAsset,
 } from "@/lib/stellar/assets";
 
 export default function StreamDetailPage() {

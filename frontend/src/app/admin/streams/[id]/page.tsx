@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdmin } from "@/hooks/useAdmin";
 import { useCurrencyInput } from "@/hooks/useCurrencyInput";
@@ -15,13 +15,11 @@ import {
 import { Breadcrumb, LoadingState, ErrorState, CurrencyInput } from "@/components/ui";
 import {
   getAssetInfo,
-  formatAmountWithAsset,
   stroopsToAmount,
 } from "@/lib/stellar/assets";
 
 export default function AdminStreamManagementPage() {
   const params = useParams();
-  const router = useRouter();
   const streamId = params.id as string;
   const { token, isAuthenticated, isLoading: authLoading } = useAuth();
   const { canAccessAdmin, isAdminUIEnabled } = useAdmin();
@@ -47,7 +45,7 @@ export default function AdminStreamManagementPage() {
   const clawbackInput = useCurrencyInput({
     asset: { ...assetInfo, decimals },
     max: streamData?.unclaimed,
-    onValidChange: (stroops) => {
+    onValidChange: () => {
       // Clear preview when amount changes
       setClawbackPreview(null);
     },

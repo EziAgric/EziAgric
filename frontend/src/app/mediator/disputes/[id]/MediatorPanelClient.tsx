@@ -250,7 +250,6 @@ export default function MediatorPanelClient({ disputeId }: Props) {
       return;
     }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveGatewayIndex(0);
     setVideoLoadState("loading");
   }, [resolvedCid]);
