@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { api, ApiError, AdminAuditEntry } from "@/lib/api";
 import { isForbiddenError } from "@/lib/errorHandler";
 import { trackAdminEvent } from "@/lib/analytics";
+import { generateBreadcrumbs } from "@/lib/breadcrumbs";
+import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ForbiddenState } from "@/components/ui/ForbiddenState";
 import { SkeletonList } from "@/components/ui/SkeletonList";
@@ -34,6 +37,8 @@ function formatAction(action: string): string {
 export default function AdminAuditHistoryPage() {
   const { token, isAuthenticated } = useAuth();
   const isAdmin = useIsAdmin();
+  const pathname = usePathname();
+  const breadcrumbs = generateBreadcrumbs(pathname ?? "/admin/audit");
 
   const [entries, setEntries] = useState<AdminAuditEntry[]>([]);
   const [page, setPage] = useState(1);
@@ -122,6 +127,7 @@ export default function AdminAuditHistoryPage() {
 
   return (
     <div className="px-6 py-8 max-w-6xl mx-auto" data-testid="admin-audit-page">
+      <Breadcrumbs items={breadcrumbs} className="mb-3" />
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-text-primary">Admin Action History</h1>
       </div>
