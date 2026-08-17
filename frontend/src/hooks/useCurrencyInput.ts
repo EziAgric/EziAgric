@@ -74,7 +74,7 @@ export function useCurrencyInput({
 
         setStroops(stroopsValue);
         onValidChange?.(stroopsValue);
-      } catch (err) {
+      } catch {
         setError("Invalid amount");
       }
     },

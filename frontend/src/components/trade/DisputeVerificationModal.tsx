@@ -53,7 +53,6 @@ export function DisputeVerificationModal({
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStep("upload");
       setIpfsHash(null);
       setTxHash(null);

@@ -43,7 +43,7 @@ test.describe("Admin Stream Clawback E2E (#58)", () => {
 
     await page.addInitScript(
       ({ addr }) => {
-        (window as any).__NEXT_PUBLIC_ADMIN_WALLETS = addr;
+        (window as Window & { __NEXT_PUBLIC_ADMIN_WALLETS?: unknown }).__NEXT_PUBLIC_ADMIN_WALLETS = addr;
       },
       { addr: ADMIN_ADDRESS },
     );

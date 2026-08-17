@@ -20,11 +20,6 @@ const FILTERS: { label: string; value: TradeStatus }[] = [
   { label: "Disputed", value: "disputed" },
 ];
 
-const NAV_ITEM_BASE =
-  "rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2";
-const NAV_ITEM_ACTIVE = "bg-surface-2 text-gold shadow-elev-1";
-const NAV_ITEM_INACTIVE = "text-text-secondary hover:text-text-primary hover:bg-surface-2/60";
-
 // Status chip tokens: text = status color, bg = status/10, border = status/20.
 // "completed" and "draft" use neutral surface tokens (no alert color).
 const STATUS_STYLES: Record<string, string> = {

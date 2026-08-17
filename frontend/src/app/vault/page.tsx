@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { signTransaction } from "@stellar/freighter-api";
 import {
@@ -67,6 +67,7 @@ export default function VaultPage() {
 
   const [isManifestOpen, setIsManifestOpen] = useState(false);
   const [manifestData, setManifestData] = useState<DriverManifestData | null>(null);
+  const [manifestStatus, setManifestStatus] = useState<string | null>(null);
 
   const fetchVaultData = useCallback(async () => {
     if (!token) return;
@@ -90,7 +91,6 @@ export default function VaultPage() {
 
   useEffect(() => {
     if (isAuthenticated && token) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       void fetchVaultData();
     }
   }, [isAuthenticated, token, fetchVaultData]);
@@ -134,6 +134,8 @@ export default function VaultPage() {
     recentTrades?.items.find((trade) => ["FUNDED", "DELIVERED"].includes(trade.status)) ??
     recentTrades?.items[0];
 
+  const manifestSubmittingRef = useRef(false);
+
   const handleManifestComplete = async (data: DriverManifestData) => {
     if (manifestSubmittingRef.current) return;
     if (!token || !manifestTrade) {
@@ -142,7 +144,6 @@ export default function VaultPage() {
     }
 
     manifestSubmittingRef.current = true;
-    setManifestSubmitting(true);
     setManifestStatus(null);
 
     try {
@@ -194,7 +195,6 @@ export default function VaultPage() {
       );
     } finally {
       manifestSubmittingRef.current = false;
-      setManifestSubmitting(false);
     }
   };
 
@@ -310,6 +310,11 @@ export default function VaultPage() {
                   Log Driver Details
                 </button>
               </div>
+              {manifestStatus && (
+                <div className="mt-4 rounded-lg border border-border-default bg-bg-elevated p-3 text-sm text-text-primary">
+                  {manifestStatus}
+                </div>
+              )}
               {manifestData && (
                 <div className="mt-4 rounded-lg border border-border-default bg-bg-elevated p-3 text-sm text-text-primary">
                   <p><strong>Driver:</strong> {manifestData.driverName}</p>

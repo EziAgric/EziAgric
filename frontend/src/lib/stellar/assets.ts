@@ -113,24 +113,12 @@ export function stroopsToAmount(stroops: string | bigint, decimals: number): str
   const divisor = getAssetDivisor(decimals);
   const whole = stroopsValue / divisor;
   const frac = stroopsValue % divisor;
-  
-  // Format with proper decimal places
-  const fracStr = frac.toString().padStart(decimals, "0");
-  
-  // Trim trailing zeros but keep at least 2 decimal places
-  let trimmedFrac = fracStr;
-  let minDecimals = Math.min(2, decimals);
-  
-  for (let i = fracStr.length - 1; i >= minDecimals; i--) {
-    if (fracStr[i] === "0") {
-      trimmedFrac = fracStr.slice(0, i);
-    } else {
-      break;
-    }
-  }
-  
-  return trimmedFrac.length > 0
-    ? `${whole.toLocaleString()}.${trimmedFrac}`
+
+  // Format with proper decimal places, trimming trailing zeros
+  const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
+
+  return fracStr.length > 0
+    ? `${whole.toLocaleString()}.${fracStr}`
     : whole.toLocaleString();
 }
 

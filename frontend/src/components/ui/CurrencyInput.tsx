@@ -35,7 +35,10 @@ export function CurrencyInput({
           type="text"
           inputMode="decimal"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            if (disabled) return;
+            onChange(e.target.value);
+          }}
           disabled={disabled}
           placeholder={placeholder || `0.${"0".repeat(Math.min(asset.decimals, 2))}`}
           className={`w-full rounded-lg border px-4 py-2 pr-16 text-sm text-text-primary placeholder:text-text-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
