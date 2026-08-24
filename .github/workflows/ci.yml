@@ -145,6 +145,12 @@ jobs:
           JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
         run: pnpm test
 
+      - name: Enforce Admin Regression Test Policy
+        if: needs.changes.outputs.backend == 'true'
+        run: |
+          chmod +x ../scripts/check-admin-test-coverage.sh
+          ../scripts/check-admin-test-coverage.sh
+
       - name: Upload coverage report
         if: needs.changes.outputs.backend == 'true'
         uses: actions/upload-artifact@v4

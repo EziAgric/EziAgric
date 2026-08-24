@@ -132,6 +132,22 @@ check "No orphaned disputes" \
 check "No orphaned goals" \
   'SELECT COUNT(*) FROM "Goal" g LEFT JOIN "Vault" v ON g."vaultId"=v."vaultId" WHERE v.id IS NULL' "0"
 
+# ── Admin Route Smoke Test ───────────────────────────────────────────────────
+echo ""
+echo "[7] Admin route smoke test"
+SMOKE_SCRIPT="$(dirname "$0")/staging-admin-smoke-test.sh"
+if [[ -x "$SMOKE_SCRIPT" ]]; then
+  if "$SMOKE_SCRIPT"; then
+    echo "  ✓ Admin route smoke test passed"
+    ((PASS++)) || true
+  else
+    echo "  ✗ Admin route smoke test failed"
+    ((FAIL++)) || true
+  fi
+else
+  echo "  ⚠️ Admin smoke test script not executable at $SMOKE_SCRIPT"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════════════════"

@@ -90,6 +90,15 @@ module "eks" {
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 }
 
+module "admin_isolation" {
+  source = "../../modules/admin_isolation"
+
+  project_name        = "amana"
+  environment         = "staging"
+  vpc_id              = module.vpc.vpc_id
+  trusted_admin_cidrs = ["10.0.0.0/16", "172.16.0.0/12"]
+}
+
 variable "region" {
   description = "AWS region"
   type        = string
