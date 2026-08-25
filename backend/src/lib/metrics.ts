@@ -197,3 +197,72 @@ export function __resetMetricsForTests(): void {
   sorobanRpcHealthGauge = undefined;
   sorobanRpcHealthLatency = undefined;
 }
+
+// ---------------------------------------------------------------------------
+// Quote deviation metrics
+// ---------------------------------------------------------------------------
+
+let quoteDeviationHistogram: Histogram | undefined;
+
+function getQuoteDeviationHistogram(): Histogram {
+  if (!quoteDeviationHistogram) {
+    quoteDeviationHistogram = getMeter().createHistogram(
+      "path_payment_quote_deviation_bps",
+      {
+        description: "Deviation of cached quote vs fresh quote in basis points",
+        unit: "bps",
+      },
+    );
+  }
+  return quoteDeviationHistogram;
+}
+
+export function recordQuoteDeviation(
+  sourceAssetCode: string,
+  deviationBps: number,
+): void {
+  getQuoteDeviationHistogram().record(deviationBps, { source_asset: sourceAssetCode });
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation drift metrics
+// ---------------------------------------------------------------------------
+
+let reconciliationDriftCounter: Counter | undefined;
+let reconciliationSweepCounter: Counter | undefined;
+
+function getReconciliationDriftCounter(): Counter {
+  if (!reconciliationDriftCounter) {
+    reconciliationDriftCounter = getMeter().createCounter(
+      "reconciliation_drift_total",
+      {
+        description: "Total number of reconciliation drift detections by severity",
+      },
+    );
+  }
+  return reconciliationDriftCounter;
+}
+
+function getReconciliationSweepCounter(): Counter {
+  if (!reconciliationSweepCounter) {
+    reconciliationSweepCounter = getMeter().createCounter(
+      "reconciliation_sweeps_total",
+      {
+        description: "Total reconciliation sweeps completed",
+      },
+    );
+  }
+  return reconciliationSweepCounter;
+}
+
+export function recordReconciliationDrift(
+  severity: "warning" | "critical",
+): void {
+  getReconciliationDriftCounter().add(1, { severity });
+}
+
+export function recordReconciliationSweep(
+  outcome: "success" | "failure",
+): void {
+  getReconciliationSweepCounter().add(1, { outcome });
+}

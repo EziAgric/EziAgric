@@ -108,3 +108,45 @@ Key design choices worth calling out explicitly:
   even when a nonzero split was intended - this is expected integer-math
   behavior, not a bug, but is worth knowing before assuming precision holds
   at very low `total` values.
+
+## Addendum: Deterministic Rounding with Largest-Remainder Allocation
+
+**Date:** 2026-08-25
+**Related Issue:** #182
+
+### Problem
+
+When an escrow total is split according to BPS ratios, naive independent
+floor-division rounding can leave dust (stroop-level remainders) in the
+contract or overpay one party. For example, splitting 3 stroops 70/30:
+
+- Independent floor: `floor(3 × 7000 / 10000) = 2`, `floor(3 × 3000 / 10000) = 0`
+- Sum: 2 ≠ 3 — 1 stroop stranded in the contract.
+
+### Decision
+
+Adopt the **largest-remainder method** (Hamilton's method) for all loss-ratio
+split calculations in both the Rust contract and TypeScript backend:
+
+1. Compute each party's exact proportional share as `total × share_bps`.
+2. Take the floor of each share as the base allocation.
+3. Compute each party's fractional remainder (`product mod BPS_DIVISOR`).
+4. Distribute remaining stroops one-by-one to parties with the largest
+   remainders until the total is fully allocated.
+
+**Guarantees:**
+- Zero-dust: allocations always sum exactly to the total.
+- Each party's share is within 1 stroop of its exact proportional share.
+- Deterministic: identical inputs always produce identical outputs.
+
+### Implementation
+
+- **Backend:** `backend/src/lib/lossAllocation.ts` — `largestRemainderAllocation()` function.
+- **Contract:** The Rust contract should adopt the same algorithm in `checked_loss_amount()` and `resolve_dispute()`. A follow-up contract upgrade is recommended.
+- **Parity tests:** `backend/src/__tests__/lossAllocation.test.ts` validates the zero-dust invariant across a range of inputs.
+
+### Consequences
+
+- **Positive:** Eliminates dust-stranding edge cases for odd stroop amounts.
+- **Positive:** Backend and contract can be tested against identical fixture suites.
+- **Negative:** Requires a contract upgrade to adopt the new rounding in on-chain calculations.
