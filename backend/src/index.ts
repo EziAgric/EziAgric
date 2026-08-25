@@ -11,6 +11,8 @@ import { env } from "./config/env";
 import { appLogger } from "./middleware/logger";
 import { initializeTracing } from "./config/tracing";
 import { HealthService } from "./services/health.service";
+import { createReconciliationWorker } from "./jobs/workers/reconciliation.worker";
+import { reconciliationQueue } from "./jobs/queue";
 
 void env;
 
@@ -75,6 +77,34 @@ if (env.NODE_ENV !== "production" && openapiSpec) {
 const eventListenerService = new EventListenerService(prisma);
 const healthService = new HealthService();
 
+let reconciliationWorker: ReturnType<typeof createReconciliationWorker> | undefined;
+
+async function startReconciliationCron() {
+  if (!env.RECONCILIATION_CRON_ENABLED) {
+    appLogger.info("Reconciliation cron is disabled");
+    return;
+  }
+
+  try {
+    reconciliationWorker = createReconciliationWorker();
+    appLogger.info("Reconciliation worker started");
+
+    // Schedule daily sweep at 02:00 UTC
+    await reconciliationQueue.add(
+      "daily-sweep",
+      {},
+      {
+        repeat: {
+          pattern: "0 2 * * *",
+        },
+      },
+    );
+    appLogger.info("Reconciliation daily sweep scheduled (02:00 UTC)");
+  } catch (error) {
+    appLogger.error({ error }, "Failed to start reconciliation cron");
+  }
+}
+
 async function bootstrap() {
   const isTest = (process.env.NODE_ENV ?? env.NODE_ENV) === "test";
 
@@ -102,6 +132,8 @@ async function bootstrap() {
     } catch (error) {
       appLogger.error({ error }, "Failed to start EventListenerService");
     }
+
+    await startReconciliationCron();
   });
 }
 
@@ -113,6 +145,9 @@ bootstrap().catch((error) => {
 const shutdown = async (signal: string) => {
   appLogger.info({ signal }, "Received shutdown signal. Shutting down gracefully...");
   eventListenerService.stop();
+  if (reconciliationWorker) {
+    await reconciliationWorker.close();
+  }
   await prisma.$disconnect();
   process.exit(0);
 };

@@ -5,7 +5,10 @@ import { appLogger } from "../middleware/logger";
 export type AlertType =
   | "db_connection_failure"
   | "redis_connection_failure"
-  | "cache_unavailable";
+  | "cache_unavailable"
+  | "reconciliation_drift_warning"
+  | "reconciliation_drift_critical"
+  | "reconciliation_job_failure";
 
 export interface AlertPayload {
   type: AlertType;

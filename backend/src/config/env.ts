@@ -138,6 +138,18 @@ export const envSchema = z.object({
 
   // Required when admin routes are mounted (server-side Stellar signing key for admin ops)
   ADMIN_SECRET_KEY: z.string().min(1),
+
+  // Path payment quote cache
+  QUOTE_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+  QUOTE_MAX_SLIPPAGE_BPS: z.coerce.number().int().min(0).max(10_000).default(500),
+
+  // Daily reconciliation thresholds (BPS deviation)
+  RECONCILIATION_WARNING_THRESHOLD_BPS: z.coerce.number().int().min(0).default(100),
+  RECONCILIATION_CRITICAL_THRESHOLD_BPS: z.coerce.number().int().min(0).default(1000),
+  RECONCILIATION_CRON_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value: 'true' | 'false') => value === 'true'),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -49,3 +49,11 @@ export interface TradeExpirySweepJobData {
 export const tradeExpiryQueue = new Queue<TradeExpirySweepJobData>('trade-expiry', {
   connection: createQueueConnection(),
 });
+
+export interface ReconciliationSweepJobData {
+  sweepId?: string;
+}
+
+export const reconciliationQueue = new Queue<ReconciliationSweepJobData>('reconciliation', {
+  connection: createQueueConnection(),
+});
