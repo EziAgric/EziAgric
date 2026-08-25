@@ -151,6 +151,14 @@ jobs:
           chmod +x ../scripts/check-admin-test-coverage.sh
           ../scripts/check-admin-test-coverage.sh
 
+      - name: Admin auth regression suite
+        if: needs.changes.outputs.backend == 'true'
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
+        run: pnpm jest --config jest.config.js --forceExit --detectOpenHandles --testPathPatterns='admin\.auth\.ci-regression' --verbose
+
+
       - name: Upload coverage report
         if: needs.changes.outputs.backend == 'true'
         uses: actions/upload-artifact@v4

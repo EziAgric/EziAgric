@@ -17,6 +17,8 @@ export type StellarRpcMethod =
 
 export type StellarRpcOutcome = "success" | "error";
 
+export type SorobanRpcHealthStatus = "up" | "down";
+
 export interface StellarMetricsRecorder {
   recordTransactionSubmission(
     operation: string,
@@ -28,11 +30,17 @@ export interface StellarMetricsRecorder {
     outcome: StellarRpcOutcome,
     durationMs: number,
   ): void;
+  recordSorobanRpcHealth(
+    status: SorobanRpcHealthStatus,
+    responseTimeMs: number,
+  ): void;
 }
 
 let submissionCounter: Counter | undefined;
 let submissionDuration: Histogram | undefined;
 let rpcDuration: Histogram | undefined;
+let sorobanRpcHealthGauge: Counter | undefined;
+let sorobanRpcHealthLatency: Histogram | undefined;
 let customRecorder: StellarMetricsRecorder | null = null;
 
 function getMeter() {
@@ -72,6 +80,31 @@ function getRpcDuration(): Histogram {
     });
   }
   return rpcDuration;
+}
+
+function getSorobanRpcHealthGauge(): Counter {
+  if (!sorobanRpcHealthGauge) {
+    sorobanRpcHealthGauge = getMeter().createCounter(
+      "soroban_rpc_health_checks_total",
+      {
+        description: "Total Soroban RPC health check results",
+      },
+    );
+  }
+  return sorobanRpcHealthGauge;
+}
+
+function getSorobanRpcHealthLatency(): Histogram {
+  if (!sorobanRpcHealthLatency) {
+    sorobanRpcHealthLatency = getMeter().createHistogram(
+      "soroban_rpc_health_check_duration_ms",
+      {
+        description: "Soroban RPC health check latency in milliseconds",
+        unit: "ms",
+      },
+    );
+  }
+  return sorobanRpcHealthLatency;
 }
 
 export function recordTransactionSubmission(
@@ -135,6 +168,20 @@ export async function withRpcMetrics<T>(
   }
 }
 
+export function recordSorobanRpcHealth(
+  status: SorobanRpcHealthStatus,
+  responseTimeMs: number,
+): void {
+  if (customRecorder && typeof customRecorder.recordSorobanRpcHealth === "function") {
+    customRecorder.recordSorobanRpcHealth(status, responseTimeMs);
+    return;
+  }
+
+  const labels = { status };
+  getSorobanRpcHealthGauge().add(1, labels);
+  getSorobanRpcHealthLatency().record(responseTimeMs, labels);
+}
+
 /** Vitest/Jest-only hook to assert metric emissions without a live Prometheus endpoint. */
 export function __setMetricsRecorderForTests(
   recorder: StellarMetricsRecorder | null,
@@ -147,4 +194,6 @@ export function __resetMetricsForTests(): void {
   submissionCounter = undefined;
   submissionDuration = undefined;
   rpcDuration = undefined;
+  sorobanRpcHealthGauge = undefined;
+  sorobanRpcHealthLatency = undefined;
 }

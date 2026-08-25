@@ -99,6 +99,15 @@ module "admin_isolation" {
   trusted_admin_cidrs = ["10.0.0.0/16", "172.16.0.0/12"]
 }
 
+module "secrets" {
+  source = "../../modules/secrets"
+
+  project_name       = "amana"
+  environment        = "staging"
+  eks_node_role_name = module.eks.node_role_arn
+}
+
+
 variable "region" {
   description = "AWS region"
   type        = string

@@ -48,6 +48,30 @@ describe("Health Routes", () => {
         });
 
         it("should include database, redis, indexer, and dependency checks", async () => {
+            mockPerformHealthCheck.mockResolvedValue({
+                status: "healthy",
+                timestamp: "2025-01-01T00:00:00.000Z",
+                uptime: 1000,
+                checks: {
+                    database: { status: "up", message: "ok", responseTime: 5 },
+                    redis: { status: "up", message: "ok", responseTime: 3 },
+                    indexer: { status: "up", message: "ok", responseTime: 10 },
+                    stellar: { status: "up", message: "ok", responseTime: 10 },
+                    sorobanRpc: { status: "up", message: "ok", responseTime: 10 },
+                    ipfs: { status: "up", message: "ok", responseTime: 10 },
+                    config: { status: "up", message: "ok", responseTime: 0 },
+                },
+                details: {
+                    databaseLatency: 5,
+                    redisLatency: 3,
+                    indexerLagSeconds: 2,
+                    lastProcessedLedger: 12345,
+                    stellarNetwork: "testnet",
+                    ipfsGateway: "https://gateway.pinata.cloud",
+                    missingEnvVars: [],
+                    circuitBreakers: [],
+                },
+            });
             const response = await request(app).get("/health");
 
             expect(response.status).toBe(200);
@@ -56,11 +80,13 @@ describe("Health Routes", () => {
             expect(response.body.checks).toHaveProperty("redis");
             expect(response.body.checks).toHaveProperty("indexer");
             expect(response.body.checks).toHaveProperty("stellar");
+            expect(response.body.checks).toHaveProperty("sorobanRpc");
             expect(response.body.checks).toHaveProperty("ipfs");
             expect(response.body.checks).toHaveProperty("config");
             expect(response.body.checks.database).toHaveProperty("status");
             expect(response.body.checks.redis).toHaveProperty("status");
             expect(response.body.checks.indexer).toHaveProperty("status");
+            expect(response.body.checks.sorobanRpc).toHaveProperty("status");
         });
 
         it("should return degraded status", async () => {
@@ -72,12 +98,20 @@ describe("Health Routes", () => {
                     database: { status: "up", message: "slow", responseTime: 200 },
                     redis: { status: "up", message: "ok", responseTime: 5 },
                     indexer: { status: "up", message: "ok", responseTime: 10 },
+                    stellar: { status: "up", message: "ok", responseTime: 10 },
+                    sorobanRpc: { status: "up", message: "ok", responseTime: 10 },
+                    ipfs: { status: "up", message: "ok", responseTime: 10 },
+                    config: { status: "up", message: "ok", responseTime: 0 },
                 },
                 details: {
                     databaseLatency: 200,
                     redisLatency: 5,
                     indexerLagSeconds: 2,
                     lastProcessedLedger: 12345,
+                    stellarNetwork: "testnet",
+                    ipfsGateway: "https://gateway.pinata.cloud",
+                    missingEnvVars: [],
+                    circuitBreakers: [],
                 },
             });
 
