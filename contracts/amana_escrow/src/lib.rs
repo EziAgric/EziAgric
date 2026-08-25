@@ -565,6 +565,14 @@ pub enum DataKey {
     TimelockOperation(u64),
     /// Monotonic counter for timelock operation IDs.
     NextTimelockId,
+    /// Global pause flag — when true, all state-changing entrypoints are blocked.
+    Paused,
+    /// Per-address guardian registry. Stores `true` when the address is an authorized guardian.
+    GuardianRegistry(Address),
+    /// Allowlisted asset contract address for multi-asset escrow support.
+    AllowedAsset(Address),
+    /// Per-asset decimal precision (u32), stored alongside AllowedAsset.
+    AssetDecimals(Address),
 }
 
 #[contracttype]
@@ -635,6 +643,17 @@ impl EscrowContract {
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND_TO);
+    }
+
+    /// Panics with "contract is paused" when the global pause flag is set.
+    /// Call this at the top of every state-changing entrypoint.
+    fn assert_not_paused(env: &Env) {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        assert!(!paused, "contract is paused");
     }
 
     // -----------------------------------------------------------------------
@@ -763,6 +782,141 @@ impl EscrowContract {
             .persistent()
             .get::<_, bool>(&DataKey::MediatorRegistry(address))
             .unwrap_or(false)
+    }
+
+    // -----------------------------------------------------------------------
+    // Guardian multisig — emergency pause (#188)
+    // -----------------------------------------------------------------------
+
+    /// Registers an address as an authorized guardian.
+    /// Only the contract admin may call this.
+    pub fn add_guardian(env: Env, guardian: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .set(&DataKey::GuardianRegistry(guardian), &true);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Removes a guardian. Admin only.
+    pub fn remove_guardian(env: Env, guardian: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::GuardianRegistry(guardian));
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Returns true when the given address is a registered guardian.
+    pub fn is_guardian(env: Env, address: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::GuardianRegistry(address))
+            .unwrap_or(false)
+    }
+
+    /// Pauses all state-changing contract operations. Caller must be a guardian.
+    pub fn pause(env: Env, guardian: Address) {
+        guardian.require_auth();
+        assert!(
+            env.storage()
+                .persistent()
+                .get::<_, bool>(&DataKey::GuardianRegistry(guardian))
+                .unwrap_or(false),
+            "caller is not a guardian"
+        );
+        env.storage().instance().set(&DataKey::Paused, &true);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Unpauses the contract. Caller must be a guardian.
+    /// A timelock is not enforced here — the admin may also unpause via admin key
+    /// to recover from an accidental freeze; the incident runbook covers both paths.
+    pub fn unpause(env: Env, guardian: Address) {
+        guardian.require_auth();
+        assert!(
+            env.storage()
+                .persistent()
+                .get::<_, bool>(&DataKey::GuardianRegistry(guardian))
+                .unwrap_or(false),
+            "caller is not a guardian"
+        );
+        env.storage().instance().set(&DataKey::Paused, &false);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Returns true when the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    // -----------------------------------------------------------------------
+    // Multi-asset allowlist (#187)
+    // -----------------------------------------------------------------------
+
+    /// Registers an asset contract address as allowed for escrow operations.
+    /// `decimals` controls fixed-point display for downstream clients.
+    /// Admin only.
+    pub fn allow_asset(env: Env, asset: Address, decimals: u32) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+        assert!(decimals <= 18, "decimals must be <= 18");
+        env.storage()
+            .persistent()
+            .set(&DataKey::AllowedAsset(asset.clone()), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::AssetDecimals(asset), &decimals);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Removes an asset from the allowlist. Admin only.
+    pub fn disallow_asset(env: Env, asset: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+        env.storage()
+            .persistent()
+            .remove(&DataKey::AllowedAsset(asset.clone()));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::AssetDecimals(asset));
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Returns true when the given asset contract address is on the allowlist.
+    pub fn is_asset_allowed(env: Env, asset: Address) -> bool {
+        env.storage()
+            .persistent()
+            .get::<_, bool>(&DataKey::AllowedAsset(asset))
+            .unwrap_or(false)
+    }
+
+    /// Returns the decimal precision stored for an allowed asset.
+    pub fn get_asset_decimals(env: Env, asset: Address) -> Option<u32> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::AssetDecimals(asset))
     }
 
     /// Returns the persistent storage schema version of this contract instance.
@@ -1466,6 +1620,7 @@ impl EscrowContract {
         seller_loss_bps: u32,
         expires_at: Option<u64>,
     ) -> u64 {
+        Self::assert_not_paused(&env);
         buyer.require_auth();
         assert!(amount > 0, "amount must be greater than zero");
         assert!(amount <= MAX_TRADE_VALUE, "TradeValueTooLarge");
@@ -1553,6 +1708,7 @@ impl EscrowContract {
     }
 
     pub fn deposit(env: Env, trade_id: u64) {
+        Self::assert_not_paused(&env);
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
         assert!(
@@ -1771,6 +1927,7 @@ impl EscrowContract {
     /// - Contract event publication (`TradeCancelledEvent`).
     /// - Instance storage TTL extension (`bump_instance_ttl`).
     pub fn cancel_trade(env: Env, trade_id: u64, caller: Address) {
+        Self::assert_not_paused(&env);
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
         let admin: Address = env
@@ -2056,6 +2213,7 @@ impl EscrowContract {
     }
 
     pub fn release_funds(env: Env, trade_id: u64, caller: Address) {
+        Self::assert_not_paused(&env);
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
         assert!(

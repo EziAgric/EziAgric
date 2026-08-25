@@ -41,3 +41,11 @@ export const notificationQueue = new Queue<NotificationJobData>('notifications',
 export const exportQueue = new Queue<ExportJobData>('exports', {
   connection: createQueueConnection(),
 });
+
+export interface TradeExpirySweepJobData {
+  batchSize?: number;
+}
+
+export const tradeExpiryQueue = new Queue<TradeExpirySweepJobData>('trade-expiry', {
+  connection: createQueueConnection(),
+});
