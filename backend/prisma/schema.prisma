@@ -20,6 +20,7 @@ enum TradeStatus {
   COMPLETED
   DISPUTED
   CANCELLED
+  EXPIRED
 }
 
 enum DisputeStatus {
@@ -105,6 +106,10 @@ model Trade {
   deliveredAt   DateTime?
   /// Canonical timestamp set once when the trade transitions to COMPLETED.
   completedAt   DateTime?
+  /// Optional deadline after which the sweeper may drive the trade to CANCELLED and trigger a refund.
+  expiresAt     DateTime?
+  /// Set by the sweeper once a refund has been successfully submitted on-chain.
+  expiredAt     DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -560,4 +565,45 @@ model StreamClawbackEvent {
   @@unique([streamId, txHash])
   @@index([streamId])
   @@index([admin])
+}
+
+/// OrphanDeposit tracks on-chain deposits that arrived without a matching Trade row.
+/// The attach flow links an orphan to its intended trade and writes an audit entry.
+model OrphanDeposit {
+  id            Int       @id @default(autoincrement())
+  /// The ledger sequence number of the deposit event.
+  ledgerSeq     Int
+  /// Transaction hash of the deposit.
+  txHash        String    @unique @db.VarChar(255)
+  /// Depositor wallet address detected from the chain event.
+  depositorAddress String @db.VarChar(255)
+  /// Amount in asset's stroops as reported by the contract event.
+  amountRaw     String    @db.VarChar(100)
+  /// Asset contract address (e.g. cNGN or USDC contract id).
+  assetId       String    @db.VarChar(255)
+  /// trade_id from the contract event, if emitted (may be null for truly orphaned deposits).
+  contractTradeId String? @db.VarChar(255)
+  /// Whether an admin has attached this orphan to a real Trade row.
+  resolved      Boolean   @default(false)
+  /// tradeId of the Trade this was eventually matched to, set by the attach flow.
+  resolvedTradeId String? @db.VarChar(255)
+  detectedAt    DateTime  @default(now())
+  resolvedAt    DateTime?
+
+  @@index([resolved])
+  @@index([depositorAddress])
+  @@index([txHash])
+}
+
+/// ContractPauseLog tracks pause/unpause events for the guardian emergency stop.
+model ContractPauseLog {
+  id            Int      @id @default(autoincrement())
+  paused        Boolean
+  guardianAddress String @db.VarChar(255)
+  reason        String?  @db.VarChar(500)
+  txHash        String?  @db.VarChar(255)
+  createdAt     DateTime @default(now())
+
+  @@index([paused, createdAt])
+  @@index([guardianAddress])
 }
