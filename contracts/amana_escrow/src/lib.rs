@@ -301,6 +301,17 @@ pub mod clawback_errors {
     pub const INVALID_STATUS: &str = "CLAWBACK_INVALID_STATUS";
 }
 
+// ---------------------------------------------------------------------------
+// Timelock error codes (Issue #189)
+// ---------------------------------------------------------------------------
+
+pub mod timelock_errors {
+    pub const UNAUTHORIZED: &str = "TIMELOCK_UNAUTHORIZED";
+    pub const NOT_READY: &str = "TIMELOCK_NOT_READY";
+    pub const OPERATION_NOT_FOUND: &str = "TIMELOCK_OP_NOT_FOUND";
+    pub const INVALID_OPERATION: &str = "TIMELOCK_INVALID_OP";
+}
+
 /// Emitted when the admin performs a partial or full clawback on an escrowed trade.
 ///
 /// A clawback recovers `clawback_amount` from the escrow, crediting it to `destination`.
@@ -326,6 +337,48 @@ pub struct ClawbackExecutedEvent {
     pub destination: Address,
     pub admin: Address,
     pub schema_version: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Timelock events (Issue #189)
+// ---------------------------------------------------------------------------
+
+#[contractevent(topics = ["TLKQUE"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelockOperationQueued {
+    pub operation_id: u64,
+    pub operation_type: soroban_sdk::String,
+    pub queued_at: u64,
+    pub execute_after: u64,
+    pub admin: Address,
+}
+
+#[contractevent(topics = ["TLKEXE"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelockOperationExecuted {
+    pub operation_id: u64,
+    pub executed_at: u64,
+}
+
+#[contractevent(topics = ["TLKCAN"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelockOperationCancelled {
+    pub operation_id: u64,
+    pub cancelled_at: u64,
+    pub admin: Address,
+}
+
+// ---------------------------------------------------------------------------
+// Upgrade events (Issue #193)
+// ---------------------------------------------------------------------------
+
+#[contractevent(topics = ["UPGQUE"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContractUpgradeQueued {
+    pub operation_id: u64,
+    pub new_wasm_hash: BytesN<32>,
+    pub queued_at: u64,
+    pub execute_after: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -506,6 +559,12 @@ pub enum DataKey {
     /// Used to prevent over-clawback: all partial clawbacks summed must not
     /// exceed the original escrowed amount.
     ClawbackTotal(u64),
+    /// Stores the timelock configuration (delay periods for different operation types).
+    TimelockConfig,
+    /// Stores a queued privileged operation awaiting execution after a delay.
+    TimelockOperation(u64),
+    /// Monotonic counter for timelock operation IDs.
+    NextTimelockId,
 }
 
 #[contracttype]
@@ -516,6 +575,51 @@ pub struct PathPaymentIntent {
     pub dest_min: i128,
     pub path: Vec<Address>,
     pub cngn_balance_before: i128,
+}
+
+// ---------------------------------------------------------------------------
+// Timelock operation payload (Issue #189)
+// ---------------------------------------------------------------------------
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelockClawbackOp {
+    pub trade_id: u64,
+    pub clawback_amount: i128,
+    pub destination: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelockUpgradeOp {
+    pub new_wasm_hash: BytesN<32>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TimelockOpPayload {
+    Clawback(TimelockClawbackOp),
+    Upgrade(TimelockUpgradeOp),
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueuedOperation {
+    pub operation_id: u64,
+    pub operation_type: soroban_sdk::String,
+    pub payload: TimelockOpPayload,
+    pub queued_at: u64,
+    pub execute_after: u64,
+    pub executed: bool,
+    pub cancelled: bool,
+    pub admin: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelockConfig {
+    pub clawback_delay_seconds: u64,
+    pub upgrade_delay_seconds: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -563,6 +667,14 @@ impl EscrowContract {
         env.storage()
             .instance()
             .set(&DataKey::SchemaVersion, &CURRENT_SCHEMA_VERSION);
+        let timelock_config = TimelockConfig {
+            clawback_delay_seconds: 86400,
+            upgrade_delay_seconds: 604800,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::TimelockConfig, &timelock_config);
+        env.storage().instance().set(&DataKey::NextTimelockId, &0u64);
         Self::bump_instance_ttl(&env);
         InitializedEvent { admin, fee_bps, timestamp: env.ledger().timestamp() }.publish(&env);
     }
@@ -729,6 +841,187 @@ impl EscrowContract {
             .instance()
             .get(&DataKey::AccruedFees)
             .unwrap_or(0)
+    }
+
+    // -----------------------------------------------------------------------
+    // Timelock operations (Issue #189)
+    // -----------------------------------------------------------------------
+
+    pub fn queue_clawback(
+        env: Env,
+        trade_id: u64,
+        clawback_amount: i128,
+        destination: Address,
+    ) -> u64 {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        assert!(clawback_amount > 0, "clawback_amount must be greater than zero");
+
+        let config: TimelockConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::TimelockConfig)
+            .unwrap_or(TimelockConfig {
+                clawback_delay_seconds: 86400,
+                upgrade_delay_seconds: 604800,
+            });
+
+        let now = env.ledger().timestamp();
+        let execute_after = now + config.clawback_delay_seconds;
+        let operation_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextTimelockId)
+            .unwrap_or(0);
+
+        let queued_op = QueuedOperation {
+            operation_id,
+            operation_type: soroban_sdk::String::from_str(&env, "clawback"),
+            payload: TimelockOpPayload::Clawback(TimelockClawbackOp {
+                trade_id,
+                clawback_amount,
+                destination,
+            }),
+            queued_at: now,
+            execute_after,
+            executed: false,
+            cancelled: false,
+            admin: admin.clone(),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::TimelockOperation(operation_id), &queued_op);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextTimelockId, &(operation_id + 1));
+
+        TimelockOperationQueued {
+            operation_id,
+            operation_type: soroban_sdk::String::from_str(&env, "clawback"),
+            queued_at: now,
+            execute_after,
+            admin,
+        }
+        .publish(&env);
+
+        Self::bump_instance_ttl(&env);
+        operation_id
+    }
+
+    pub fn execute_clawback(env: Env, operation_id: u64) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        let key = DataKey::TimelockOperation(operation_id);
+        let mut queued_op: QueuedOperation = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .expect("operation not found");
+
+        let now = env.ledger().timestamp();
+        assert!(now >= queued_op.execute_after, "operation not ready for execution");
+        assert!(!queued_op.executed, "operation already executed");
+        assert!(!queued_op.cancelled, "operation has been cancelled");
+
+        if let TimelockOpPayload::Clawback(clawback_op) = queued_op.payload.clone() {
+            let trade_key = DataKey::Trade(clawback_op.trade_id);
+            let mut trade: Trade = Self::load_trade(&env, &trade_key);
+
+            assert!(
+                matches!(trade.status, TradeStatus::Funded | TradeStatus::Disputed),
+                "Trade must be in Funded or Disputed status for clawback"
+            );
+            assert!(
+                clawback_op.clawback_amount <= trade.amount,
+                "clawback_amount exceeds remaining escrowed amount"
+            );
+
+            let token_client = token::Client::new(&env, &trade.token);
+            token_client.transfer(
+                &env.current_contract_address(),
+                &clawback_op.destination,
+                &clawback_op.clawback_amount,
+            );
+
+            trade.amount -= clawback_op.clawback_amount;
+            if trade.amount == 0 {
+                trade.status = TradeStatus::Cancelled;
+            }
+            trade.updated_at = now;
+            Self::save_trade(&env, &trade_key, &trade);
+
+            let clawback_total: i128 = env
+                .storage()
+                .persistent()
+                .get::<_, i128>(&DataKey::ClawbackTotal(clawback_op.trade_id))
+                .unwrap_or(0);
+            env.storage()
+                .persistent()
+                .set(
+                    &DataKey::ClawbackTotal(clawback_op.trade_id),
+                    &(clawback_total + clawback_op.clawback_amount),
+                );
+
+            queued_op.executed = true;
+            env.storage().persistent().set(&key, &queued_op);
+
+            TimelockOperationExecuted {
+                operation_id,
+                executed_at: now,
+            }
+            .publish(&env);
+        }
+
+        Self::bump_instance_ttl(&env);
+    }
+
+    pub fn cancel_queued_operation(env: Env, operation_id: u64) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        let key = DataKey::TimelockOperation(operation_id);
+        let mut queued_op: QueuedOperation = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .expect("operation not found");
+
+        assert!(!queued_op.executed, "cannot cancel executed operation");
+        assert!(!queued_op.cancelled, "operation already cancelled");
+
+        queued_op.cancelled = true;
+        env.storage().persistent().set(&key, &queued_op);
+
+        let now = env.ledger().timestamp();
+        TimelockOperationCancelled {
+            operation_id,
+            cancelled_at: now,
+            admin,
+        }
+        .publish(&env);
+
+        Self::bump_instance_ttl(&env);
+    }
+
+    pub fn get_queued_operation(env: Env, operation_id: u64) -> Option<QueuedOperation> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::TimelockOperation(operation_id))
     }
 
     /// Perform a partial (or full) admin clawback on an escrowed trade.
@@ -986,6 +1279,101 @@ impl EscrowContract {
             timestamp: now,
         }
         .publish(&env);
+
+        Self::bump_instance_ttl(&env);
+    }
+
+    // -----------------------------------------------------------------------
+    // Upgrade operations (Issue #193)
+    // -----------------------------------------------------------------------
+
+    pub fn queue_upgrade(env: Env, new_wasm_hash: BytesN<32>) -> u64 {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        let config: TimelockConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::TimelockConfig)
+            .unwrap_or(TimelockConfig {
+                clawback_delay_seconds: 86400,
+                upgrade_delay_seconds: 604800,
+            });
+
+        let now = env.ledger().timestamp();
+        let execute_after = now + config.upgrade_delay_seconds;
+        let operation_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextTimelockId)
+            .unwrap_or(0);
+
+        let queued_op = QueuedOperation {
+            operation_id,
+            operation_type: soroban_sdk::String::from_str(&env, "upgrade"),
+            payload: TimelockOpPayload::Upgrade(TimelockUpgradeOp { new_wasm_hash }),
+            queued_at: now,
+            execute_after,
+            executed: false,
+            cancelled: false,
+            admin: admin.clone(),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::TimelockOperation(operation_id), &queued_op);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextTimelockId, &(operation_id + 1));
+
+        ContractUpgradeQueued {
+            operation_id,
+            new_wasm_hash,
+            queued_at: now,
+            execute_after,
+        }
+        .publish(&env);
+
+        Self::bump_instance_ttl(&env);
+        operation_id
+    }
+
+    pub fn execute_upgrade(env: Env, operation_id: u64) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        let key = DataKey::TimelockOperation(operation_id);
+        let mut queued_op: QueuedOperation = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .expect("operation not found");
+
+        let now = env.ledger().timestamp();
+        assert!(now >= queued_op.execute_after, "operation not ready for execution");
+        assert!(!queued_op.executed, "operation already executed");
+        assert!(!queued_op.cancelled, "operation has been cancelled");
+
+        if let TimelockOpPayload::Upgrade(upgrade_op) = queued_op.payload.clone() {
+            env.deployer().update_current_contract_wasm(upgrade_op.new_wasm_hash);
+
+            queued_op.executed = true;
+            env.storage().persistent().set(&key, &queued_op);
+
+            ContractUpgradedEvent {
+                admin,
+                new_wasm_hash: upgrade_op.new_wasm_hash,
+            }
+            .publish(&env);
+        }
 
         Self::bump_instance_ttl(&env);
     }
