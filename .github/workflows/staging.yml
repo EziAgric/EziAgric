@@ -9,6 +9,7 @@ on:
       - '.github/workflows/staging.yml'
       - 'scripts/staging-up.sh'
       - 'scripts/staging-validate.sh'
+      - 'scripts/staging-admin-smoke-test.sh'
       - 'scripts/migrate-*.sh'
       - 'backend/**'
       - 'docker-compose.yml'
@@ -20,6 +21,7 @@ on:
       - '.github/workflows/staging.yml'
       - 'scripts/staging-up.sh'
       - 'scripts/staging-validate.sh'
+      - 'scripts/staging-admin-smoke-test.sh'
       - 'scripts/migrate-*.sh'
       - 'backend/**'
       - 'docker-compose.yml'
@@ -63,13 +65,25 @@ jobs:
 
       - name: Start staging stack
         run: |
-          chmod +x ./scripts/staging-up.sh ./scripts/staging-validate.sh
+          chmod +x ./scripts/staging-up.sh ./scripts/staging-validate.sh ./scripts/staging-admin-smoke-test.sh
           ./scripts/staging-up.sh
         timeout-minutes: 10
 
       - name: Validate staging deployment
         run: ./scripts/staging-validate.sh
         timeout-minutes: 5
+
+      - name: Run Staging Admin Smoke Test
+        run: ./scripts/staging-admin-smoke-test.sh
+        timeout-minutes: 5
+
+      - name: Notify on Staging Validation or Smoke Test Failure
+        if: failure()
+        run: |
+          echo "::error title=Staging Deployment Failure::Staging validation or admin route smoke test failed."
+          echo "### 🚨 Staging Deployment Failure Notification" >> $GITHUB_STEP_SUMMARY
+          echo "The staging deployment or admin route smoke test failed during automated validation." >> $GITHUB_STEP_SUMMARY
+          echo "Please review workflow logs and ensure admin endpoints and staging services are functioning correctly." >> $GITHUB_STEP_SUMMARY
 
       - name: Tear down staging stack
         if: always()

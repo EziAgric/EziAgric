@@ -149,3 +149,22 @@ regexes = ["FAKE_KEY_PLACEHOLDER_DO_NOT_USE"]
 ```
 
 Document all suppressions with a comment explaining why they are safe.
+
+---
+
+## 7. Admin Secret Rotation (`ADMIN_SECRET_KEY`)
+
+Admin signing key (`ADMIN_SECRET_KEY`) rotation is governed by the following operational requirements:
+
+### Key Requirements
+- **Rotation Interval**: Every 90 days or immediately upon suspected leak/offboarding.
+- **Zero-Downtime**: Kubernetes deployment spec in `infra/k8s/backend-deployment.yaml` specifies `RollingUpdate` with `maxSurge: 1` and `maxUnavailable: 0`.
+- **Validation**: Every secret change must be verified using `./scripts/validate-admin-secret.sh`.
+
+### Rotation Steps
+1. Update secret in Kubernetes: `kubectl apply -f infra/k8s/secrets.yaml`
+2. Perform zero-downtime rollout: `kubectl rollout restart deployment/backend`
+3. Run validation check: `ADMIN_SECRET_KEY="S..." ./scripts/validate-admin-secret.sh http://api.amanavault.com`
+4. In case of validation error, perform immediate rollback: `kubectl rollout undo deployment/backend`
+
+For detailed step-by-step instructions, see [docs/admin-secret-rotation.md](file:///home/kaycee/Desktop/OS/EziAgric/docs/admin-secret-rotation.md).
