@@ -181,6 +181,13 @@ EziAgric is an open-source project aimed at improving food security and trade ef
 4. Push to the Branch (`git push origin feature/NewFeature`).
 5. Open a Pull Request.
 
+### Admin route development
+
+If you are adding or modifying admin routes, see the
+[Admin Route Contribution Guide](./docs/admin-route-contribution-guide.md)
+for architecture details, middleware requirements, testing expectations, and a
+step-by-step example.
+
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.

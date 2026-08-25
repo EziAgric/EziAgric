@@ -3,10 +3,11 @@ import { prisma as defaultPrisma } from "../lib/db";
 import { redis } from "../lib/redis";
 import { appLogger } from "../middleware/logger";
 import { env } from "../config/env";
-import { horizonServer } from "../config/stellar";
+import { horizonServer, sorobanRpcClient } from "../config/stellar";
 import { getPinataClient } from "../config/ipfs";
 import { AlertService, alertService as defaultAlertService } from "./alert.service";
 import { getCircuitBreakerStates } from "../lib/circuitBreaker";
+import { recordSorobanRpcHealth } from "../lib/metrics";
 
 interface HealthIndicatorResult {
   status: "up" | "down";
@@ -22,6 +23,7 @@ interface HealthCheckResponse {
     database: HealthIndicatorResult;
     indexer: HealthIndicatorResult;
     stellar: HealthIndicatorResult;
+    sorobanRpc: HealthIndicatorResult;
     ipfs: HealthIndicatorResult;
     redis: HealthIndicatorResult;
     config: HealthIndicatorResult;
@@ -185,6 +187,47 @@ export class HealthService {
       return {
         status: "down",
         message: `Stellar check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        responseTime,
+      };
+    }
+  }
+
+  /**
+   * Check Soroban RPC reachability — verifies the backend can reach the
+   * Soroban RPC endpoint required by admin operations (contract invocations,
+   * transaction signing, stream management). This is distinct from the
+   * Horizon-based `checkStellar` which validates the Stellar network layer.
+   *
+   * Uses a lightweight `getHealth` or `getLatestLedger` call with a short
+   * timeout to avoid impacting admin route latency.
+   */
+  async checkSorobanRpc(): Promise<HealthIndicatorResult> {
+    const startTime = Date.now();
+    const timeout = 5000;
+
+    try {
+      await Promise.race([
+        sorobanRpcClient.getLatestLedger(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Soroban RPC timeout")), timeout),
+        ),
+      ]);
+
+      const responseTime = Date.now() - startTime;
+      recordSorobanRpcHealth("up", responseTime);
+      return {
+        status: "up",
+        message: "Soroban RPC reachable",
+        responseTime,
+      };
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      const message = error instanceof Error ? error.message : "Unknown error";
+      appLogger.error({ error, responseTime }, "Soroban RPC health check failed");
+      recordSorobanRpcHealth("down", responseTime);
+      return {
+        status: "down",
+        message: `Soroban RPC unreachable: ${message}`,
         responseTime,
       };
     }
@@ -371,6 +414,7 @@ export class HealthService {
       databaseCheck,
       indexerCheck,
       stellarCheck,
+      sorobanRpcCheck,
       ipfsCheck,
       redisCheck,
       configCheck,
@@ -379,6 +423,7 @@ export class HealthService {
       this.checkDatabase(),
       this.checkIndexer(),
       this.checkStellar(),
+      this.checkSorobanRpc(),
       this.checkIPFS(),
       this.checkRedis(),
       this.checkConfig(),
@@ -393,6 +438,7 @@ export class HealthService {
       databaseCheck.status === "down"
       || indexerCheck.status === "down"
       || stellarCheck.status === "down"
+      || sorobanRpcCheck.status === "down"
       || configCheck.status === "down"
       || adminSigningKeyCheck.status === "down"
     ) {
@@ -438,6 +484,7 @@ export class HealthService {
         database: databaseCheck,
         indexer: indexerCheck,
         stellar: stellarCheck,
+        sorobanRpc: sorobanRpcCheck,
         ipfs: ipfsCheck,
         redis: redisCheck,
         config: configCheck,

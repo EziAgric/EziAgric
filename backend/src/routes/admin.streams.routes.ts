@@ -33,6 +33,9 @@ import {
   SUSPENDABLE_STATUSES,
   streamValidationService,
 } from "../services/streamValidation.service";
+import {
+  streamReconciliationService,
+} from "../services/streamReconciliation.service";
 
 const streamIdParamSchema = z.object({
   id: z
@@ -459,7 +462,7 @@ export function createAdminStreamsRouter(
       try {
         const { id: streamId } = req.params as { id: string };
 
-        const result = await reconciliationService.reconcile(streamId);
+        const result = await streamReconciliationService.reconcile(streamId);
 
         res.status(200).json(result);
       } catch (error) {
