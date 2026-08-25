@@ -78,6 +78,25 @@ npm run start
 npm test
 ```
 
+### Admin Auth Regression Suite
+
+A dedicated CI regression suite (`src/__tests__/admin.auth.ci-regression.test.ts`) covers
+admin route authentication and authorization. It validates feature gating, JWT validation,
+wallet allowlist enforcement, token revocation, and error response shape consistency.
+
+Run it locally:
+
+```bash
+# Using pnpm
+pnpm jest --config jest.config.js --forceExit --detectOpenHandles --testPathPatterns='admin\.auth\.ci-regression' --verbose
+
+# Using npm
+npx jest --config jest.config.js --forceExit --detectOpenHandles --testPathPatterns='admin\.auth\.ci-regression' --verbose
+```
+
+CI runs this suite as a separate named step (`Admin auth regression suite`) so any
+regression in admin authentication causes CI to fail independently of the full test suite.
+
 ## Notes
 
 - `prisma/` contains schema and seed logic for the backend database.
