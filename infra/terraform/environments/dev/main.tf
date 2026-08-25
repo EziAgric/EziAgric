@@ -90,6 +90,14 @@ module "eks" {
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 }
 
+module "secrets" {
+  source = "../../modules/secrets"
+
+  project_name       = "amana"
+  environment        = "dev"
+  eks_node_role_name = module.eks.node_role_arn
+}
+
 variable "region" {
   description = "AWS region"
   type        = string

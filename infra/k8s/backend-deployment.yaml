@@ -69,6 +69,11 @@ spec:
                 secretKeyRef:
                   name: amana-secrets
                   key: IPFS_URL_SIGNING_SECRET
+            - name: ADMIN_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: amana-secrets
+                  key: ADMIN_SECRET_KEY
           resources:
             requests:
               cpu: 100m
