@@ -1,8 +1,18 @@
+jest.mock("@stellar/stellar-sdk", () => ({
+  Keypair: {
+    fromSecret: jest.fn().mockReturnValue({
+      publicKey: jest.fn().mockReturnValue("GDUMMY_PUBLIC_KEY_FOR_TESTS"),
+    }),
+  },
+}));
+
 jest.mock("../config/stellar", () => ({
   horizonServer: {
     loadAccount: jest.fn().mockResolvedValue({}),
   },
-  sorobanRpcClient: {},
+  sorobanRpcClient: {
+    getLatestLedger: jest.fn().mockResolvedValue({ sequence: 99999 }),
+  },
 }));
 
 jest.mock("../config/ipfs", () => ({
@@ -16,14 +26,14 @@ import { AlertService } from "../services/alert.service";
 
 describe("HealthService", () => {
     let healthService: HealthService;
-    let mockPrisma: { $queryRaw: jest.Mock; processedLedger: { findFirst: jest.Mock } };
+    let mockPrisma: { $queryRaw: jest.Mock; processedEvent: { findFirst: jest.Mock } };
     let mockRedis: { ping: jest.Mock };
     let mockAlerts: { dispatch: jest.Mock };
 
     beforeEach(() => {
         mockPrisma = {
             $queryRaw: jest.fn(),
-            processedLedger: {
+            processedEvent: {
                 findFirst: jest.fn(),
             },
         };
@@ -45,7 +55,7 @@ describe("HealthService", () => {
         it("should return healthy status when all checks pass", async () => {
             mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
             mockRedis.ping.mockResolvedValue("PONG");
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -56,14 +66,52 @@ describe("HealthService", () => {
             expect(result.checks.database.status).toBe("up");
             expect(result.checks.redis.status).toBe("up");
             expect(result.checks.indexer.status).toBe("up");
+            expect(result.checks.sorobanRpc.status).toBe("up");
+            expect(result.checks.sorobanRpc.message).toBe("Soroban RPC reachable");
             expect(result.details.lastProcessedLedger).toBe(12345);
             expect(mockAlerts.dispatch).not.toHaveBeenCalled();
+        });
+
+        it("should return unhealthy status when Soroban RPC is unreachable", async () => {
+            const { sorobanRpcClient } = require("../config/stellar");
+            sorobanRpcClient.getLatestLedger.mockRejectedValue(new Error("Connection refused"));
+
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockResolvedValue("PONG");
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
+                ledgerSequence: 12345,
+                processedAt: new Date(),
+            });
+
+            const result = await healthService.performHealthCheck();
+
+            expect(result.status).toBe("unhealthy");
+            expect(result.checks.sorobanRpc.status).toBe("down");
+            expect(result.checks.sorobanRpc.message).toMatch(/Soroban RPC unreachable/);
+
+            // Reset mock
+            sorobanRpcClient.getLatestLedger.mockResolvedValue({ sequence: 99999 });
+        });
+
+        it("should return healthy sorobanRpc check with latency", async () => {
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockResolvedValue("PONG");
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
+                ledgerSequence: 12345,
+                processedAt: new Date(),
+            });
+
+            const result = await healthService.performHealthCheck();
+
+            expect(result.checks.sorobanRpc.status).toBe("up");
+            expect(result.checks.sorobanRpc.responseTime).toBeGreaterThanOrEqual(0);
+            expect(typeof result.checks.sorobanRpc.responseTime).toBe("number");
         });
 
         it("should return unhealthy status when database check fails", async () => {
             mockPrisma.$queryRaw.mockRejectedValue(new Error("Connection failed"));
             mockRedis.ping.mockResolvedValue("PONG");
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -82,7 +130,7 @@ describe("HealthService", () => {
         it("should return degraded status and alert when redis check fails", async () => {
             mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
             mockRedis.ping.mockRejectedValue(new Error("Redis connection refused"));
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -98,17 +146,17 @@ describe("HealthService", () => {
             );
         });
 
-        it("should return unhealthy status when Redis check fails", async () => {
+        it("should return degraded status when Redis check fails", async () => {
             mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
             mockRedis.ping.mockRejectedValue(new Error("Connection refused"));
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
 
             const result = await healthService.performHealthCheck();
 
-            expect(result.status).toBe("unhealthy");
+            expect(result.status).toBe("degraded");
             expect(result.checks.redis.status).toBe("down");
         });
 
@@ -117,7 +165,7 @@ describe("HealthService", () => {
             mockRedis.ping.mockResolvedValue("PONG");
 
             const oldDate = new Date(Date.now() - 20 * 1000);
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: oldDate,
             });
@@ -132,7 +180,7 @@ describe("HealthService", () => {
         it("should return unhealthy status when no processed events exist", async () => {
             mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
             mockRedis.ping.mockResolvedValue("PONG");
-            mockPrisma.processedLedger.findFirst.mockResolvedValue(null);
+            mockPrisma.processedEvent.findFirst.mockResolvedValue(null);
 
             const result = await healthService.performHealthCheck();
 
@@ -149,7 +197,7 @@ describe("HealthService", () => {
                     )
             );
             mockRedis.ping.mockResolvedValue("PONG");
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -163,7 +211,7 @@ describe("HealthService", () => {
         it("should include uptime in response", async () => {
             mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
             mockRedis.ping.mockResolvedValue("PONG");
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -183,7 +231,7 @@ describe("HealthService", () => {
                     )
             );
             mockRedis.ping.mockResolvedValue("PONG");
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -201,7 +249,7 @@ describe("HealthService", () => {
                         setTimeout(() => reject(new Error("Timeout")), 250)
                     )
             );
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -216,7 +264,7 @@ describe("HealthService", () => {
             mockRedis.ping.mockResolvedValue("PONG");
 
             const recentDate = new Date(Date.now() - 5 * 1000);
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: recentDate,
             });
@@ -231,7 +279,7 @@ describe("HealthService", () => {
         it("should include redis latency in details", async () => {
             mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
             mockRedis.ping.mockResolvedValue("PONG");
-            mockPrisma.processedLedger.findFirst.mockResolvedValue({
+            mockPrisma.processedEvent.findFirst.mockResolvedValue({
                 ledgerSequence: 12345,
                 processedAt: new Date(),
             });
@@ -281,7 +329,7 @@ describe("HealthService", () => {
 
             await healthService.performStartupCheck();
 
-            expect(mockPrisma.processedLedger.findFirst).not.toHaveBeenCalled();
+            expect(mockPrisma.processedEvent.findFirst).not.toHaveBeenCalled();
         });
     });
 });
