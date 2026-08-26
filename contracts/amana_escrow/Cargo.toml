@@ -84,3 +84,13 @@ path = "tests/partial_clawback_tests.rs"
 [[test]]
 name = "gas_benchmark_tests"
 path = "tests/gas_benchmark_tests.rs"
+
+# Issue #102 — admin clawback integration test
+[[test]]
+name = "admin_integration_tests"
+path = "tests/admin_integration_tests.rs"
+
+# Issue #103 — admin event replay guard
+[[test]]
+name = "admin_event_replay_tests"
+path = "tests/admin_event_replay_tests.rs"

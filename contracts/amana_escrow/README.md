@@ -2,6 +2,10 @@
 
 This crate contains the Soroban escrow contract used by Amana.
 
+## Documentation
+
+- [Admin Governance Flow](docs/admin-governance.md): Comprehensive documentation on admin clawback operations, compliance requirements, and governance workflows
+
 ## cNGN migration and upgrade notes
 
 ### Migration behavior
