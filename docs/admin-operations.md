@@ -78,6 +78,38 @@ Take either ID from the response and search the structured logs:
 grep '"requestId":"1a4e..."' backend.log | jq .
 ```
 
+## Event Idempotency Guarantees
+
+Admin clawback operations emit ClawbackExecutedEvent on-chain. The backend event listener implements replay protection to handle duplicate or reordered events safely.
+
+### Deduplication Strategy
+
+The ProcessedEvent table tracks processed events using a composite unique key:
+
+- ledgerSequence: Stellar ledger number
+- contractId: Contract address
+- eventId: Unique event identifier
+
+When an event arrives, the listener checks if it has been processed before attempting to handle it. If a duplicate is detected, it is silently ignored.
+
+### Event Schema Versioning
+
+ClawbackExecutedEvent includes a schema_version field set to EVENT_SCHEMA_VERSION. This allows the backend to detect structural changes in future contract upgrades and apply appropriate parsing logic.
+
+### Atomic Processing
+
+Event handling and deduplication markers are written in a single database transaction. This ensures that either both succeed or both fail, preventing scenarios where an event is marked as processed but its side effects were not applied.
+
+### Reordering Tolerance
+
+Events may arrive out of order due to network conditions or RPC cursor behavior. The listener processes events by ledger sequence and uses the ProcessedEvent table to skip any events that have already been handled, regardless of arrival order.
+
+### Related Documentation
+
+- Contract admin governance: contracts/amana_escrow/docs/admin-governance.md
+- Event listener implementation: backend/src/services/eventListener.service.ts
+- Event handler logic: backend/src/services/eventHandlers.ts
+
 That returns the request log line and the `admin_soroban_call` entry for the
 same action. Use `correlationId` instead to follow a trace that spans more than
 one service.
@@ -115,7 +147,9 @@ async function promoteMediator(token: string, mediatorAddress: string) {
       case "rate_limited":
         return showBanner("Admin quota exceeded, try again shortly.");
       default:
-        return showBanner(`Admin action failed (ref ${error.correlationId ?? "n/a"}).`);
+        return showBanner(
+          `Admin action failed (ref ${error.correlationId ?? "n/a"}).`,
+        );
     }
   }
 }
@@ -145,11 +179,11 @@ const result = await adminRequest<MyResponse>("/admin/new-endpoint", token, {
 
 ## Tests
 
-| File                                                    | Covers                                       |
-| ------------------------------------------------------- | -------------------------------------------- |
-| `backend/src/__tests__/admin.routes.validation.harness.test.ts` | Auth and validation failure modes |
-| `backend/src/__tests__/admin.correlationId.test.ts`      | ID generation and propagation to services    |
-| `frontend/src/lib/api/__tests__/admin.test.ts`           | Token guard, endpoints, error mapping        |
+| File                                                            | Covers                                    |
+| --------------------------------------------------------------- | ----------------------------------------- |
+| `backend/src/__tests__/admin.routes.validation.harness.test.ts` | Auth and validation failure modes         |
+| `backend/src/__tests__/admin.correlationId.test.ts`             | ID generation and propagation to services |
+| `frontend/src/lib/api/__tests__/admin.test.ts`                  | Token guard, endpoints, error mapping     |
 
 The backend harness isolates each route behind mocked services, so a failure
 points at the route's guards rather than at Prisma or Soroban RPC.

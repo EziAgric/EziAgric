@@ -1290,6 +1290,41 @@ impl EscrowContract {
             .unwrap_or(0_i128)
     }
 
+    /// Return the total amount claimed (released) from a given trade.
+    /// This calculates the amount based on trade status and clawback history.
+    /// Returns 0 if the trade has not completed or no funds have been released.
+    pub fn get_claimed_amount(env: Env, trade_id: u64) -> i128 {
+        let key = DataKey::Trade(trade_id);
+        if !env.storage().persistent().has(&key) {
+            return 0;
+        }
+        let trade: Trade = Self::load_trade(&env, &key);
+        
+        match trade.status {
+            TradeStatus::Completed => {
+                let original_amount = trade.amount;
+                let clawed_back = Self::get_clawback_total(env, trade_id);
+                original_amount.saturating_sub(clawed_back)
+            }
+            _ => 0
+        }
+    }
+
+    /// Return accounting summary for a trade stream: original amount, claimed, and clawed back.
+    /// Returns a tuple of (original_amount, claimed_amount, clawback_total).
+    pub fn get_stream_accounting(env: Env, trade_id: u64) -> (i128, i128, i128) {
+        let key = DataKey::Trade(trade_id);
+        if !env.storage().persistent().has(&key) {
+            return (0, 0, 0);
+        }
+        let trade: Trade = Self::load_trade(&env, &key);
+        let original_amount = trade.amount;
+        let clawback_total = Self::get_clawback_total(env.clone(), trade_id);
+        let claimed_amount = Self::get_claimed_amount(env, trade_id);
+        
+        (original_amount, claimed_amount, clawback_total)
+    }
+
     // -----------------------------------------------------------------------
     // admin_clawback — admin-only emergency asset recovery  (#91 / #92)
     // -----------------------------------------------------------------------
