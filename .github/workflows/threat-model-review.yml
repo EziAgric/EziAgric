@@ -1,0 +1,52 @@
+name: Quarterly Threat Model Review Reminder
+
+# Opens a tracked issue at the start of each quarterly review window
+# (docs/threat-model.md §8) so the threat model is never reviewed later
+# than intended. Also runnable manually to open an ad-hoc / trigger-based
+# review issue (see the trigger conditions in docs/threat-model.md §8).
+on:
+  schedule:
+    # 09:00 UTC on the 1st of Jan / Apr / Jul / Oct (first business week).
+    - cron: "0 9 1 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  open-review-issue:
+    name: Open Threat Model Review Issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create review issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const checklist = fs.readFileSync('docs/threat-model-review-checklist.md', 'utf8');
+            const quarter = `Q${Math.floor((new Date().getUTCMonth()) / 3) + 1} ${new Date().getUTCFullYear()}`;
+            const owner = 'Ndifreke000';
+
+            const body = [
+              `Scheduled quarterly review of \`docs/threat-model.md\` (see §8 Review Cadence & Ownership).`,
+              '',
+              'Complete the checklist below, update the threat model, and append a changelog entry per the process in §8.',
+              '',
+              '---',
+              '',
+              checklist,
+            ].join('\n');
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Threat model review — ${quarter}`,
+              body,
+              labels: ['security', 'threat-model-review'],
+              assignees: [owner],
+            });
+
+            console.log(`Opened review issue #${issue.data.number}`);

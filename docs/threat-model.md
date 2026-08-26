@@ -365,3 +365,26 @@ Created → Funded → Delivered → Completed
 - [Amana Backend Reliability Layer](./backend.md)
 - [Amana Escrow Contract README](../contracts/amana_escrow/README.md)
 - OWASP Smart Contract Top 10
+
+---
+
+## 8. Review Cadence & Ownership
+
+This document is **not static**. It is reviewed on the following schedule so that security decisions are never made against stale assumptions:
+
+- **Owner:** `@Ndifreke000` (backend/security). The owner is responsible for running the review, updating the Threat Matrix, and appending a changelog entry below. Ownership transfers must be recorded in the changelog.
+- **Cadence:** Quarterly — first business week of January, April, July, October.
+- **Automation:** `.github/workflows/threat-model-review.yml` opens a tracked GitHub issue (labels `security`, `threat-model-review`) at the start of each cadence window, assigned to the current owner, using `docs/threat-model-review-checklist.md` as the issue body.
+- **Trigger-based reviews** (in addition to the quarterly cadence), required whenever any of the following ship, regardless of where we are in the quarter:
+  - A new asset type or token contract is integrated (e.g. beyond cNGN/USDC).
+  - A new privileged capability is added to the escrow contract or admin API (new role, new `require_auth` boundary, new mediator power).
+  - A new external integration is added (new oracle, new IPFS pinning provider, new webhook consumer, mobile push provider, etc.).
+  - Any finding in §3 changes status from "Not implemented" to "Implemented," or a new critical finding is discovered via audit/pentest.
+- **Process:** each review must (a) re-walk every row in §4 Security Controls Summary and update status, (b) add/retire threat entries in §3 as the system changes, (c) re-rank §5 Recommendations Priority, (d) append a dated entry to the Changelog below summarizing what changed and why, (e) link the review from the corresponding security audit PR description.
+- **Reviewer checklist:** use `docs/threat-model-review-checklist.md` for every review (quarterly or trigger-based) to keep coverage consistent across reviewers.
+
+### Changelog
+
+| Date | Reviewer | Summary |
+|---|---|---|
+| 2026-08-26 | `@Ndifreke000` | First formal quarterly-cadence review. Established owner, cadence, trigger conditions, and this changelog per issue #210. No control status changes from §4; matrix and priority ranking confirmed current as of this date. |
