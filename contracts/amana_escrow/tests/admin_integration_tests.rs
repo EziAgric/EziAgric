@@ -286,13 +286,23 @@ fn test_admin_clawback_to_custom_destination() {
 }
 
 #[test]
-#[should_panic(expected = "clawback_amount must be greater than zero")]
+#[should_panic(expected = "CLAWBACK_INVALID_AMOUNT")]
 fn test_admin_clawback_rejects_zero_amount() {
     let h = AdminTestHarness::new();
     let client = h.client();
 
     let trade_id = h.create_funded_trade(5_000);
     client.admin_clawback(&trade_id, &0, &h.buyer);
+}
+
+#[test]
+#[should_panic(expected = "CLAWBACK_INVALID_AMOUNT")]
+fn test_admin_clawback_rejects_negative_amount() {
+    let h = AdminTestHarness::new();
+    let client = h.client();
+
+    let trade_id = h.create_funded_trade(5_000);
+    client.admin_clawback(&trade_id, &(-1), &h.buyer);
 }
 
 #[test]

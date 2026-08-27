@@ -6,6 +6,15 @@ This crate contains the Soroban escrow contract used by Amana.
 
 - [Admin Governance Flow](docs/admin-governance.md): Comprehensive documentation on admin clawback operations, compliance requirements, and governance workflows
 
+## Clawback amount bounds
+
+`admin_clawback` / `queue_clawback` accept only strictly positive amounts:
+
+- `amount > 0` — zero and negative values panic with `CLAWBACK_INVALID_AMOUNT`
+- `amount <=` remaining escrowed `trade.amount` — over-clawback is rejected
+
+Backend preview/CLI validation mirrors the same lower bound before submitting a transaction.
+
 ## cNGN migration and upgrade notes
 
 ### Migration behavior

@@ -330,7 +330,7 @@ fn over_clawback_is_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "clawback_amount must be greater than zero")]
+#[should_panic(expected = "CLAWBACK_INVALID_AMOUNT")]
 fn zero_clawback_is_rejected() {
     let h = Harness::new(5_000);
     let trade_id = h.funded_trade(5_000);
