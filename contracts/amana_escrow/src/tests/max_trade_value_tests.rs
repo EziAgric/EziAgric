@@ -6,6 +6,7 @@
 ///   3. Trade above MAX_TRADE_VALUE is rejected with "TradeValueTooLarge"
 #[cfg(test)]
 mod max_trade_value_tests {
+    use crate::test_fixture::admin_address;
     use soroban_sdk::testutils::{Address as _, Ledger as _};
     use soroban_sdk::{Address, Env, token};
 
@@ -14,7 +15,7 @@ mod max_trade_value_tests {
     fn setup_contract(env: &Env) -> (EscrowContractClient, Address, Address, Address) {
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(env, &contract_id);
-        let admin = Address::generate(env);
+        let admin = admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);

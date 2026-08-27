@@ -9,7 +9,7 @@
 /// - The trade's expires_at field is updated and a DeadlineExtendedEvent is emitted.
 extern crate std;
 
-use amana_escrow::{EscrowContract, EscrowContractClient};
+use amana_escrow::{EscrowContract, EscrowContractClient, test_fixture::admin_address};
 use soroban_sdk::{
     Address, Env, IntoVal, contract, contractimpl, contracttype,
     testutils::{Address as _, Events, Ledger, MockAuth, MockAuthInvoke},
@@ -85,7 +85,7 @@ impl H {
 
         let escrow = env.register(EscrowContract, ());
         let token = env.register(MockToken, ());
-        let admin = Address::generate(&env);
+        let admin = admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let stranger = Address::generate(&env);

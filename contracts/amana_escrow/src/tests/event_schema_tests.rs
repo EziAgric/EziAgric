@@ -6,6 +6,9 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod event_schema_tests {
+    extern crate std;
+
+    use crate::test_fixture::admin_address;
     use crate::{EscrowContract, EscrowContractClient, TradeStatus};
     use soroban_sdk::{
         Address, Env, IntoVal, String, Symbol, TryFromVal, Val, Vec, symbol_short,
@@ -24,7 +27,7 @@ mod event_schema_tests {
         amount: i128,
         fee_bps: u32,
     ) -> (Address, Address, Address, Address, Address) {
-        let admin = Address::generate(env);
+        let admin = admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);
@@ -43,7 +46,7 @@ mod event_schema_tests {
         amount: i128,
         fee_bps: u32,
     ) -> (Address, Address, Address, Address, Address, Address) {
-        let admin = Address::generate(env);
+        let admin = admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);
@@ -413,7 +416,7 @@ mod event_schema_tests {
         let data = match &last.body {
             ContractEventBody::V0(v0) => match &v0.data {
                 ScVal::Map(Some(map)) => {
-                    let mut vals = Vec::new();
+                    let mut vals = std::vec::Vec::new();
                     for entry in map.iter() {
                         vals.push(entry.val.clone());
                     }
