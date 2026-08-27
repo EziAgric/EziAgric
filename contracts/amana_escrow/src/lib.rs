@@ -573,6 +573,11 @@ pub enum DataKey {
     AllowedAsset(Address),
     /// Per-asset decimal precision (u32), stored alongside AllowedAsset.
     AssetDecimals(Address),
+    /// Deployment-time enablement switch for `admin_clawback` (Issue #113).
+    /// Absent (post-upgrade default) is treated as enabled to preserve
+    /// existing behavior; an admin can explicitly disable/re-enable via
+    /// `set_clawback_enabled()` to stage a rollout or freeze the feature.
+    ClawbackEnabled,
 }
 
 #[contracttype]
@@ -1191,15 +1196,36 @@ impl EscrowContract {
     /// - `clawback_amount` must be ≤ remaining `trade.amount` (no over-clawback).
     /// - Cumulative `ClawbackTotal` is updated on every call for auditability.
     ///
+    /// # Access control (Issue #105 audit)
+    /// The admin address is read directly from instance storage — never taken
+    /// as a caller-supplied argument — so it cannot be spoofed. `require_auth()`
+    /// is invoked on that stored address before any state is read or mutated,
+    /// so an unauthorized caller cannot reach the storage/transfer logic below
+    /// even under a mocked-auth test harness. There is no implicit admin
+    /// fallback: if `DataKey::Admin` was never set, `expect("Not initialized")`
+    /// panics rather than defaulting to an open-access state.
+    ///
+    /// # Feature gating (Issue #113)
+    /// Also requires `ClawbackEnabled` (see `set_clawback_enabled`) to be true;
+    /// this lets an admin freeze clawbacks during a staged rollout or incident
+    /// without a contract upgrade.
+    ///
     /// Emits [`ClawbackExecutedEvent`] including the `schema_version` field so
     /// listeners can detect future structural additions.
     pub fn admin_clawback(env: Env, trade_id: u64, clawback_amount: i128, destination: Address) {
+        // ACCESS CONTROL: admin is read from storage (not a param), then
+        // require_auth() is enforced before any state is touched.
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .expect("Not initialized");
         admin.require_auth();
+
+        assert!(
+            Self::is_clawback_enabled(env.clone()),
+            "admin_clawback: clawback feature is currently disabled"
+        );
 
         assert!(clawback_amount > 0, "clawback_amount must be greater than zero");
 
@@ -1288,6 +1314,33 @@ impl EscrowContract {
             .persistent()
             .get(&DataKey::ClawbackTotal(trade_id))
             .unwrap_or(0_i128)
+    }
+
+    /// Deployment-time enablement switch for `admin_clawback` (Issue #113).
+    /// Admin-only. Lets a rollout stage or freeze the clawback feature without
+    /// a contract upgrade.
+    pub fn set_clawback_enabled(env: Env, enabled: bool) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::ClawbackEnabled, &enabled);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Whether `admin_clawback` is currently enabled. Defaults to `true` when
+    /// unset so upgrading existing deployments preserves current behavior;
+    /// call `set_clawback_enabled(false)` to opt into a staged rollout.
+    pub fn is_clawback_enabled(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::ClawbackEnabled)
+            .unwrap_or(true)
     }
 
     /// Return the total amount claimed (released) from a given trade.

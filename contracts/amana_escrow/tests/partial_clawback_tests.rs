@@ -457,3 +457,42 @@ fn remaining_funds_after_partial_clawback_can_be_released() {
         "seller must receive remaining funds minus fee"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Feature flag gating (Issue #113)
+// ---------------------------------------------------------------------------
+
+/// Clawback is enabled by default (unset flag preserves current behavior for
+/// upgraded deployments).
+#[test]
+fn clawback_enabled_by_default() {
+    let h = Harness::new(10_000);
+    assert!(h.client().is_clawback_enabled());
+}
+
+/// Once an admin disables the feature, `admin_clawback` must be rejected.
+#[test]
+#[should_panic(expected = "admin_clawback: clawback feature is currently disabled")]
+fn clawback_rejected_while_disabled() {
+    let h = Harness::new(10_000);
+    let trade_id = h.funded_trade(10_000);
+    let dest = Address::generate(&h.env);
+
+    h.client().set_clawback_enabled(&false);
+    h.client().admin_clawback(&trade_id, &3_000_i128, &dest);
+}
+
+/// Re-enabling the feature restores normal clawback behavior.
+#[test]
+fn clawback_succeeds_after_re_enabling() {
+    let h = Harness::new(10_000);
+    let trade_id = h.funded_trade(10_000);
+    let dest = Address::generate(&h.env);
+
+    h.client().set_clawback_enabled(&false);
+    h.client().set_clawback_enabled(&true);
+    h.client().admin_clawback(&trade_id, &3_000_i128, &dest);
+
+    let trade = h.client().get_trade(&trade_id);
+    assert_eq!(trade.amount, 7_000_i128);
+}
