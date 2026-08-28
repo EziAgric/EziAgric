@@ -1,0 +1,5 @@
+{
+  "_comment": "Advisory waivers consumed by scripts/check-audit-waivers.mjs (issue #204). A waiver suppresses a single advisory in a single workspace until its `expires` date (YYYY-MM-DD, UTC). An expired waiver FAILS the audit gate, forcing a re-review. Keep `reason` specific and link a tracking issue.",
+  "npm": [],
+  "cargo": []
+}

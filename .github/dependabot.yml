@@ -1,0 +1,94 @@
+# Dependabot configuration — grouped update PRs by risk.
+# Complements the blocking audit gate in .github/workflows/security-audit.yml (issue #204).
+version: 2
+updates:
+  # ---- Backend (npm) ----
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - backend
+    groups:
+      backend-low-risk:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      backend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ---- Frontend (npm) ----
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - frontend
+    groups:
+      frontend-low-risk:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      frontend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ---- Repo root tooling (npm) ----
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+    groups:
+      root-low-risk:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # ---- Contracts (cargo) ----
+  - package-ecosystem: cargo
+    directory: /contracts
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - contracts
+    groups:
+      contracts-low-risk:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      contracts-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ---- GitHub Actions ----
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - ci
+    groups:
+      actions-all:
+        patterns:
+          - "*"
