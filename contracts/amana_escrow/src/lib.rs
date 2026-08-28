@@ -54,6 +54,27 @@ pub const EVENT_SCHEMA_VERSION: u32 = 1;
 /// to guard against fat-finger amounts that would exhaust token supply.
 pub const MAX_TRADE_VALUE: i128 = 1_000_000_000_000_i128;
 
+/// Default cap on how many times one trade's delivery deadline may be extended
+/// (#194). Without a cap a seller can extend indefinitely, locking the buyer's
+/// capital in escrow with no exit — the extension itself requires both
+/// signatures, but a buyer facing "extend or lose the goods" has no real
+/// choice. Applies when the admin has not set an explicit `ExtensionPolicy`.
+pub const DEFAULT_MAX_DEADLINE_EXTENSIONS: u32 = 3;
+
+/// Default absolute cap, in seconds, on how far past its *original* deadline a
+/// trade may be pushed (#194). Measured from the first deadline rather than the
+/// current one, so many small extensions cannot outflank the limit that one
+/// large extension would hit. 30 days.
+pub const DEFAULT_MAX_TOTAL_EXTENSION_SECS: u64 = 30 * 24 * 60 * 60;
+
+/// Upper bound the admin itself cannot exceed when configuring the extension
+/// policy. A cap that can be raised without limit is not a cap; this bounds the
+/// worst case an admin key compromise can impose on buyers. 365 days.
+pub const EXTENSION_POLICY_CEILING_SECS: u64 = 365 * 24 * 60 * 60;
+
+/// Upper bound on the configurable extension count, for the same reason.
+pub const EXTENSION_POLICY_CEILING_COUNT: u32 = 12;
+
 /// Minimum allowed platform fee in basis points (0.01%).
 pub const MIN_FEE_BPS: u32 = 1;
 /// Maximum allowed platform fee in basis points (5%).
@@ -203,6 +224,41 @@ pub struct DeadlineExtendedEvent {
     pub trade_id: u64,
     pub old_deadline: u64,
     pub new_deadline: u64,
+}
+
+/// Emitted alongside `DeadlineExtendedEvent`, reporting how much of the
+/// extension budget the trade has left (#194).
+///
+/// This is a separate event rather than extra fields on `DeadlineExtendedEvent`
+/// deliberately: the v1 event shapes are locked by `event_schema_tests.rs` and
+/// consumed by deployed listeners, and the schema policy on
+/// [`EVENT_SCHEMA_VERSION`] admits new event types without disturbing existing
+/// ones. Listeners that want the budget subscribe to `DEDBGT`; listeners that
+/// do not are unaffected.
+#[contractevent(topics = ["DEDBGT"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeadlineExtensionBudgetEvent {
+    pub trade_id: u64,
+    /// Extensions applied so far, including the one just applied.
+    pub extensions_used: u32,
+    /// Extensions still permitted. Zero means this was the final extension.
+    pub extensions_remaining: u32,
+    /// The trade's first deadline, which the lifetime cap is measured from.
+    pub original_deadline: u64,
+    /// Seconds the deadline has moved past `original_deadline` in total.
+    pub extended_by_secs: u64,
+    /// Seconds of extension still available under the lifetime cap.
+    pub extension_secs_remaining: u64,
+    pub schema_version: u32,
+}
+
+/// Emitted when the admin changes the extension policy (#194).
+#[contractevent(topics = ["EXTPOL"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExtensionPolicyUpdatedEvent {
+    pub max_extensions: u32,
+    pub max_total_extension_secs: u64,
+    pub schema_version: u32,
 }
 
 /// Emitted when seller submits hashed delivery manifest fields.
@@ -440,6 +496,40 @@ pub enum TradeData {
 /// Type alias kept for backward compatibility with callers that use `Trade`.
 pub type Trade = TradeV0;
 
+/// Admin-configurable caps on deadline extensions (#194).
+///
+/// Both limits apply together — an extension must satisfy the count cap *and*
+/// the lifetime cap. Stored under `DataKey::ExtensionPolicy`; when absent the
+/// contract falls back to [`DEFAULT_MAX_DEADLINE_EXTENSIONS`] and
+/// [`DEFAULT_MAX_TOTAL_EXTENSION_SECS`], so trades created before this policy
+/// existed are governed by the defaults rather than being uncapped.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExtensionPolicy {
+    /// Maximum number of extensions permitted per trade.
+    pub max_extensions: u32,
+    /// Maximum total seconds a deadline may move past its original value.
+    pub max_total_extension_secs: u64,
+}
+
+/// The remaining extension budget for one trade — the read model behind the
+/// "final extension" warning surfaced to both parties (#194).
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExtensionStatus {
+    pub trade_id: u64,
+    pub extensions_used: u32,
+    pub extensions_remaining: u32,
+    /// `None` when the trade has no deadline, and so nothing to extend.
+    pub original_deadline: Option<u64>,
+    pub extended_by_secs: u64,
+    pub extension_secs_remaining: u64,
+    /// True when one extension remains — the caller should warn before use.
+    pub is_final_extension: bool,
+    /// True when no further extension is possible under either cap.
+    pub is_exhausted: bool,
+}
+
 /// Persistent record of a dispute created by `initiate_dispute()`.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -573,6 +663,16 @@ pub enum DataKey {
     AllowedAsset(Address),
     /// Per-asset decimal precision (u32), stored alongside AllowedAsset.
     AssetDecimals(Address),
+    /// Admin-configured `ExtensionPolicy`. Absent until an admin sets one, in
+    /// which case the DEFAULT_MAX_* constants apply (#194).
+    ExtensionPolicy,
+    /// Number of deadline extensions already applied to a trade (#194).
+    /// Absent means zero.
+    ExtensionCount(u64),
+    /// A trade's first deadline, captured on its first extension. The lifetime
+    /// cap is measured from here so that repeated small extensions cannot
+    /// outflank a limit that one large extension would hit (#194).
+    OriginalDeadline(u64),
 }
 
 #[contracttype]
@@ -2138,10 +2238,20 @@ impl EscrowContract {
     /// deadline on a funded trade. The caller is the buyer (who triggers the
     /// extension), and the contract also requires the seller's authorization.
     ///
+    /// Both caps in [`ExtensionPolicy`] are enforced here, at the contract
+    /// layer, because this is the only authoritative one: the backend mirror in
+    /// `tradeDeadline.service.ts` can be bypassed by calling the contract
+    /// directly (#194).
+    ///
     /// Reverts if:
     /// - The trade is not in `Funded` status.
     /// - The current ledger timestamp is at or past the existing deadline.
     /// - The new deadline is not strictly in the future.
+    /// - The trade has already used its full extension count.
+    /// - The new deadline would push the trade past the absolute lifetime cap.
+    /// - The new deadline is not later than the current one (an "extension"
+    ///   that shortens the deadline would consume budget while giving the
+    ///   buyer nothing).
     pub fn extend_deadline(env: Env, trade_id: u64, new_deadline: u64) {
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
@@ -2163,6 +2273,38 @@ impl EscrowContract {
             "Cannot extend a deadline that has already passed"
         );
         assert!(new_deadline > now, "New deadline must be in the future");
+        assert!(
+            new_deadline > old_deadline,
+            "New deadline must be later than the current deadline"
+        );
+
+        let policy = Self::get_extension_policy(env.clone());
+        let used = Self::extension_count(&env, trade_id);
+
+        assert!(
+            used < policy.max_extensions,
+            "Trade has exhausted its deadline extension allowance"
+        );
+
+        // The original deadline is captured on the first extension; from then
+        // on every cap check measures against that fixed origin.
+        let original_deadline = Self::original_deadline(&env, trade_id).unwrap_or(old_deadline);
+        let extended_by = new_deadline.saturating_sub(original_deadline);
+        assert!(
+            extended_by <= policy.max_total_extension_secs,
+            "New deadline exceeds the maximum total extension for this trade"
+        );
+
+        if used == 0 {
+            env.storage()
+                .persistent()
+                .set(&DataKey::OriginalDeadline(trade_id), &original_deadline);
+        }
+
+        let extensions_used = used + 1;
+        env.storage()
+            .persistent()
+            .set(&DataKey::ExtensionCount(trade_id), &extensions_used);
 
         trade.expires_at = Some(new_deadline);
         trade.updated_at = now;
@@ -2175,13 +2317,128 @@ impl EscrowContract {
             "delivery deadline extended",
         );
 
+        // Budget first, then the extension itself: `DeadlineExtendedEvent`
+        // stays the last event this call emits, which existing listeners and
+        // `extend_deadline_tests.rs` rely on to identify the extension.
+        DeadlineExtensionBudgetEvent {
+            trade_id,
+            extensions_used,
+            extensions_remaining: policy.max_extensions - extensions_used,
+            original_deadline,
+            extended_by_secs: extended_by,
+            extension_secs_remaining: policy
+                .max_total_extension_secs
+                .saturating_sub(extended_by),
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+        .publish(&env);
+
         DeadlineExtendedEvent {
             trade_id,
             old_deadline,
             new_deadline,
         }
         .publish(&env);
+
         Self::bump_instance_ttl(&env);
+    }
+
+    /// Return the active extension policy, falling back to the defaults when
+    /// the admin has not configured one (#194).
+    pub fn get_extension_policy(env: Env) -> ExtensionPolicy {
+        env.storage()
+            .instance()
+            .get(&DataKey::ExtensionPolicy)
+            .unwrap_or(ExtensionPolicy {
+                max_extensions: DEFAULT_MAX_DEADLINE_EXTENSIONS,
+                max_total_extension_secs: DEFAULT_MAX_TOTAL_EXTENSION_SECS,
+            })
+    }
+
+    /// Configure the extension caps. Admin only (#194).
+    ///
+    /// Both values are bounded by `EXTENSION_POLICY_CEILING_*` so that the cap
+    /// remains a meaningful protection for buyers even against a compromised
+    /// admin key. `max_extensions` of zero is permitted and disables extensions
+    /// entirely.
+    pub fn set_extension_policy(env: Env, max_extensions: u32, max_total_extension_secs: u64) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        assert!(
+            max_extensions <= EXTENSION_POLICY_CEILING_COUNT,
+            "max_extensions exceeds the policy ceiling"
+        );
+        assert!(
+            max_total_extension_secs <= EXTENSION_POLICY_CEILING_SECS,
+            "max_total_extension_secs exceeds the policy ceiling"
+        );
+
+        let policy = ExtensionPolicy {
+            max_extensions,
+            max_total_extension_secs,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::ExtensionPolicy, &policy);
+
+        ExtensionPolicyUpdatedEvent {
+            max_extensions,
+            max_total_extension_secs,
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+        .publish(&env);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Report a trade's remaining extension budget (#194).
+    ///
+    /// Read-only, so a client can warn before the parties sign an extension
+    /// that turns out to be their last.
+    pub fn get_extension_status(env: Env, trade_id: u64) -> ExtensionStatus {
+        let trade: Trade = Self::load_trade(&env, &DataKey::Trade(trade_id));
+        let policy = Self::get_extension_policy(env.clone());
+        let used = Self::extension_count(&env, trade_id);
+
+        // Before the first extension the current deadline *is* the original.
+        let original_deadline = Self::original_deadline(&env, trade_id).or(trade.expires_at);
+        let extended_by = match (original_deadline, trade.expires_at) {
+            (Some(original), Some(current)) => current.saturating_sub(original),
+            _ => 0,
+        };
+        let secs_remaining = policy.max_total_extension_secs.saturating_sub(extended_by);
+        let count_remaining = policy.max_extensions.saturating_sub(used);
+
+        ExtensionStatus {
+            trade_id,
+            extensions_used: used,
+            extensions_remaining: count_remaining,
+            original_deadline,
+            extended_by_secs: extended_by,
+            extension_secs_remaining: secs_remaining,
+            is_final_extension: count_remaining == 1,
+            is_exhausted: count_remaining == 0 || secs_remaining == 0,
+        }
+    }
+
+    /// Extensions applied to `trade_id` so far. Absent storage means zero.
+    fn extension_count(env: &Env, trade_id: u64) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ExtensionCount(trade_id))
+            .unwrap_or(0)
+    }
+
+    /// The trade's first deadline, once captured. `None` before the first
+    /// extension.
+    fn original_deadline(env: &Env, trade_id: u64) -> Option<u64> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::OriginalDeadline(trade_id))
     }
 
     fn execute_cancellation(env: &Env, trade: &mut Trade, refund_amount: i128, caller: Address) {

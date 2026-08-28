@@ -321,3 +321,270 @@ fn test_extend_deadline_fails_if_only_seller_signs() {
         }])
         .extend_deadline(&trade_id, &new_dl);
 }
+
+// ---------------------------------------------------------------------------
+// #194  Extension caps — count cap, absolute lifetime cap, and admin policy
+// ---------------------------------------------------------------------------
+//
+// Without a cap a seller can string a reluctant buyer along indefinitely: each
+// individual extension looks reasonable and requires both signatures, but a
+// buyer facing "extend or lose the goods" has no real exit. These tests pin the
+// boundaries of both caps, since an off-by-one in either direction is the whole
+// difference between a cap that binds and one that does not.
+
+/// Default policy constants, mirrored from the contract for readability.
+const DEFAULT_MAX_EXTENSIONS: u32 = 3;
+const DEFAULT_MAX_TOTAL_EXTENSION_SECS: u64 = 30 * 24 * 60 * 60;
+
+/// True when any emitted event carries `needle` in its first topic.
+fn any_event_topic_contains(env: &Env, needle: &str) -> bool {
+    let all = env.events().all();
+    all.events().iter().any(|event| {
+        let topics = match &event.body {
+            ContractEventBody::V0(v0) => v0.topics.to_vec(),
+        };
+        topics
+            .first()
+            .map(|topic| std::format!("{topic:?}").contains(needle))
+            .unwrap_or(false)
+    })
+}
+
+/// The default policy applies to trades created before any admin configured one.
+#[test]
+fn test_default_extension_policy_applies_without_admin_config() {
+    let h = H::new();
+    h.init();
+
+    let policy = h.c().get_extension_policy();
+    assert_eq!(policy.max_extensions, DEFAULT_MAX_EXTENSIONS);
+    assert_eq!(
+        policy.max_total_extension_secs,
+        DEFAULT_MAX_TOTAL_EXTENSION_SECS
+    );
+}
+
+/// Count cap: the third extension is permitted, the fourth is not.
+#[test]
+#[should_panic(expected = "Trade has exhausted its deadline extension allowance")]
+fn test_fourth_extension_is_rejected_at_the_count_cap() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    // Three extensions exhaust the default allowance.
+    for step in 1..=DEFAULT_MAX_EXTENSIONS as u64 {
+        h.c().extend_deadline(&trade_id, &(original + step * 3600));
+    }
+    assert_eq!(
+        h.c().get_extension_status(&trade_id).extensions_used,
+        DEFAULT_MAX_EXTENSIONS
+    );
+
+    // The fourth must be refused.
+    h.c()
+        .extend_deadline(&trade_id, &(original + 4 * 3600));
+}
+
+/// Boundary: at cap-1 used, one extension remains and is flagged as final.
+#[test]
+fn test_status_flags_the_final_extension() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    h.c().extend_deadline(&trade_id, &(original + 3600));
+    let after_one = h.c().get_extension_status(&trade_id);
+    assert_eq!(after_one.extensions_remaining, 2);
+    assert!(!after_one.is_final_extension);
+
+    h.c().extend_deadline(&trade_id, &(original + 7200));
+    let after_two = h.c().get_extension_status(&trade_id);
+    assert_eq!(after_two.extensions_used, 2);
+    assert_eq!(after_two.extensions_remaining, 1);
+    assert!(
+        after_two.is_final_extension,
+        "one remaining extension must be flagged so the UI can warn"
+    );
+    assert!(!after_two.is_exhausted);
+
+    h.c().extend_deadline(&trade_id, &(original + 10_800));
+    let after_three = h.c().get_extension_status(&trade_id);
+    assert_eq!(after_three.extensions_remaining, 0);
+    assert!(after_three.is_exhausted);
+}
+
+/// Lifetime cap boundary: exactly at the cap is permitted.
+#[test]
+fn test_extension_exactly_at_the_lifetime_cap_is_allowed() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    let at_cap = original + DEFAULT_MAX_TOTAL_EXTENSION_SECS;
+    h.c().extend_deadline(&trade_id, &at_cap);
+
+    let trade = h.c().get_trade(&trade_id);
+    assert_eq!(trade.expires_at, Some(at_cap));
+
+    let status = h.c().get_extension_status(&trade_id);
+    assert_eq!(status.extended_by_secs, DEFAULT_MAX_TOTAL_EXTENSION_SECS);
+    assert_eq!(status.extension_secs_remaining, 0);
+    assert!(
+        status.is_exhausted,
+        "a spent lifetime budget exhausts the trade even with count remaining"
+    );
+}
+
+/// Lifetime cap boundary: one second past the cap is refused.
+#[test]
+#[should_panic(expected = "New deadline exceeds the maximum total extension for this trade")]
+fn test_extension_one_second_past_the_lifetime_cap_is_rejected() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    h.c()
+        .extend_deadline(&trade_id, &(original + DEFAULT_MAX_TOTAL_EXTENSION_SECS + 1));
+}
+
+/// The lifetime cap is measured from the *original* deadline, so a sequence of
+/// individually-modest extensions cannot walk past a limit that a single large
+/// extension would hit. This is the griefing vector the cap exists to close.
+#[test]
+#[should_panic(expected = "New deadline exceeds the maximum total extension for this trade")]
+fn test_small_extensions_cannot_outflank_the_lifetime_cap() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    // Two extensions of 20 days each: the second is only 20 days past the
+    // *current* deadline but 40 days past the original.
+    h.c()
+        .extend_deadline(&trade_id, &(original + 20 * 24 * 60 * 60));
+    h.c()
+        .extend_deadline(&trade_id, &(original + 40 * 24 * 60 * 60));
+}
+
+/// An "extension" that does not move the deadline forward would burn budget
+/// while giving the buyer nothing.
+#[test]
+#[should_panic(expected = "New deadline must be later than the current deadline")]
+fn test_extension_must_move_the_deadline_forward() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 7200);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    h.c().extend_deadline(&trade_id, &original);
+}
+
+/// The remaining budget is published so indexers and clients can surface it.
+#[test]
+fn test_extension_emits_budget_event() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    h.c().extend_deadline(&trade_id, &(original + 3600));
+
+    assert!(
+        any_event_topic_contains(&h.env, "DEDBGT"),
+        "extension must publish the remaining-budget event"
+    );
+    // The extension event still lands last, so existing listeners are unaffected.
+    let topics = last_event_topics(&h.env);
+    let topic_str = std::format!("{:?}", topics.first().unwrap());
+    assert!(
+        topic_str.contains("DEDEXT"),
+        "DeadlineExtended must remain the final event, got: {topic_str}"
+    );
+}
+
+/// Status before any extension treats the current deadline as the original.
+#[test]
+fn test_status_before_any_extension() {
+    let h = H::new();
+    h.init();
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    let status = h.c().get_extension_status(&trade_id);
+    assert_eq!(status.extensions_used, 0);
+    assert_eq!(status.extensions_remaining, DEFAULT_MAX_EXTENSIONS);
+    assert_eq!(status.original_deadline, Some(original));
+    assert_eq!(status.extended_by_secs, 0);
+    assert_eq!(
+        status.extension_secs_remaining,
+        DEFAULT_MAX_TOTAL_EXTENSION_SECS
+    );
+    assert!(!status.is_exhausted);
+}
+
+/// Admin can tighten the policy, and the new caps bind immediately.
+#[test]
+#[should_panic(expected = "Trade has exhausted its deadline extension allowance")]
+fn test_admin_tightened_count_cap_binds_immediately() {
+    let h = H::new();
+    h.init();
+
+    h.c().set_extension_policy(&1u32, &DEFAULT_MAX_TOTAL_EXTENSION_SECS);
+    assert_eq!(h.c().get_extension_policy().max_extensions, 1);
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+
+    h.c().extend_deadline(&trade_id, &(original + 3600));
+    h.c().extend_deadline(&trade_id, &(original + 7200));
+}
+
+/// A zero-count policy disables extensions entirely.
+#[test]
+#[should_panic(expected = "Trade has exhausted its deadline extension allowance")]
+fn test_zero_count_policy_disables_extensions() {
+    let h = H::new();
+    h.init();
+
+    h.c().set_extension_policy(&0u32, &DEFAULT_MAX_TOTAL_EXTENSION_SECS);
+
+    let trade_id = h.funded_trade_with_deadline(1_000_000, 3600);
+    let original = h.c().get_trade(&trade_id).expires_at.unwrap();
+    h.c().extend_deadline(&trade_id, &(original + 3600));
+}
+
+/// The admin cannot raise the count cap beyond the hard ceiling — otherwise the
+/// cap offers buyers no guarantee against a compromised admin key.
+#[test]
+#[should_panic(expected = "max_extensions exceeds the policy ceiling")]
+fn test_admin_cannot_exceed_count_ceiling() {
+    let h = H::new();
+    h.init();
+
+    h.c()
+        .set_extension_policy(&13u32, &DEFAULT_MAX_TOTAL_EXTENSION_SECS);
+}
+
+/// Same for the lifetime ceiling.
+#[test]
+#[should_panic(expected = "max_total_extension_secs exceeds the policy ceiling")]
+fn test_admin_cannot_exceed_lifetime_ceiling() {
+    let h = H::new();
+    h.init();
+
+    let over_ceiling = 365 * 24 * 60 * 60 + 1;
+    h.c().set_extension_policy(&3u32, &over_ceiling);
+}
