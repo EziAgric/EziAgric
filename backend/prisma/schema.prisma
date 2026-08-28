@@ -492,6 +492,10 @@ model AdminActionAudit {
   targetReference String?  @db.VarChar(255)
   note            String?  @db.Text
   createdAt       DateTime @default(now())
+  /// SHA-256 hash of the previous entry's `hash` (empty string for the first entry).
+  prevHash        String   @default("") @db.VarChar(64)
+  /// SHA-256 hash of this entry's fields chained to prevHash — see auditChain.ts.
+  hash            String   @default("") @db.VarChar(64)
 
   @@index([action, createdAt])
   @@index([actorAddress])
