@@ -32,4 +32,19 @@ export const RATE_LIMIT_CONFIG = {
     max: 100,
     message: "Too many admin requests, try again later.",
   },
+  evidenceUpload: {
+    windowMs: 60 * 60 * 1000,
+    max: 20,
+    message: "Evidence upload quota exceeded, try again later.",
+  },
+  tradeExport: {
+    windowMs: 60 * 60 * 1000,
+    max: 30,
+    message: "Trade export quota exceeded, try again later.",
+  },
+  batchQuery: {
+    windowMs: 60 * 60 * 1000,
+    max: 60,
+    message: "Batch query quota exceeded, try again later.",
+  },
 } as const satisfies Record<string, RateLimitPreset>;
