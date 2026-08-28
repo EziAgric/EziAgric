@@ -75,6 +75,31 @@ pub const EXTENSION_POLICY_CEILING_SECS: u64 = 365 * 24 * 60 * 60;
 /// Upper bound on the configurable extension count, for the same reason.
 pub const EXTENSION_POLICY_CEILING_COUNT: u32 = 12;
 
+/// Default escrow value at or above which a dispute needs a mediator quorum
+/// rather than one mediator's decision (#195). Only consulted when quorum is
+/// enabled; see [`QuorumConfig::enabled`].
+pub const DEFAULT_QUORUM_VALUE_THRESHOLD: i128 = 10_000_000_000_i128;
+
+/// Default total vote weight that must back one outcome to resolve on quorum.
+pub const DEFAULT_QUORUM_REQUIRED_WEIGHT: u32 = 3;
+
+/// Default window, in seconds, from the first vote until fallback resolution
+/// becomes available. Without a fallback a quorum that never assembles would
+/// strand the escrow permanently — the opposite of the problem quorum solves.
+/// 7 days.
+pub const DEFAULT_QUORUM_VOTE_WINDOW_SECS: u64 = 7 * 24 * 60 * 60;
+
+/// Default minimum weight that must have voted for fallback resolution to be
+/// permitted once the window closes.
+pub const DEFAULT_QUORUM_FALLBACK_MIN_WEIGHT: u32 = 2;
+
+/// Weight assigned to a mediator with no explicit weight configured.
+pub const DEFAULT_MEDIATOR_WEIGHT: u32 = 1;
+
+/// Ceiling on any single mediator's vote weight. Bounds how far one mediator
+/// can be favoured, so "quorum" cannot be quietly reduced to one signature.
+pub const MAX_MEDIATOR_WEIGHT: u32 = 10;
+
 /// Minimum allowed platform fee in basis points (0.01%).
 pub const MIN_FEE_BPS: u32 = 1;
 /// Maximum allowed platform fee in basis points (5%).
@@ -176,6 +201,67 @@ pub struct DisputeResolvedEvent {
     pub seller_payout: i128,
     pub buyer_refund: i128,
     pub mediator: Address,
+}
+
+/// Emitted for every vote cast on a quorum dispute (#195).
+///
+/// One event per vote, carrying that mediator's rationale hash, so the audit
+/// trail records who voted for what and on what stated grounds — including the
+/// votes that did not prevail.
+#[contractevent(topics = ["DVOTE"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DisputeVoteCastEvent {
+    pub trade_id: u64,
+    pub mediator: Address,
+    pub seller_gets_bps: u32,
+    pub weight: u32,
+    pub rationale_hash: String,
+    /// Weight backing this mediator's chosen outcome after the vote lands.
+    pub outcome_weight: u32,
+    /// Weight still needed for that outcome to reach quorum. Zero once met.
+    pub weight_to_quorum: u32,
+    pub voted_at: u64,
+    pub schema_version: u32,
+}
+
+/// Emitted when a quorum dispute reaches a decision (#195).
+///
+/// `DisputeResolvedEvent` still fires alongside this one with the payout
+/// figures, so listeners that only track settlement need no change.
+#[contractevent(topics = ["DQURES"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DisputeQuorumResolvedEvent {
+    pub trade_id: u64,
+    pub seller_gets_bps: u32,
+    /// Whether quorum was reached or the deadline fallback applied.
+    pub outcome: QuorumOutcome,
+    /// Weight backing the winning outcome.
+    pub winning_weight: u32,
+    /// Total weight cast across all outcomes.
+    pub total_weight: u32,
+    pub vote_count: u32,
+    pub schema_version: u32,
+}
+
+/// Emitted when the admin changes the quorum policy (#195).
+#[contractevent(topics = ["QURCFG"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuorumConfigUpdatedEvent {
+    pub enabled: bool,
+    pub value_threshold: i128,
+    pub required_weight: u32,
+    pub vote_window_secs: u64,
+    pub fallback_min_weight: u32,
+    pub schema_version: u32,
+}
+
+/// Emitted when the admin changes a mediator's vote weight (#195).
+#[contractevent(topics = ["MEDWGT"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediatorWeightUpdatedEvent {
+    pub mediator: Address,
+    pub weight: u32,
+    pub schema_version: u32,
 }
 
 /// Emitted when a party submits evidence during a live dispute.
@@ -530,6 +616,66 @@ pub struct ExtensionStatus {
     pub is_exhausted: bool,
 }
 
+/// Admin-configurable mediator quorum policy for high-value disputes (#195).
+///
+/// Resolving a large escrow on one mediator's signature concentrates both trust
+/// and bribery risk on exactly the trades where the stakes are highest. Above
+/// `value_threshold` the contract instead collects weighted votes and resolves
+/// only when enough weight backs a single outcome.
+///
+/// Disabled by default: `enabled == false` leaves every dispute on the existing
+/// single-mediator path, so enabling quorum is a deliberate governance action
+/// rather than a silent change in how deployed trades resolve.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuorumConfig {
+    /// When false, `resolve_dispute()` handles every dispute regardless of value.
+    pub enabled: bool,
+    /// Escrow value at or above which quorum is required.
+    pub value_threshold: i128,
+    /// Total vote weight that must back one outcome to resolve (the "N").
+    pub required_weight: u32,
+    /// Seconds from the first vote until fallback resolution becomes available.
+    pub vote_window_secs: u64,
+    /// Minimum weight that must have voted for fallback resolution to proceed.
+    pub fallback_min_weight: u32,
+}
+
+/// A single mediator's weighted vote on a disputed trade (#195).
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediatorVote {
+    pub mediator: Address,
+    /// The outcome this mediator voted for, in basis points to the seller.
+    pub seller_gets_bps: u32,
+    /// The mediator's weight at the time of voting.
+    pub weight: u32,
+    /// IPFS CID or hash of the mediator's written rationale. Required, so every
+    /// vote in the audit trail is accountable to a stated reason.
+    pub rationale_hash: String,
+    pub voted_at: u64,
+}
+
+/// Accumulated votes for one disputed trade (#195).
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuorumState {
+    pub trade_id: u64,
+    pub votes: Vec<MediatorVote>,
+    /// Timestamp of the first vote — the fallback window is measured from here.
+    pub opened_at: u64,
+}
+
+/// How a quorum dispute was ultimately decided (#195).
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QuorumOutcome {
+    /// Enough weight backed one outcome within the window.
+    Quorum,
+    /// The window closed without quorum; the plurality outcome was applied.
+    Fallback,
+}
+
 /// Persistent record of a dispute created by `initiate_dispute()`.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -673,6 +819,14 @@ pub enum DataKey {
     /// cap is measured from here so that repeated small extensions cannot
     /// outflank a limit that one large extension would hit (#194).
     OriginalDeadline(u64),
+    /// Admin-configured `QuorumConfig`. Absent until an admin sets one, in
+    /// which case quorum is disabled and every dispute uses the single-mediator
+    /// path (#195).
+    QuorumConfig,
+    /// Accumulated `QuorumState` for a disputed trade (#195).
+    DisputeVotes(u64),
+    /// Per-mediator vote weight. Absent means `DEFAULT_MEDIATOR_WEIGHT` (#195).
+    MediatorWeight(Address),
 }
 
 #[contracttype]
@@ -2703,6 +2857,23 @@ impl EscrowContract {
             "seller_gets_bps must be <= 10_000"
         );
 
+        // High-value disputes are not one mediator's to decide (#195).
+        assert!(
+            !Self::requires_quorum(env.clone(), trade_id),
+            "Trade value requires a mediator quorum; use cast_dispute_vote"
+        );
+
+        Self::settle_dispute(&env, trade_id, seller_gets_bps, mediator);
+    }
+
+    /// Apply a decided dispute outcome: compute the split, move the funds, and
+    /// close the trade.
+    ///
+    /// Shared by the single-mediator path and both quorum paths so all three
+    /// settle identically — the only difference between them is who is allowed
+    /// to decide `seller_gets_bps`, never how the money is split (#195).
+    fn settle_dispute(env: &Env, trade_id: u64, seller_gets_bps: u32, mediator: Address) {
+        let env = env.clone();
         // 2. Load and validate trade
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
@@ -2788,6 +2959,391 @@ impl EscrowContract {
             mediator,
         }
         .publish(&env);
+    }
+
+    // -----------------------------------------------------------------------
+    // Mediator quorum for high-value disputes (#195)
+    // -----------------------------------------------------------------------
+
+    /// Return the active quorum policy, or the disabled default when the admin
+    /// has not configured one.
+    pub fn get_quorum_config(env: Env) -> QuorumConfig {
+        env.storage()
+            .instance()
+            .get(&DataKey::QuorumConfig)
+            .unwrap_or(QuorumConfig {
+                enabled: false,
+                value_threshold: DEFAULT_QUORUM_VALUE_THRESHOLD,
+                required_weight: DEFAULT_QUORUM_REQUIRED_WEIGHT,
+                vote_window_secs: DEFAULT_QUORUM_VOTE_WINDOW_SECS,
+                fallback_min_weight: DEFAULT_QUORUM_FALLBACK_MIN_WEIGHT,
+            })
+    }
+
+    /// Configure the quorum policy. Admin only.
+    ///
+    /// `fallback_min_weight` may not exceed `required_weight`: a fallback
+    /// threshold above the quorum threshold could never be reached by a vote
+    /// set that failed quorum, which would strand the escrow.
+    pub fn set_quorum_config(
+        env: Env,
+        enabled: bool,
+        value_threshold: i128,
+        required_weight: u32,
+        vote_window_secs: u64,
+        fallback_min_weight: u32,
+    ) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        assert!(value_threshold >= 0, "value_threshold must be non-negative");
+        assert!(required_weight > 0, "required_weight must be positive");
+        assert!(vote_window_secs > 0, "vote_window_secs must be positive");
+        assert!(
+            fallback_min_weight > 0,
+            "fallback_min_weight must be positive"
+        );
+        assert!(
+            fallback_min_weight <= required_weight,
+            "fallback_min_weight must not exceed required_weight"
+        );
+
+        let config = QuorumConfig {
+            enabled,
+            value_threshold,
+            required_weight,
+            vote_window_secs,
+            fallback_min_weight,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::QuorumConfig, &config);
+
+        QuorumConfigUpdatedEvent {
+            enabled,
+            value_threshold,
+            required_weight,
+            vote_window_secs,
+            fallback_min_weight,
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+        .publish(&env);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// A mediator's vote weight. Unconfigured mediators carry
+    /// [`DEFAULT_MEDIATOR_WEIGHT`].
+    pub fn get_mediator_weight(env: Env, mediator: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::MediatorWeight(mediator))
+            .unwrap_or(DEFAULT_MEDIATOR_WEIGHT)
+    }
+
+    /// Set a mediator's vote weight. Admin only.
+    ///
+    /// Capped at [`MAX_MEDIATOR_WEIGHT`] so weighting cannot quietly collapse a
+    /// quorum back into a single decisive signature.
+    pub fn set_mediator_weight(env: Env, mediator: Address, weight: u32) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+
+        assert!(weight > 0, "mediator weight must be positive");
+        assert!(
+            weight <= MAX_MEDIATOR_WEIGHT,
+            "mediator weight exceeds the maximum"
+        );
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::MediatorWeight(mediator.clone()), &weight);
+
+        MediatorWeightUpdatedEvent {
+            mediator,
+            weight,
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+        .publish(&env);
+    }
+
+    /// Whether `trade_id` must be resolved by quorum rather than by a single
+    /// mediator.
+    pub fn requires_quorum(env: Env, trade_id: u64) -> bool {
+        let config = Self::get_quorum_config(env.clone());
+        if !config.enabled {
+            return false;
+        }
+        let trade: Trade = Self::load_trade(&env, &DataKey::Trade(trade_id));
+        trade.amount >= config.value_threshold
+    }
+
+    /// Votes cast so far on a disputed trade, in the order they were cast.
+    pub fn get_dispute_votes(env: Env, trade_id: u64) -> Vec<MediatorVote> {
+        Self::quorum_state(&env, trade_id)
+            .map(|state| state.votes)
+            .unwrap_or(Vec::new(&env))
+    }
+
+    /// Cast a weighted vote on a high-value dispute (#195).
+    ///
+    /// Each approved mediator may vote once. When the weight backing a single
+    /// outcome reaches `required_weight`, the dispute settles immediately on
+    /// that outcome — no further call is needed.
+    ///
+    /// `rationale_hash` is mandatory: a vote that moves someone's money should
+    /// be accountable to a stated reason, and the hash is what the audit trail
+    /// and the dashboard display.
+    ///
+    /// Reverts if:
+    /// - The caller is not an approved mediator.
+    /// - The trade is not in `Disputed` status.
+    /// - The trade does not require quorum (use `resolve_dispute`).
+    /// - This mediator has already voted.
+    /// - `rationale_hash` is empty or oversized.
+    pub fn cast_dispute_vote(
+        env: Env,
+        trade_id: u64,
+        mediator: Address,
+        seller_gets_bps: u32,
+        rationale_hash: String,
+    ) {
+        let mediator = Self::require_mediator(&env, mediator);
+
+        assert!(
+            seller_gets_bps <= BPS_DIVISOR as u32,
+            "seller_gets_bps must be <= 10_000"
+        );
+        assert!(
+            !rationale_hash.is_empty(),
+            "rationale_hash must not be empty"
+        );
+        assert!(
+            rationale_hash.len() <= MAX_HASH_LEN,
+            "rationale_hash exceeds max length"
+        );
+
+        let trade: Trade = Self::load_trade(&env, &DataKey::Trade(trade_id));
+        assert!(
+            matches!(trade.status, TradeStatus::Disputed),
+            "Trade must be in Disputed status"
+        );
+
+        let config = Self::get_quorum_config(env.clone());
+        assert!(
+            config.enabled && trade.amount >= config.value_threshold,
+            "Trade does not require a mediator quorum; use resolve_dispute"
+        );
+
+        let now = env.ledger().timestamp();
+        let mut state = Self::quorum_state(&env, trade_id).unwrap_or(QuorumState {
+            trade_id,
+            votes: Vec::new(&env),
+            opened_at: now,
+        });
+
+        for existing in state.votes.iter() {
+            assert!(
+                existing.mediator != mediator,
+                "Mediator has already voted on this dispute"
+            );
+        }
+
+        let weight = Self::get_mediator_weight(env.clone(), mediator.clone());
+        state.votes.push_back(MediatorVote {
+            mediator: mediator.clone(),
+            seller_gets_bps,
+            weight,
+            rationale_hash: rationale_hash.clone(),
+            voted_at: now,
+        });
+        env.storage()
+            .persistent()
+            .set(&DataKey::DisputeVotes(trade_id), &state);
+
+        let outcome_weight = Self::weight_for_outcome(&state.votes, seller_gets_bps);
+
+        DisputeVoteCastEvent {
+            trade_id,
+            mediator,
+            seller_gets_bps,
+            weight,
+            rationale_hash,
+            outcome_weight,
+            weight_to_quorum: config.required_weight.saturating_sub(outcome_weight),
+            voted_at: now,
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+        .publish(&env);
+
+        // Settle as soon as one outcome carries enough weight.
+        if outcome_weight >= config.required_weight {
+            Self::finalize_quorum(
+                &env,
+                trade_id,
+                &state,
+                seller_gets_bps,
+                outcome_weight,
+                QuorumOutcome::Quorum,
+            );
+        }
+    }
+
+    /// Resolve a quorum dispute that never reached quorum, once its vote window
+    /// has closed (#195).
+    ///
+    /// Without this, a quorum that fails to assemble would lock the escrow
+    /// permanently — trading the single-mediator trust problem for a worse
+    /// liveness one. The plurality outcome is applied, provided at least
+    /// `fallback_min_weight` has voted.
+    ///
+    /// Callable by either trade party or any approved mediator: the parties are
+    /// the ones whose funds are stuck, so they must not depend on a mediator
+    /// choosing to act.
+    ///
+    /// Ties resolve to the lowest `seller_gets_bps` among the tied outcomes —
+    /// the buyer-protective reading, since the buyer is the party whose funds
+    /// are held and who did not receive the goods in question.
+    pub fn resolve_dispute_by_fallback(env: Env, trade_id: u64, caller: Address) {
+        caller.require_auth();
+
+        let trade: Trade = Self::load_trade(&env, &DataKey::Trade(trade_id));
+        assert!(
+            matches!(trade.status, TradeStatus::Disputed),
+            "Trade must be in Disputed status"
+        );
+
+        let is_party = caller == trade.buyer || caller == trade.seller;
+        let is_mediator = Self::is_mediator(env.clone(), caller.clone());
+        assert!(
+            is_party || is_mediator,
+            "Only a trade party or an approved mediator may trigger fallback resolution"
+        );
+
+        let config = Self::get_quorum_config(env.clone());
+        assert!(
+            config.enabled && trade.amount >= config.value_threshold,
+            "Trade does not require a mediator quorum; use resolve_dispute"
+        );
+
+        let state = Self::quorum_state(&env, trade_id).expect("No votes cast on this dispute");
+        assert!(!state.votes.is_empty(), "No votes cast on this dispute");
+
+        let now = env.ledger().timestamp();
+        assert!(
+            now >= state.opened_at + config.vote_window_secs,
+            "Vote window has not closed yet"
+        );
+
+        let total_weight = Self::total_vote_weight(&state.votes);
+        assert!(
+            total_weight >= config.fallback_min_weight,
+            "Insufficient vote weight for fallback resolution"
+        );
+
+        let (winning_bps, winning_weight) = Self::plurality_outcome(&state.votes);
+        Self::finalize_quorum(
+            &env,
+            trade_id,
+            &state,
+            winning_bps,
+            winning_weight,
+            QuorumOutcome::Fallback,
+        );
+    }
+
+    /// Settle a quorum dispute and publish the quorum-specific event.
+    ///
+    /// The votes are deliberately left in storage: they are the audit trail for
+    /// a decision that moved someone's money, and `get_dispute_votes()` must
+    /// keep answering after resolution.
+    fn finalize_quorum(
+        env: &Env,
+        trade_id: u64,
+        state: &QuorumState,
+        seller_gets_bps: u32,
+        winning_weight: u32,
+        outcome: QuorumOutcome,
+    ) {
+        // The winning outcome's first voter stands as the mediator of record on
+        // DisputeResolvedEvent, so existing listeners still see a mediator.
+        let mediator_of_record = state
+            .votes
+            .iter()
+            .find(|vote| vote.seller_gets_bps == seller_gets_bps)
+            .map(|vote| vote.mediator)
+            .expect("winning outcome must have at least one vote");
+
+        Self::settle_dispute(env, trade_id, seller_gets_bps, mediator_of_record);
+
+        DisputeQuorumResolvedEvent {
+            trade_id,
+            seller_gets_bps,
+            outcome,
+            winning_weight,
+            total_weight: Self::total_vote_weight(&state.votes),
+            vote_count: state.votes.len(),
+            schema_version: EVENT_SCHEMA_VERSION,
+        }
+        .publish(env);
+    }
+
+    fn quorum_state(env: &Env, trade_id: u64) -> Option<QuorumState> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::DisputeVotes(trade_id))
+    }
+
+    /// Total weight backing one specific outcome.
+    fn weight_for_outcome(votes: &Vec<MediatorVote>, seller_gets_bps: u32) -> u32 {
+        let mut total = 0u32;
+        for vote in votes.iter() {
+            if vote.seller_gets_bps == seller_gets_bps {
+                total = total.saturating_add(vote.weight);
+            }
+        }
+        total
+    }
+
+    fn total_vote_weight(votes: &Vec<MediatorVote>) -> u32 {
+        let mut total = 0u32;
+        for vote in votes.iter() {
+            total = total.saturating_add(vote.weight);
+        }
+        total
+    }
+
+    /// The outcome carrying the most weight. Ties break to the lowest
+    /// `seller_gets_bps`, which favours the buyer.
+    ///
+    /// Quadratic in the vote count, which is bounded by the size of the
+    /// mediator set — a handful of entries, not a growing list.
+    fn plurality_outcome(votes: &Vec<MediatorVote>) -> (u32, u32) {
+        let mut best_bps = 0u32;
+        let mut best_weight = 0u32;
+        let mut seen_any = false;
+
+        for candidate in votes.iter() {
+            let bps = candidate.seller_gets_bps;
+            let weight = Self::weight_for_outcome(votes, bps);
+            let wins = !seen_any
+                || weight > best_weight
+                || (weight == best_weight && bps < best_bps);
+            if wins {
+                best_bps = bps;
+                best_weight = weight;
+                seen_any = true;
+            }
+        }
+
+        (best_bps, best_weight)
     }
 
     // -----------------------------------------------------------------------
