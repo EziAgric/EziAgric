@@ -46,6 +46,7 @@ import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes"
 import { webhooksRoutes } from "./routes/webhooks.routes";
 import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
+import { createPrivacyRouter } from "./routes/privacy.routes";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
  *  Value should be a comma-separated list of allowed origins, e.g.:
@@ -130,6 +131,7 @@ export function createApp(): express.Application {
   app.use("/auth", authRoutes);
   app.use("/wallet", walletRoutes);
   app.use("/users", userRoutes);
+  app.use(createPrivacyRouter());
   app.use("/users", reputationRoutes);
   app.use(createNotificationPreferencesRouter());
   app.use(createNotificationsRouter());
