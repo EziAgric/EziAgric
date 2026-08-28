@@ -8,6 +8,14 @@
  * This module centralises the backend mirror of that logic so every code path
  * (release, refund, split, clawback) references a single audited function.
  *
+ * All division here goes through `money.ts` under `CONTRACT_ROUNDING`, which
+ * truncates toward zero exactly as Soroban i128 division does. The rounding
+ * policy is deliberately *not* the fairer banker's rounding used elsewhere in
+ * the backend: this module's job is to predict what the chain will do, and a
+ * backend that rounds more fairly than the contract simply disagrees with it.
+ * The truncated fraction is returned as `feeDust` rather than dropped, so the
+ * platform's under-collection on each trade is a recorded quantity (#177).
+ *
  * Fee matrix per trade outcome:
  *   ┌──────────────┬────────────────────────────────────────────────────┐
  *   │ Outcome       │ Fee calculation                                   │
@@ -38,7 +46,12 @@
  *   └──────────────┴────────────────────────────────────────────────────┘
  */
 
-const BPS_DIVISOR = 10_000n;
+import {
+  BPS_DIVISOR,
+  CONTRACT_ROUNDING,
+  applyBps,
+  divideWithPolicy,
+} from "./money";
 
 export type TradeOutcome =
   | "release"
@@ -54,6 +67,17 @@ export interface FeeBreakdown {
   sellerNet: string;
   buyerRefund: string;
   feeBps: number;
+  /**
+   * Fractional stroops discarded by truncating the fee, expressed in
+   * ten-thousandths of a stroop (the bps numerator's units). Always in
+   * `[0, 10_000)`; zero when the fee divided evenly.
+   *
+   * This is fee the platform does not collect because the chain truncates.
+   * It is reported rather than corrected — correcting it here would put the
+   * backend out of step with the contract. Sum it across trades to size the
+   * cumulative shortfall.
+   */
+  feeDust: string;
   /** ISO-8601 timestamp of when this calculation was performed. */
   calculatedAt: string;
 }
@@ -66,7 +90,11 @@ export function computeReleaseFee(
   amount: bigint,
   feeBps: number,
 ): FeeBreakdown {
-  const fee = (amount * BigInt(feeBps)) / BPS_DIVISOR;
+  const { value: fee, residual } = applyBps(
+    amount,
+    BigInt(feeBps),
+    CONTRACT_ROUNDING,
+  );
   const sellerNet = amount - fee;
 
   return {
@@ -76,6 +104,7 @@ export function computeReleaseFee(
     sellerNet: sellerNet.toString(),
     buyerRefund: "0",
     feeBps,
+    feeDust: residual.toString(),
     calculatedAt: new Date().toISOString(),
   };
 }
@@ -95,6 +124,7 @@ export function computeRefundFee(
     sellerNet: "0",
     buyerRefund: amount.toString(),
     feeBps,
+    feeDust: "0",
     calculatedAt: new Date().toISOString(),
   };
 }
@@ -115,11 +145,20 @@ export function computeSplitFee(
   feeBps: number,
 ): FeeBreakdown {
   const lossBps = BPS_DIVISOR - sellerGetsBps;
-  const sellerLoss =
-    (amount * lossBps * sellerLossBps) / (BPS_DIVISOR * BPS_DIVISOR);
+  // Both bps factors are applied in one division so the intermediate product
+  // is never rounded — rounding twice would compound the truncation.
+  const { value: sellerLoss } = divideWithPolicy(
+    amount * lossBps * sellerLossBps,
+    BPS_DIVISOR * BPS_DIVISOR,
+    CONTRACT_ROUNDING,
+  );
   const sellerRaw = amount - sellerLoss;
   const buyerRefund = amount - sellerRaw;
-  const fee = (sellerRaw * BigInt(feeBps)) / BPS_DIVISOR;
+  const { value: fee, residual } = applyBps(
+    sellerRaw,
+    BigInt(feeBps),
+    CONTRACT_ROUNDING,
+  );
   const sellerNet = sellerRaw - fee;
 
   return {
@@ -129,6 +168,7 @@ export function computeSplitFee(
     sellerNet: sellerNet.toString(),
     buyerRefund: buyerRefund.toString(),
     feeBps,
+    feeDust: residual.toString(),
     calculatedAt: new Date().toISOString(),
   };
 }
@@ -141,7 +181,11 @@ export function computeFullSellerFee(
   amount: bigint,
   feeBps: number,
 ): FeeBreakdown {
-  const fee = (amount * BigInt(feeBps)) / BPS_DIVISOR;
+  const { value: fee, residual } = applyBps(
+    amount,
+    BigInt(feeBps),
+    CONTRACT_ROUNDING,
+  );
   const sellerNet = amount - fee;
 
   return {
@@ -151,6 +195,7 @@ export function computeFullSellerFee(
     sellerNet: sellerNet.toString(),
     buyerRefund: "0",
     feeBps,
+    feeDust: residual.toString(),
     calculatedAt: new Date().toISOString(),
   };
 }
@@ -170,6 +215,7 @@ export function computeFullBuyerFee(
     sellerNet: "0",
     buyerRefund: amount.toString(),
     feeBps,
+    feeDust: "0",
     calculatedAt: new Date().toISOString(),
   };
 }
