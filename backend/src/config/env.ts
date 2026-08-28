@@ -150,6 +150,19 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value: 'true' | 'false') => value === 'true'),
+
+  // Buffered Stellar fee estimation (congestion resilience) — see feeEstimator.service.ts
+  STELLAR_FEE_PERCENTILE: z
+    .enum(['p10', 'p20', 'p30', 'p40', 'p50', 'p60', 'p70', 'p80', 'p90', 'p95', 'p99'])
+    .default('p90'),
+  STELLAR_FEE_SAFETY_MULTIPLIER: z.coerce.number().positive().default(1.5),
+  STELLAR_FEE_CONGESTION_BOOST: z.coerce.number().min(1).default(2),
+  STELLAR_FEE_CONGESTION_CAPACITY: z.coerce.number().min(0).max(1).default(0.75),
+  STELLAR_FEE_CONGESTION_FEE_RATIO: z.coerce.number().min(1).default(4),
+  STELLAR_FEE_MIN_STROOPS: z.coerce.number().int().positive().default(100),
+  STELLAR_FEE_MAX_STROOPS: z.coerce.number().int().positive().default(1_000_000),
+  STELLAR_FEE_BUMP_FACTOR: z.coerce.number().gt(1).default(1.5),
+  STELLAR_FEE_MAX_RETRIES: z.coerce.number().int().min(0).default(3),
 });
 
 export type Env = z.infer<typeof envSchema>;
