@@ -67,6 +67,7 @@ but not currently handled by the backend event listener.
 | 4 | `FundsReleasedEvent`          | `RELSD`      | `FundsReleased`         | COMPLETED             |
 | 5 | `DisputeInitiatedEvent`       | `DISINI`     | `DisputeInitiated`      | DISPUTED              |
 | 6 | `DisputeResolvedEvent`        | `DISRES`     | `DisputeResolved`       | COMPLETED             |
+| 7 | `StreamClawbackEvent`         | `stream_clawback` | `StreamClawback`   | (admin action, no trade status change) |
 
 Non-status events (not consumed by the backend listener):
 - `TradeCancelledEvent` (`TRDCAN`)
@@ -127,17 +128,26 @@ polls. Each cycle:
 
 ### 3.3 Parsing
 
-Raw Soroban events arrive as `StellarSdk.rpc.Api.EventResponse` objects. The
-`parseEvent()` method extracts:
+Raw Soroban events arrive as `StellarSdk.rpc.Api.EventResponse` objects. Decoding is
+implemented once in the shared helper `backend/src/lib/eventDecoder.ts`
+(`decodeContractEvent()`), and `EventListenerService.parseEvent()` simply delegates to
+it — keeping a single source of truth for event shapes instead of duplicating the
+symbol/topic parsing logic. It extracts:
 
-- **eventType**: Mapped from the first topic element via `mapSymbolToEventType()`
-  (supports both PascalCase and snake_case symbols, e.g. `TradeCreated` or
-  `trade_created`)
+- **eventType**: Mapped from the first topic element via a symbol table (supports
+  both PascalCase and snake_case symbols, e.g. `TradeCreated`/`trade_created`,
+  `StreamClawback`/`stream_clawback`)
 - **tradeId**: Extracted from the second topic element
 - **ledgerSequence**: From `rawEvent.ledger`
-- **contractId**: From `rawEvent.contractId` or config default
+- **contractId**: From `rawEvent.contractId` or the provided fallback contract ID
 - **eventId**: From `rawEvent.id`
 - **data**: Parsed map entries from the XDR event value
+
+`decodeContractEvent()` returns `null` (instead of throwing) for malformed payloads —
+a missing/empty topic, an unparseable ScVal, or an unrecognized event symbol — so the
+listener can skip the event and continue processing the rest of the batch. See
+`backend/src/lib/__tests__/eventDecoder.test.ts` for the malformed-payload cases it
+covers.
 
 ### 3.4 Event Dispatch
 

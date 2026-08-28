@@ -8,7 +8,8 @@ export type AlertType =
   | "cache_unavailable"
   | "reconciliation_drift_warning"
   | "reconciliation_drift_critical"
-  | "reconciliation_job_failure";
+  | "reconciliation_job_failure"
+  | "admin_soroban_tx_failure";
 
 export interface AlertPayload {
   type: AlertType;
