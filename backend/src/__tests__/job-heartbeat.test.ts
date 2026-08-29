@@ -5,14 +5,13 @@
  * and simulated dead-scheduler scenarios
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
-import { prisma } from "../../lib/db";
+import { prisma } from "../lib/db";
 import {
   jobHeartbeatService,
   JobType,
   JOB_CONFIGS,
-} from "../../services/jobHeartbeat.service";
-import { appLogger } from "../../middleware/logger";
+} from "../services/jobHeartbeat.service";
+import { appLogger } from "../middleware/logger";
 
 describe("Job Heartbeat Integration Tests", () => {
   beforeEach(async () => {
