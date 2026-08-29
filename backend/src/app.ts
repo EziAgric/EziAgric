@@ -43,6 +43,7 @@ import { createAdminContractRouter } from "./routes/admin.contract.routes";
 import { createAdminAuthRouter } from "./routes/admin.auth.routes";
 import { createAdminStreamsRouter } from "./routes/admin.streams.routes";
 import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes";
+import { createAdminPayoutsRouter } from "./routes/admin.payouts.routes";
 import { webhooksRoutes } from "./routes/webhooks.routes";
 import { inboundWebhooksRoutes } from "./routes/webhooks.inbound.routes";
 import { captureRawBody } from "./middleware/webhookSignature.middleware";
@@ -198,6 +199,9 @@ export function createApp(): express.Application {
 
   // Admin trade batch operations: POST /admin/trades/batch/status
   app.use(adminFeatureGate, csrfProtection, createAdminTradeBatchRouter());
+
+  // Admin payout idempotency: POST /api/admin/payouts/reconcile, GET /api/admin/payouts/pending
+  app.use(adminFeatureGate, csrfProtection, createAdminPayoutsRouter());
 
   // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume
   app.use("/api", adminFeatureGate, csrfProtection, createAdminStreamsRouter());

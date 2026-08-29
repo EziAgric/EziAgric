@@ -46,6 +46,23 @@ enum StreamStatus {
   COMPLETED
 }
 
+/// Lifecycle of a payout intent. The order matters: an intent only ever moves
+/// forward, and CONFIRMED is terminal for the purposes of deduplication.
+enum PayoutIntentStatus {
+  PENDING
+  SUBMITTED
+  CONFIRMED
+  FAILED
+}
+
+/// Which fund-moving contract call an intent covers.
+enum PayoutKind {
+  RELEASE
+  MILESTONE_RELEASE
+  REFUND
+  CLAWBACK
+}
+
 enum ChainEventSyncStatus {
   PENDING
   RETRYING
@@ -515,6 +532,41 @@ model EscrowReleaseMilestone {
   @@unique([tradeId, milestoneIndex])
   @@index([tradeId, dueAt])
   @@index([tradeId, releasedAt])
+}
+
+/// PayoutIntent records the intent to move escrowed funds *before* the
+/// transaction is built, so a retry can be recognised as the same payout.
+///
+/// Release and refund submissions can succeed on-chain and then fail before the
+/// DB commit; without a durable intent, the retry looks like a fresh request and
+/// pays out twice. The `idempotencyKey` unique constraint is the enforcement
+/// point — a duplicate insert fails at the database, not in application logic
+/// that a crash could skip.
+///
+/// - idempotencyKey: caller-supplied, or derived from (kind, tradeId, milestone)
+/// - txHash: Soroban transaction hash, recorded on first successful submission
+/// - duplicateAttempts: how many retries were short-circuited, for the metric
+model PayoutIntent {
+  id                Int                @id @default(autoincrement())
+  idempotencyKey    String             @unique @db.VarChar(255)
+  kind              PayoutKind
+  tradeId           String             @db.VarChar(255)
+  milestoneIndex    Int?
+  amountUsdc        String             @db.VarChar(100)
+  destination       String             @db.VarChar(255)
+  requestedBy       String             @db.VarChar(255)
+  status            PayoutIntentStatus @default(PENDING)
+  txHash            String?            @db.VarChar(255)
+  duplicateAttempts Int                @default(0)
+  lastError         String?            @db.Text
+  submittedAt       DateTime?
+  confirmedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([tradeId, kind])
+  @@index([status, updatedAt])
+  @@index([txHash])
 }
 
 /// Stream model representing a vested token stream

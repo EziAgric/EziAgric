@@ -35,6 +35,18 @@ export type WebhookVerificationOutcome =
   | "missing_raw_body"
   | "invalid_signature";
 
+/**
+ * What happened to a payout intent. `duplicate` is the one that matters
+ * operationally: a non-zero rate means retries are reaching the payout path,
+ * and a zero rate after a known incident means the guard was bypassed.
+ */
+export type PayoutIntentOutcome =
+  | "claimed"
+  | "duplicate"
+  | "submitted"
+  | "confirmed"
+  | "failed";
+
 export interface StellarMetricsRecorder {
   recordTransactionSubmission(
     operation: string,
@@ -58,6 +70,7 @@ let rpcDuration: Histogram | undefined;
 let sorobanRpcHealthGauge: Counter | undefined;
 let sorobanRpcHealthLatency: Histogram | undefined;
 let webhookVerificationCounter: Counter | undefined;
+let payoutIntentCounter: Counter | undefined;
 let customRecorder: StellarMetricsRecorder | null = null;
 
 function getMeter() {
@@ -151,6 +164,29 @@ export function recordWebhookSignatureVerification(
   getWebhookVerificationCounter().add(1, { provider, outcome });
 }
 
+function getPayoutIntentCounter(): Counter {
+  if (!payoutIntentCounter) {
+    payoutIntentCounter = getMeter().createCounter("payout_intents_total", {
+      description:
+        "Payout intent lifecycle transitions, labelled by payout kind and outcome",
+    });
+  }
+  return payoutIntentCounter;
+}
+
+/**
+ * Records one payout intent transition.
+ *
+ * Alert on `outcome="duplicate"`: every count is a retry that would have been a
+ * second payout without the idempotency guard.
+ */
+export function recordPayoutIntentOutcome(
+  kind: string,
+  outcome: PayoutIntentOutcome,
+): void {
+  getPayoutIntentCounter().add(1, { kind, outcome });
+}
+
 export function recordTransactionSubmission(
   operation: string,
   outcome: StellarTransactionOutcome,
@@ -241,6 +277,7 @@ export function __resetMetricsForTests(): void {
   sorobanRpcHealthGauge = undefined;
   sorobanRpcHealthLatency = undefined;
   webhookVerificationCounter = undefined;
+  payoutIntentCounter = undefined;
 }
 
 // ---------------------------------------------------------------------------
