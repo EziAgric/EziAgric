@@ -607,3 +607,33 @@ model ContractPauseLog {
   @@index([paused, createdAt])
   @@index([guardianAddress])
 }
+
+/// JobHeartbeat tracks the last successful execution time for scheduled jobs.
+/// Used to detect missed heartbeats and trigger alerts when jobs silently fail.
+model JobHeartbeat {
+  id              Int      @id @default(autoincrement())
+  /// Unique job identifier (e.g., "reconciliation", "trade-expiry", "webhook")
+  jobType         String   @unique @db.VarChar(100)
+  /// Timestamp of the last successful job execution
+  lastHeartbeat   DateTime @default(now())
+  /// Current job status: running|idle|failed
+  status          String   @default("idle") @db.VarChar(50)
+  /// Expected interval between job runs (milliseconds)
+  intervalMs      Int      @default(86400000) // 24 hours default
+  /// Next expected heartbeat time (lastHeartbeat + intervalMs)
+  nextExpectedAt  DateTime
+  /// Optional error message from last failed run
+  lastError       String?  @db.Text
+  /// Number of consecutive failures
+  failureCount    Int      @default(0)
+  /// Timestamp of the last check by the health watchdog
+  lastCheckedAt   DateTime @default(now())
+  /// User-provided notes/context about the job
+  notes           String?  @db.VarChar(500)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([jobType])
+  @@index([status, nextExpectedAt])
+  @@index([lastCheckedAt])
+}
