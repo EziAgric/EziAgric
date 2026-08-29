@@ -19,6 +19,22 @@ export type StellarRpcOutcome = "success" | "error";
 
 export type SorobanRpcHealthStatus = "up" | "down";
 
+/**
+ * Outcome of an inbound webhook signature check. `verified` is the only
+ * accepting outcome; every other value is a distinct rejection reason, so an
+ * alert can distinguish a misconfigured provider from a forgery attempt.
+ */
+export type WebhookVerificationOutcome =
+  | "verified"
+  | "unknown_provider"
+  | "missing_secret"
+  | "missing_signature"
+  | "missing_timestamp"
+  | "malformed_timestamp"
+  | "stale_timestamp"
+  | "missing_raw_body"
+  | "invalid_signature";
+
 export interface StellarMetricsRecorder {
   recordTransactionSubmission(
     operation: string,
@@ -41,6 +57,7 @@ let submissionDuration: Histogram | undefined;
 let rpcDuration: Histogram | undefined;
 let sorobanRpcHealthGauge: Counter | undefined;
 let sorobanRpcHealthLatency: Histogram | undefined;
+let webhookVerificationCounter: Counter | undefined;
 let customRecorder: StellarMetricsRecorder | null = null;
 
 function getMeter() {
@@ -105,6 +122,33 @@ function getSorobanRpcHealthLatency(): Histogram {
     );
   }
   return sorobanRpcHealthLatency;
+}
+
+function getWebhookVerificationCounter(): Counter {
+  if (!webhookVerificationCounter) {
+    webhookVerificationCounter = getMeter().createCounter(
+      "webhook_signature_verifications_total",
+      {
+        description:
+          "Inbound webhook signature verification results, labelled by provider and outcome",
+      },
+    );
+  }
+  return webhookVerificationCounter;
+}
+
+/**
+ * Records one inbound webhook signature check.
+ *
+ * Alert on a spike in the non-`verified` outcomes: a burst of
+ * `invalid_signature` is an attacker probing the endpoint, while a burst of
+ * `missing_secret` means a provider was deployed without its secret.
+ */
+export function recordWebhookSignatureVerification(
+  provider: string,
+  outcome: WebhookVerificationOutcome,
+): void {
+  getWebhookVerificationCounter().add(1, { provider, outcome });
 }
 
 export function recordTransactionSubmission(
@@ -196,6 +240,7 @@ export function __resetMetricsForTests(): void {
   rpcDuration = undefined;
   sorobanRpcHealthGauge = undefined;
   sorobanRpcHealthLatency = undefined;
+  webhookVerificationCounter = undefined;
 }
 
 // ---------------------------------------------------------------------------

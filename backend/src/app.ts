@@ -44,6 +44,8 @@ import { createAdminAuthRouter } from "./routes/admin.auth.routes";
 import { createAdminStreamsRouter } from "./routes/admin.streams.routes";
 import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes";
 import { webhooksRoutes } from "./routes/webhooks.routes";
+import { inboundWebhooksRoutes } from "./routes/webhooks.inbound.routes";
+import { captureRawBody } from "./middleware/webhookSignature.middleware";
 import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
 import { createPrivacyRouter } from "./routes/privacy.routes";
@@ -113,7 +115,10 @@ export function createApp(): express.Application {
   app.use(cors(buildCorsOptions()));
 
   // Body size limits: 100 KB for JSON, 5 MB for URL-encoded (covers file references)
-  app.use(express.json({ limit: "100kb" }));
+  // `verify` stashes the exact received bytes on the request: inbound webhook
+  // signatures cover the raw payload, and re-serialising `req.body` would not
+  // reproduce it byte for byte.
+  app.use(express.json({ limit: "100kb", verify: captureRawBody }));
   app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
   // Correlation ID must be registered before the logger so every log line
@@ -197,6 +202,10 @@ export function createApp(): express.Application {
   // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume
   app.use("/api", adminFeatureGate, csrfProtection, createAdminStreamsRouter());
 
+  // Inbound provider callbacks. Mounted before the CRUD router so `/inbound/*`
+  // never falls through to it, and on its own path so the HMAC guard sits at
+  // the router level and covers every provider route by construction.
+  app.use("/webhooks/inbound", inboundWebhooksRoutes);
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);
 
