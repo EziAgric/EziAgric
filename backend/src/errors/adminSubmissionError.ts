@@ -1,6 +1,7 @@
 import { AppError, ErrorCode } from "./errorCodes";
 import { classifyStellarError, StellarErrorCategory } from "../services/stellar.service";
 import { ClassifiedServiceError } from "./service.errors";
+import { recordAdminSorobanTxFailure } from "../lib/adminTxFailureMonitor";
 
 /**
  * Maps a Stellar error category to the corresponding admin submission error
@@ -71,6 +72,8 @@ export function classifyAdminSubmissionError(
   error: unknown,
   context?: string,
 ): AppError {
+  recordAdminSorobanTxFailure(context ?? "admin_soroban_submission", error);
+
   // Already a classified service error (e.g. StellarError) — preserve its code
   if (error instanceof ClassifiedServiceError) {
     const category = (error.details?.category as StellarErrorCategory) || "network_error";

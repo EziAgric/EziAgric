@@ -4,10 +4,11 @@ import {
   getEventListenerConfig,
   EventListenerConfig,
 } from "../config/eventListener.config";
-import { EventType, ParsedEvent } from "../types/events";
+import { ParsedEvent } from "../types/events";
 import { dispatchEvent } from "./eventHandlers";
 import { appLogger } from "../middleware/logger";
 import { CircuitBreaker, CircuitBreakerOpenError } from "../lib/circuitBreaker";
+import { decodeContractEvent } from "../lib/eventDecoder";
 
 type OutboxStatus = "PENDING" | "RETRYING" | "PROCESSED" | "DEAD_LETTER";
 
@@ -433,95 +434,7 @@ export class EventListenerService {
   private parseEvent(
     rawEvent: StellarSdk.rpc.Api.EventResponse,
   ): ParsedEvent | null {
-    try {
-      const topic = rawEvent.topic;
-      if (!topic || topic.length === 0) return null;
-
-      // The first topic element is the event type symbol
-      const eventSymbol = this.extractSymbolValue(topic[0]);
-      if (!eventSymbol) return null;
-
-      const eventType = this.mapSymbolToEventType(eventSymbol);
-      if (!eventType) {
-        appLogger.warn({ eventSymbol }, "[EventListener] Unknown event symbol");
-        return null;
-      }
-
-      // Extract trade_id from second topic element or from value
-      const tradeId =
-        topic.length > 1 ? this.extractScalarValue(topic[1]) : "unknown";
-
-      const data: Record<string, unknown> = {};
-      if (rawEvent.value) {
-        data.raw = rawEvent.value;
-        // Extract map entries into named fields for easy handler access
-        const val = rawEvent.value as unknown as {
-          type?: string;
-          value?: Array<{ key: { value: string }; val: { value: unknown } }>;
-        };
-        if (val?.type === "map" && Array.isArray(val.value)) {
-          for (const entry of val.value) {
-            if (entry?.key?.value) {
-              data[entry.key.value] = entry.val?.value;
-            }
-          }
-        }
-      }
-
-      return {
-        eventType,
-        tradeId: String(tradeId),
-        ledgerSequence: rawEvent.ledger,
-        contractId: String(rawEvent.contractId ?? this.config.contractId),
-        eventId: rawEvent.id,
-        data,
-      };
-    } catch (error) {
-      appLogger.error({ error }, "[EventListener] Failed to parse event");
-      return null;
-    }
-  }
-
-  /** Extract a Symbol string value from an XDR ScVal. */
-  private extractSymbolValue(scVal: StellarSdk.xdr.ScVal): string | null {
-    try {
-      const nativeVal = StellarSdk.scValToNative(scVal);
-      if (typeof nativeVal === "string") return nativeVal;
-      return String(nativeVal);
-    } catch {
-      return null;
-    }
-  }
-
-  /** Extract a scalar value (string or number) from an XDR ScVal. */
-  private extractScalarValue(scVal: StellarSdk.xdr.ScVal): string {
-    try {
-      const nativeVal = StellarSdk.scValToNative(scVal);
-      return String(nativeVal);
-    } catch {
-      return "unknown";
-    }
-  }
-
-  /** Map Soroban event topic symbol to our EventType enum. */
-  private mapSymbolToEventType(symbol: string): EventType | null {
-    const mapping: Record<string, EventType> = {
-      TradeCreated: EventType.TradeCreated,
-      trade_created: EventType.TradeCreated,
-      TradeFunded: EventType.TradeFunded,
-      trade_funded: EventType.TradeFunded,
-      DeliveryConfirmed: EventType.DeliveryConfirmed,
-      delivery_confirmed: EventType.DeliveryConfirmed,
-      FundsReleased: EventType.FundsReleased,
-      funds_released: EventType.FundsReleased,
-      DisputeInitiated: EventType.DisputeInitiated,
-      dispute_initiated: EventType.DisputeInitiated,
-      DisputeResolved: EventType.DisputeResolved,
-      dispute_resolved: EventType.DisputeResolved,
-      StreamClawback: EventType.StreamClawback,
-      stream_clawback: EventType.StreamClawback,
-    };
-    return mapping[symbol] ?? null;
+    return decodeContractEvent(rawEvent, this.config.contractId);
   }
 
   /** Exponential backoff on RPC failure. */
