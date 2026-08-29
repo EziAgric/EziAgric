@@ -1024,7 +1024,11 @@ impl EscrowContract {
             .expect("Not initialized");
         admin.require_auth();
 
-        assert!(clawback_amount > 0, "clawback_amount must be greater than zero");
+        assert!(
+            clawback_amount > 0,
+            "{}",
+            clawback_errors::INVALID_AMOUNT
+        );
 
         let config: TimelockConfig = env
             .storage()
@@ -1099,6 +1103,12 @@ impl EscrowContract {
         assert!(!queued_op.cancelled, "operation has been cancelled");
 
         if let TimelockOpPayload::Clawback(clawback_op) = queued_op.payload.clone() {
+            assert!(
+                clawback_op.clawback_amount > 0,
+                "{}",
+                clawback_errors::INVALID_AMOUNT
+            );
+
             let trade_key = DataKey::Trade(clawback_op.trade_id);
             let mut trade: Trade = Self::load_trade(&env, &trade_key);
 
@@ -1197,7 +1207,8 @@ impl EscrowContract {
     ///
     /// # Safety invariants
     /// - Trade must be in `Funded` or `Disputed` status.
-    /// - `clawback_amount` must be > 0.
+    /// - `clawback_amount` must be `> 0` (panics with [`clawback_errors::INVALID_AMOUNT`] /
+    ///   `CLAWBACK_INVALID_AMOUNT` for zero or negative amounts).
     /// - `clawback_amount` must be ≤ remaining `trade.amount` (no over-clawback).
     /// - Cumulative `ClawbackTotal` is updated on every call for auditability.
     ///
@@ -1232,7 +1243,11 @@ impl EscrowContract {
             "admin_clawback: clawback feature is currently disabled"
         );
 
-        assert!(clawback_amount > 0, "clawback_amount must be greater than zero");
+        assert!(
+            clawback_amount > 0,
+            "{}",
+            clawback_errors::INVALID_AMOUNT
+        );
 
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
