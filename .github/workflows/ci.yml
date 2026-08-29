@@ -158,6 +158,12 @@ jobs:
           JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
         run: pnpm jest --config jest.config.js --forceExit --detectOpenHandles --testPathPatterns='admin\.auth\.ci-regression' --verbose
 
+      - name: Validate admin OpenAPI docs
+        if: needs.changes.outputs.backend == 'true'
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
+        run: pnpm jest --config jest.config.js --forceExit --detectOpenHandles --testPathPatterns='openapi\.(drift|docs)\.test' --verbose
 
       - name: Upload coverage report
         if: needs.changes.outputs.backend == 'true'
