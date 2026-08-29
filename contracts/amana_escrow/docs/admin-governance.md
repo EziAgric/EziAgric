@@ -139,6 +139,26 @@ The backend should:
 5. Alert administrators when clawbacks occur
 6. Maintain comprehensive audit trails
 
+## Access Control Audit (Issue #105)
+
+`admin_clawback` and `set_clawback_enabled` follow the same access-control pattern, audited as follows:
+
+1. The admin address is always read from instance storage (`DataKey::Admin`), never accepted as a caller-supplied argument, so it cannot be spoofed by passing a different address.
+2. `require_auth()` is called on that stored address before any storage read/write or token transfer — no state mutation is reachable by an unauthorized caller, including under a mocked-auth test harness.
+3. There is no implicit admin fallback: if the contract was never initialized, `expect("Not initialized")` panics rather than treating the operation as open-access.
+4. The pattern is inlined at each admin-only entry point (see the `// ACCESS CONTROL:` comments in `src/lib.rs`) rather than behind a single shared helper, so each function's invariant is directly inspectable from its own body during review.
+
+## Feature Flag Gating (Issue #113)
+
+`admin_clawback` is additionally gated by `ClawbackEnabled`, an admin-controlled instance-storage flag:
+
+- `is_clawback_enabled()` — public view, returns the flag (defaults to `true` when unset).
+- `set_clawback_enabled(enabled: bool)` — admin-only; toggles the flag.
+
+**Default behavior:** the flag defaults to enabled (`true`) so that upgrading an existing deployment does not silently disable clawback. New deployments that want a staged rollout should call `set_clawback_enabled(false)` immediately after `initialize()`, then flip it to `true` once the operational runbook (multi-sig approval flow, monitoring) is confirmed in place.
+
+**Rollout plan:** for a fresh deployment, disable the flag pre-launch, run through a dry-run clawback on a testnet trade with monitoring wired up, then enable in production via a signed admin transaction. Record the enable transaction hash in the deployment runbook for auditability. To freeze clawback during an incident, call `set_clawback_enabled(false)` — this does not require a contract upgrade.
+
 ## Query Methods
 
 The contract provides state query methods for transparency:

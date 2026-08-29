@@ -46,6 +46,8 @@ import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes"
 import { webhooksRoutes } from "./routes/webhooks.routes";
 import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
+import { createPrivacyRouter } from "./routes/privacy.routes";
+import { csrfProtection } from "./middleware/csrf.middleware";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
  *  Value should be a comma-separated list of allowed origins, e.g.:
@@ -130,6 +132,7 @@ export function createApp(): express.Application {
   app.use("/auth", authRoutes);
   app.use("/wallet", walletRoutes);
   app.use("/users", userRoutes);
+  app.use(createPrivacyRouter());
   app.use("/users", reputationRoutes);
   app.use(createNotificationPreferencesRouter());
   app.use(createNotificationsRouter());
@@ -177,22 +180,22 @@ export function createApp(): express.Application {
   app.use("/treasury", createTreasuryRouter());
 
   // Feature flags (admin-managed) — gated by ADMIN_ROUTES_ENABLED
-  app.use(adminFeatureGate, createAdminFeaturesRouter());
+  app.use(adminFeatureGate, csrfProtection, createAdminFeaturesRouter());
 
   // Admin action audit history: GET /admin/audit
-  app.use(adminFeatureGate, createAdminAuditRouter());
+  app.use(adminFeatureGate, csrfProtection, createAdminAuditRouter());
 
   // Admin contract maintenance/governance: mediators, fee rate
-  app.use(adminFeatureGate, createAdminContractRouter());
+  app.use(adminFeatureGate, csrfProtection, createAdminContractRouter());
 
   // Admin auth diagnostics: GET /api/admin/auth/claims
-  app.use(adminFeatureGate, createAdminAuthRouter());
+  app.use(adminFeatureGate, csrfProtection, createAdminAuthRouter());
 
   // Admin trade batch operations: POST /admin/trades/batch/status
-  app.use(adminFeatureGate, createAdminTradeBatchRouter());
+  app.use(adminFeatureGate, csrfProtection, createAdminTradeBatchRouter());
 
   // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume
-  app.use("/api", adminFeatureGate, createAdminStreamsRouter());
+  app.use("/api", adminFeatureGate, csrfProtection, createAdminStreamsRouter());
 
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);

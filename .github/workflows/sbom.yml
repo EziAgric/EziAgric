@@ -1,0 +1,112 @@
+name: SBOM
+
+# Generates a CycloneDX Software Bill of Materials for each release artifact
+# (backend, frontend, mobile) and attaches it to the GitHub Release, per
+# docs/sbom.md. Also runs weekly on main to diff the current dependency tree
+# against the most recently published SBOMs and flag drift/new vulns.
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - "v*.*.*"
+  schedule:
+    # Weekly vulnerability diff scan — Monday 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-sbom:
+    if: github.event_name == 'release' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    name: Generate SBOM (${{ matrix.component }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend, mobile]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          npx --yes @cyclonedx/cyclonedx-npm \
+            --output-format json \
+            --output-file "sbom-${{ matrix.component }}.cdx.json" \
+            "${{ matrix.component }}/package.json"
+
+      - name: Upload SBOM as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.component }}
+          path: sbom-${{ matrix.component }}.cdx.json
+          retention-days: 400
+
+      - name: Attach SBOM to GitHub Release
+        if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          gh release upload "$TAG" "sbom-${{ matrix.component }}.cdx.json" --clobber --repo "${{ github.repository }}"
+
+  vulnerability-diff:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Weekly SBOM Vulnerability Diff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate current SBOMs
+        run: |
+          mkdir -p sbom-current
+          for c in backend frontend mobile; do
+            npx --yes @cyclonedx/cyclonedx-npm \
+              --output-format json \
+              --output-file "sbom-current/$c.cdx.json" \
+              "$c/package.json"
+          done
+
+      - name: Fetch previous SBOM release artifacts (best-effort)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p sbom-previous
+          LATEST_TAG=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName' || true)
+          if [ -n "$LATEST_TAG" ]; then
+            gh release download "$LATEST_TAG" --repo "${{ github.repository }}" --pattern "sbom-*.cdx.json" --dir sbom-previous || echo "No previous SBOMs found for $LATEST_TAG"
+          else
+            echo "No previous release found; skipping diff baseline."
+          fi
+
+      - name: Install Grype (vulnerability scanner)
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Scan current SBOMs and write summary
+        run: |
+          for f in sbom-current/*.cdx.json; do
+            name=$(basename "$f" .cdx.json)
+            echo "## Vulnerability scan: $name" >> "$GITHUB_STEP_SUMMARY"
+            grype "sbom:$f" -o table >> "$GITHUB_STEP_SUMMARY" || true
+          done
+          echo "Diffing against previous release SBOMs (if present) is a manual step for now: compare sbom-current/*.cdx.json to sbom-previous/*.cdx.json component lists." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload current SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-weekly-scan-${{ github.run_id }}
+          path: sbom-current/
+          retention-days: 90

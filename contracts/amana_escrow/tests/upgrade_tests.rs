@@ -13,79 +13,14 @@
 
 extern crate std;
 
-use amana_escrow::{CURRENT_SCHEMA_VERSION, EscrowContract, EscrowContractClient, TradeStatus};
-use soroban_sdk::{Address, Env, testutils::Address as _, token};
+use amana_escrow::{CURRENT_SCHEMA_VERSION, TradeStatus, test_fixture::AdminSignerFixture};
+use soroban_sdk::{testutils::Address as _, token, Address};
 
-// ---------------------------------------------------------------------------
-// Shared harness
-// ---------------------------------------------------------------------------
+type Harness = AdminSignerFixture;
 
-struct Harness {
-    env: Env,
-    contract_id: Address,
-    token_id: Address,
-    admin: Address,
-    buyer: Address,
-    seller: Address,
-    treasury: Address,
-    #[allow(dead_code)]
-    stranger: Address,
-}
-
-impl Harness {
-    fn new() -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let buyer = Address::generate(&env);
-        let seller = Address::generate(&env);
-        let treasury = Address::generate(&env);
-        let stranger = Address::generate(&env);
-        let token_id = env
-            .register_stellar_asset_contract_v2(admin.clone())
-            .address();
-        let contract_id = env.register(EscrowContract, ());
-        let client = EscrowContractClient::new(&env, &contract_id);
-        client.initialize(&admin, &token_id, &treasury, &100u32, &token_id);
-
-        Self {
-            env,
-            contract_id,
-            token_id,
-            admin,
-            buyer,
-            seller,
-            treasury,
-            stranger,
-        }
-    }
-
-    fn client(&self) -> EscrowContractClient<'_> {
-        EscrowContractClient::new(&self.env, &self.contract_id)
-    }
-
-    fn mint(&self, to: &Address, amount: i128) {
-        token::StellarAssetClient::new(&self.env, &self.token_id).mint(to, &amount);
-    }
-
-    fn funded_trade(&self, amount: i128) -> u64 {
-        self.mint(&self.buyer, amount);
-        let tid = self.client().create_trade(
-            &self.buyer,
-            &self.seller,
-            &amount,
-            &5000u32,
-            &5000u32,
-            &None,
-        );
-        self.client().deposit(&tid);
-        tid
-    }
-
-    /// Simulate a contract upgrade by re-registering the WASM at the same address.
-    fn simulate_upgrade(&self) {
-        self.env.register_at(&self.contract_id, EscrowContract, ());
-    }
+/// Simulate a contract upgrade by re-registering the WASM at the same address.
+fn simulate_upgrade(h: &Harness) {
+    h.env.register_at(&h.contract_id, amana_escrow::EscrowContract, ());
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +34,7 @@ fn test_env_re_registration_preserves_trade_state_for_upgrade_compatibility() {
         .client()
         .create_trade(&h.buyer, &h.seller, &1_000i128, &5000u32, &5000u32, &None);
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     let trade = h.client().get_trade(&trade_id);
     assert_eq!(trade.trade_id, trade_id);
@@ -122,7 +57,7 @@ fn test_upgrade_preserves_funded_trade_state() {
     assert!(matches!(pre.status, TradeStatus::Funded));
     assert_eq!(pre.amount, amount);
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     // Post-upgrade state must be identical
     let post = h.client().get_trade(&tid);
@@ -153,7 +88,7 @@ fn test_upgrade_preserves_multiple_trades() {
         &buyer2, &seller2, &3_000i128, &3000u32, &7000u32, &None,
     );
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     let t1 = h.client().get_trade(&tid1);
     assert!(matches!(t1.status, TradeStatus::Created));
@@ -177,7 +112,7 @@ fn test_upgrade_preserves_admin_config() {
     let pre_fee = h.client().get_fee_bps();
     let pre_treasury = h.client().get_treasury();
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     assert_eq!(h.client().get_admin(), pre_admin);
     assert_eq!(h.client().get_fee_bps(), pre_fee);
@@ -196,7 +131,7 @@ fn test_upgrade_preserves_mediator_registry() {
     assert!(h.client().is_mediator(&med1));
     assert!(h.client().is_mediator(&med2));
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     assert!(h.client().is_mediator(&med1), "med1 must still be registered after upgrade");
     assert!(h.client().is_mediator(&med2), "med2 must still be registered after upgrade");
@@ -208,7 +143,7 @@ fn test_schema_version_stable_across_upgrade() {
     let h = Harness::new();
     assert_eq!(h.client().get_schema_version(), CURRENT_SCHEMA_VERSION);
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     assert_eq!(
         h.client().get_schema_version(),
@@ -225,7 +160,7 @@ fn test_schema_version_stable_across_upgrade() {
 #[test]
 fn test_post_upgrade_new_trades_still_work() {
     let h = Harness::new();
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     let amount = 1_500i128;
     let tid = h.funded_trade(amount);
@@ -241,7 +176,7 @@ fn test_post_upgrade_cancel_pre_upgrade_trade() {
     let h = Harness::new();
     let tid = h.funded_trade(2_000);
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     // Admin can cancel a funded trade after upgrade
     h.client().cancel_trade(&tid, &h.admin);
@@ -256,7 +191,7 @@ fn test_post_upgrade_confirm_delivery_pre_upgrade_trade() {
     let h = Harness::new();
     let tid = h.funded_trade(1_000);
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     h.client().confirm_delivery(&tid);
 
@@ -272,7 +207,7 @@ fn test_post_upgrade_release_funds_pre_upgrade_trade() {
     let tid = h.funded_trade(amount);
     h.client().confirm_delivery(&tid);
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     h.client().release_funds(&tid, &h.buyer);
 
@@ -290,7 +225,7 @@ fn test_post_upgrade_initiate_dispute_pre_upgrade_trade() {
     let h = Harness::new();
     let tid = h.funded_trade(1_000);
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     let reason = soroban_sdk::String::from_str(&h.env, "QmDisputeAfterUpgrade");
     h.client().initiate_dispute(&tid, &h.buyer, &reason);
@@ -307,7 +242,7 @@ fn test_post_upgrade_initiate_dispute_pre_upgrade_trade() {
 #[test]
 fn test_post_upgrade_events_still_emit() {
     let h = Harness::new();
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     // Create a new trade after upgrade — should emit TradeCreatedEvent
     let tid = h.client().create_trade(
@@ -329,7 +264,7 @@ fn test_post_upgrade_events_still_emit() {
 #[test]
 fn test_post_upgrade_fund_event_emits() {
     let h = Harness::new();
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     let amount = 500i128;
     let tid = h.funded_trade(amount);
@@ -355,7 +290,7 @@ fn test_upgrade_preserves_accrued_fees() {
     let pre_fees = h.client().get_accrued_fees();
     assert!(pre_fees > 0, "fees must have accrued after trade completion");
 
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
 
     let post_fees = h.client().get_accrued_fees();
     assert_eq!(
@@ -374,8 +309,8 @@ fn test_state_consistent_after_two_sequential_upgrades() {
     let h = Harness::new();
     let tid = h.funded_trade(3_000);
 
-    h.simulate_upgrade();
-    h.simulate_upgrade();
+    simulate_upgrade(&h);
+    simulate_upgrade(&h);
 
     let trade = h.client().get_trade(&tid);
     assert!(matches!(trade.status, TradeStatus::Funded));

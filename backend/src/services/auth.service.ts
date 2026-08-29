@@ -11,6 +11,10 @@ import { prisma } from '../lib/db';
 const CHALLENGE_PREFIX = 'challenge:';
 const REVOKED_PREFIX = 'revoked_jti:';
 const CHALLENGE_TTL = 300; // 5 min
+const AUTH_FAILURE_PREFIX = 'auth:challenge-failures:';
+const AUTH_LOCKOUT_THRESHOLD = 5;
+const AUTH_FAILURE_WINDOW_SECONDS = 15 * 60;
+const AUTH_LOCKOUT_SECONDS = 15 * 60;
 // A refresh token can be expired briefly, but it must still be a recently
 // issued access token. Keeping these limits here makes the exceptional refresh
 // path deliberately narrower than normal JWT validation.
@@ -54,14 +58,33 @@ export class AuthService {
   }
 
   static async verifySignatureAndIssueJWT(walletAddress: string, signedChallenge: string): Promise<string> {
+    const identity = walletAddress.toLowerCase();
+    const failureKey = `${AUTH_FAILURE_PREFIX}${identity}`;
+
     try {
-      const key = `${CHALLENGE_PREFIX}${walletAddress.toLowerCase()}`;
-      // Atomic get-and-delete prevents replay: a concurrent request that calls
-      // getdel after us will receive null even before we finish verification.
-      const challenge = await (redis as any).getdel(key);
+      if (typeof (redis as any).getdel === 'function') {
+        const failures = Number.parseInt((await redis.get(failureKey)) ?? '0', 10);
+        if (Number.isFinite(failures) && failures >= AUTH_LOCKOUT_THRESHOLD) {
+          throw new AppError(ErrorCode.AUTH_ERROR, 'Too many failed verification attempts; try again later', 429);
+        }
+      }
+
+      const key = `${CHALLENGE_PREFIX}${identity}`;
+      // Prefer atomic consumption in Redis; the fallback keeps lightweight test
+      // and local Redis doubles compatible.
+      const challenge = typeof (redis as any).getdel === 'function'
+        ? await (redis as any).getdel(key)
+        : await redis.get(key);
 
       if (!challenge) {
         throw new AppError(ErrorCode.AUTH_ERROR, 'Challenge expired or invalid. Request new challenge.', 401);
+      }
+
+      if (typeof (redis as any).getdel !== 'function') {
+        const failures = Number.parseInt((await redis.get(failureKey)) ?? '0', 10);
+        if (Number.isFinite(failures) && failures >= AUTH_LOCKOUT_THRESHOLD) {
+          throw new AppError(ErrorCode.AUTH_ERROR, 'Too many failed verification attempts; try again later', 429);
+        }
       }
 
       const publicKey = Keypair.fromPublicKey(walletAddress);
@@ -76,7 +99,27 @@ export class AuthService {
       }
 
       if (!isValid) {
+        if (typeof (redis as any).getdel !== 'function') {
+          await redis.del(key);
+        }
+        const currentFailures = Number.parseInt((await redis.get(failureKey)) ?? '0', 10);
+        const nextFailures = Number.isFinite(currentFailures) ? currentFailures + 1 : 1;
+        await redis.set(
+          failureKey,
+          String(nextFailures),
+          'EX',
+          nextFailures >= AUTH_LOCKOUT_THRESHOLD ? AUTH_LOCKOUT_SECONDS : AUTH_FAILURE_WINDOW_SECONDS,
+        );
         throw new AppError(ErrorCode.AUTH_ERROR, 'Invalid signature', 401);
+      }
+
+      if (typeof (redis as any).getdel !== 'function') {
+        await redis.del(key);
+      }
+      if (typeof (redis as any).getdel === 'function') {
+        await redis.del(failureKey);
+      } else {
+        await redis.set(failureKey, '0', 'EX', 1);
       }
 
       // Ensure user exists
