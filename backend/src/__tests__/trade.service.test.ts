@@ -183,7 +183,8 @@ describe("TradeService", () => {
     const stats = await service.getUserStats("GA_CALLER");
 
     expect(stats.totalTrades).toBe(3);
-    expect(stats.totalVolume).toBeCloseTo(175.5);
+    // Issue #178: volume is an exact decimal string, not a float.
+    expect(stats.totalVolume).toBe("175.5000000");
     expect(stats.openTrades).toBe(2);
   });
 });

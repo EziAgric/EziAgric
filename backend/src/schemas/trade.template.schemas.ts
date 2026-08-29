@@ -1,14 +1,13 @@
 import { z } from "zod";
 import { StrKey } from "@stellar/stellar-sdk";
+import { moneyString } from "./money.schemas";
 
 const stellarPublicKey = z.string().refine(StrKey.isValidEd25519PublicKey, {
   message: "Invalid Stellar public key for sellerAddress",
 });
 
-const amountUsdc = z.union([
-  z.string().regex(/^\d+(\.\d{1,7})?$/, "Invalid amount format"),
-  z.number().positive("Amount must be positive").transform(String),
-]);
+// String only: a JSON number silently loses precision above 2^53 stroops.
+const amountUsdc = moneyString();
 
 export const createTradeTemplateSchema = z
   .object({

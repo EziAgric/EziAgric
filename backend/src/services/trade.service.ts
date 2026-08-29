@@ -4,6 +4,7 @@ import { prisma as defaultPrisma } from "../lib/db";
 import { ContractService } from "./contract.service";
 import { appLogger } from "../middleware/logger";
 import { TracingHelper } from "../config/tracing";
+import { formatStroopsToDecimal, parseDecimalToStroops } from "../lib/money";
 
 function parseAdminPubkeys(): Set<string> {
   const raw = process.env.ADMIN_STELLAR_PUBKEYS ?? "";
@@ -222,15 +223,21 @@ export class TradeService {
     ]);
 
     const totalTrades = trades.length;
-    const totalVolume = trades.reduce((sum, trade) => {
-      const amount = Number(trade.amountUsdc);
-      return sum + (Number.isFinite(amount) ? amount : 0);
-    }, 0);
+    // Accumulated in integer stroops: summing `Number(amountUsdc)` lost
+    // precision above 2^53 stroops and drifted further with every addition.
+    const totalVolumeStroops = trades.reduce((sum, trade) => {
+      try {
+        return sum + parseDecimalToStroops(trade.amountUsdc);
+      } catch {
+        // A malformed legacy row must not take down the whole stats call.
+        return sum;
+      }
+    }, 0n);
     const openTrades = trades.filter((trade) => openStatuses.has(trade.status)).length;
 
     return {
       totalTrades,
-      totalVolume,
+      totalVolume: formatStroopsToDecimal(totalVolumeStroops),
       openTrades,
     };
   }

@@ -36,6 +36,7 @@ import {
     __setRpcServerFactoryForTests,
     __resetRpcServerFactoryForTests,
 } from "../services/contract.service";
+import { parseDecimalToStroops } from "../lib/money";
 
 // ============================================================================
 // Contract ABI Definitions (from contracts/amana_escrow/src/lib.rs)
@@ -263,6 +264,44 @@ describe("ABI Compatibility Tests", () => {
             expect(validateScValType(callArgs!.args[2], abi.args[2].type)).toBe(true); // amount: i128
             expect(validateScValType(callArgs!.args[3], abi.args[3].type)).toBe(true); // buyer_loss_bps: u32
             expect(validateScValType(callArgs!.args[4], abi.args[4].type)).toBe(true); // seller_loss_bps: u32
+        });
+
+        // Issue #178: the amount must reach the i128 argument stroop-exact. At
+        // 2^53 stroops and above a JS number can no longer hold the value, so
+        // this is the case the old float path corrupted silently.
+        it("should carry an amount above 2^53 stroops to the i128 argument unchanged", async () => {
+            const amountUsdc = "9007199254740993.9999999";
+            const input = {
+                buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+                sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+                amountUsdc,
+                buyerLossBps: 5000,
+                sellerLossBps: 5000,
+            } as any;
+
+            await contractService.buildCreateTradeTx(input);
+
+            const callArgs = captureContractCallArgs(mockContract, "create_trade");
+            expect(callArgs).not.toBeNull();
+
+            const expectedStroops = parseDecimalToStroops(amountUsdc);
+            expect(expectedStroops).toBe(90071992547409939999999n);
+            // Decoding the ScVal back must land on the same integer.
+            expect(StellarSdk.scValToNative(callArgs!.args[2])).toBe(expectedStroops);
+        });
+
+        it("should reject an amount beyond the i128 range before building a tx", async () => {
+            const input = {
+                buyerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+                sellerAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+                amountUsdc: "170141183460469231731687303715884105728",
+                buyerLossBps: 5000,
+                sellerLossBps: 5000,
+            } as any;
+
+            await expect(contractService.buildCreateTradeTx(input)).rejects.toThrow(
+                /outside the i128 range/,
+            );
         });
 
         it("should call create_trade with correct argument order", async () => {

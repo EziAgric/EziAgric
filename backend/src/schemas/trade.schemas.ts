@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TradeStatus } from "@prisma/client";
 import { StrKey } from "@stellar/stellar-sdk";
+import { moneyString } from "./money.schemas";
 
 const stellarPublicKey = (fieldName: string) =>
   z.string().refine((v: string) => StrKey.isValidEd25519PublicKey(v), {
@@ -10,10 +11,8 @@ const stellarPublicKey = (fieldName: string) =>
 export const createTradeSchema = z.object({
   buyerAddress: stellarPublicKey("buyerAddress").optional(),
   sellerAddress: stellarPublicKey("sellerAddress"),
-  amountUsdc: z.union([
-    z.string().regex(/^\d+(\.\d{1,7})?$/, "Invalid amount format"),
-    z.number().positive("Amount must be positive").transform(String),
-  ]),
+  // String only: a JSON number silently loses precision above 2^53 stroops.
+  amountUsdc: moneyString(),
   buyerLossBps: z.number().int().min(0, "buyerLossBps must be >= 0").max(10000, "buyerLossBps must be <= 10000").optional(),
   sellerLossBps: z.number().int().min(0, "sellerLossBps must be >= 0").max(10000, "sellerLossBps must be <= 10000").optional(),
   description: z.string().optional(),
