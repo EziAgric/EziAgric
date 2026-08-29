@@ -30,16 +30,24 @@ export interface ExportJobData {
   filters?: Record<string, unknown>;
 }
 
+const defaultJobOptions = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 2000 },
+};
+
 export const webhookQueue = new Queue<WebhookJobData>('webhooks', {
   connection: createQueueConnection(),
+  defaultJobOptions,
 });
 
 export const notificationQueue = new Queue<NotificationJobData>('notifications', {
   connection: createQueueConnection(),
+  defaultJobOptions,
 });
 
 export const exportQueue = new Queue<ExportJobData>('exports', {
   connection: createQueueConnection(),
+  defaultJobOptions,
 });
 
 export interface TradeExpirySweepJobData {
@@ -48,6 +56,7 @@ export interface TradeExpirySweepJobData {
 
 export const tradeExpiryQueue = new Queue<TradeExpirySweepJobData>('trade-expiry', {
   connection: createQueueConnection(),
+  defaultJobOptions,
 });
 
 export interface ReconciliationSweepJobData {
@@ -56,4 +65,5 @@ export interface ReconciliationSweepJobData {
 
 export const reconciliationQueue = new Queue<ReconciliationSweepJobData>('reconciliation', {
   connection: createQueueConnection(),
+  defaultJobOptions,
 });

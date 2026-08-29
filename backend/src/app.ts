@@ -43,6 +43,7 @@ import { createAdminContractRouter } from "./routes/admin.contract.routes";
 import { createAdminAuthRouter } from "./routes/admin.auth.routes";
 import { createAdminStreamsRouter } from "./routes/admin.streams.routes";
 import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes";
+import { createAdminDlqRouter } from "./routes/admin.dlq.routes";
 import { webhooksRoutes } from "./routes/webhooks.routes";
 import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
@@ -196,6 +197,9 @@ export function createApp(): express.Application {
 
   // Admin stream management: POST /api/admin/streams/:id/clawback/preview, POST /api/admin/streams/:id/suspend, POST /api/admin/streams/:id/resume
   app.use("/api", adminFeatureGate, csrfProtection, createAdminStreamsRouter());
+
+  // Admin dead-letter queue inspection/replay: GET /api/admin/dlq/:queue, POST /api/admin/dlq/:queue/:jobId/replay
+  app.use(adminFeatureGate, csrfProtection, createAdminDlqRouter());
 
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);

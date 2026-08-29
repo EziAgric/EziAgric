@@ -127,6 +127,8 @@ model Trade {
   @@index([buyerAddress])
   @@index([sellerAddress])
   @@index([status])
+  @@index([buyerAddress, status, createdAt])
+  @@index([sellerAddress, status, createdAt])
 }
 
 /// TradeTemplate stores a user's reusable trade terms. The buyer is always the
@@ -250,6 +252,7 @@ model TradeEvidence {
   trade Trade @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
 
   @@index([tradeId])
+  @@index([tradeId, createdAt])
   @@index([cid])
 }
 
@@ -495,6 +498,7 @@ model AdminActionAudit {
 
   @@index([action, createdAt])
   @@index([actorAddress])
+  @@index([createdAt])
 }
 
 /// EscrowReleaseMilestone represents one pre-defined partial release point.
