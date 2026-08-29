@@ -26,7 +26,7 @@ describe('Trades API Pact Consumer Tests', () => {
           },
           body: {
             sellerAddress: 'GA4T33YK6H6D5E7ZQY5W3J2L7F8K9B0N1M2P3Q4R5S6T7U8V9W0X1Y2Z3',
-            amountCngn: '100.00',
+            amountUsdc: '100.00',
             buyerLossBps: 5000,
             sellerLossBps: 5000,
           },
@@ -52,7 +52,7 @@ describe('Trades API Pact Consumer Tests', () => {
 
         const result = await tradesApi.create(mockToken, {
           sellerAddress: 'GA4T33YK6H6D5E7ZQY5W3J2L7F8K9B0N1M2P3Q4R5S6T7U8V9W0X1Y2Z3',
-          amountCngn: '100.00',
+          amountUsdc: '100.00',
           buyerLossBps: 5000,
           sellerLossBps: 5000,
         });
@@ -260,7 +260,7 @@ describe('Trades API Pact Consumer Tests', () => {
             tradeId: '4294967297',
             buyerAddress: like('GDNM7WSJ7VIUVK2TSZ2OQES5XR2663TZEIBFXRDT56B5IRLHERVWSXMU'),
             sellerAddress: like('GA4T33YK6H6D5E7ZQY5W3J2L7F8K9B0N1M2P3Q4R5S6T7U8V9W0X1Y2Z3'),
-            amountCngn: '100.00',
+            amountUsdc: '100.00',
             buyerLossBps: 5000,
             sellerLossBps: 5000,
             status: 'CREATED',
@@ -309,7 +309,7 @@ describe('Trades API Pact Consumer Tests', () => {
               tradeId: '4294967297',
               buyerAddress: like('GDNM7WSJ7VIUVK2TSZ2OQES5XR2663TZEIBFXRDT56B5IRLHERVWSXMU'),
               sellerAddress: like('GA4T33YK6H6D5E7ZQY5W3J2L7F8K9B0N1M2P3Q4R5S6T7U8V9W0X1Y2Z3'),
-              amountCngn: '100.00',
+              amountUsdc: '100.00',
               buyerLossBps: 5000,
               sellerLossBps: 5000,
               status: 'CREATED',

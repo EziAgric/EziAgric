@@ -6,6 +6,7 @@ import { signTransaction } from "@stellar/freighter-api";
 import { useTrade } from "../TradeContext";
 import { useAuth } from "@/hooks/useAuth";
 import { api, apiConfig, ApiError } from "@/lib/api";
+import { createTradeInputSchema, fieldErrors } from "@/lib/domain-schemas/trade";
 import Link from "next/link";
 import { LegalDisclaimerModal } from "@/components/ui/LegalDisclaimerModal";
 
@@ -37,7 +38,7 @@ export default function Step3Review() {
 
   const total = !isNaN(rawAmount) && rawAmount > 0 ? rawAmount.toLocaleString("en-NG") : "—";
 
-  const amountCngn = !isNaN(rawAmount) && rawAmount > 0 ? rawAmount.toFixed(7) : "0";
+  const amountUsdc = !isNaN(rawAmount) && rawAmount > 0 ? rawAmount.toFixed(7) : "0";
 
   const isAddressValid =
     data.sellerAddress !== "" &&
@@ -70,17 +71,27 @@ export default function Step3Review() {
       return;
     }
 
+    // Validate against the shared domain schema — same rules the backend
+    // enforces — so we never fire a request the server will reject with a 400.
+    const payload = {
+      sellerAddress: data.sellerAddress.trim(),
+      amountUsdc,
+      buyerLossBps,
+      sellerLossBps,
+    };
+    const parsed = createTradeInputSchema.safeParse(payload);
+    if (!parsed.success) {
+      const errs = fieldErrors(parsed.error);
+      setError(errs._form ?? Object.values(errs)[0] ?? "Trade details are invalid.");
+      return;
+    }
+
     submittingRef.current = true;
     setLoading(true);
     setError(null);
 
     try {
-      const createResponse = await api.trades.create(token, {
-        sellerAddress: data.sellerAddress,
-        amountCngn,
-        buyerLossBps,
-        sellerLossBps,
-      });
+      const createResponse = await api.trades.create(token, payload);
 
       setTradeId(createResponse.tradeId);
 
@@ -203,7 +214,7 @@ export default function Step3Review() {
         <ReviewRow label="Quantity" value={`${data.quantity} ${data.unit}`} />
         <ReviewRow label="Price per unit" value={`${data.currency} ${data.pricePerUnit}`} />
         <ReviewRow label="Total Value" value={`${data.currency} ${total}`} />
-        <ReviewRow label="USDC Amount" value={`${amountCngn} cNGN`} />
+        <ReviewRow label="USDC Amount" value={`${amountUsdc} cNGN`} />
         <ReviewRow label="Seller Address" value={data.sellerAddress} />
         <ReviewRow label="Loss Ratio" value={`Buyer ${data.buyerRatio}% / Seller ${data.sellerRatio}%`} />
         <ReviewRow label="Delivery Window" value={`${data.deliveryDays} days`} />
@@ -212,7 +223,7 @@ export default function Step3Review() {
 
       <div className="rounded-lg bg-gold-muted border border-gold/20 px-4 py-3 text-sm text-gold">
         By submitting, you authorize a Stellar transaction to create an escrow trade,
-        locking {amountCngn} cNGN in the Amana escrow contract.
+        locking {amountUsdc} cNGN in the Amana escrow contract.
       </div>
 
       {error && (
@@ -224,7 +235,7 @@ export default function Step3Review() {
         onAccept={handleDisclaimerAccept}
         onDecline={() => setShowDisclaimer(false)}
         lossRatio={{ buyer: data.buyerRatio * 100, seller: data.sellerRatio * 100 }}
-        tradeValueCngn={amountCngn}
+        tradeValueCngn={amountUsdc}
       />
 
       <div className="flex gap-3">

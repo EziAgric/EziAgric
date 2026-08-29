@@ -1,29 +1,28 @@
 import { z } from "zod";
 import { TradeStatus } from "@prisma/client";
 import { StrKey } from "@stellar/stellar-sdk";
+import { createTradeInputSchema } from "./domain/trade";
 
-const stellarPublicKey = (fieldName: string) =>
-  z.string().refine((v: string) => StrKey.isValidEd25519PublicKey(v), {
-    message: `Invalid Stellar public key for ${fieldName}`,
-  });
-
-export const createTradeSchema = z.object({
-  buyerAddress: stellarPublicKey("buyerAddress").optional(),
-  sellerAddress: stellarPublicKey("sellerAddress"),
-  amountUsdc: z.union([
-    z.string().regex(/^\d+(\.\d{1,7})?$/, "Invalid amount format"),
-    z.number().positive("Amount must be positive").transform(String),
-  ]),
-  buyerLossBps: z.number().int().min(0, "buyerLossBps must be >= 0").max(10000, "buyerLossBps must be <= 10000").optional(),
-  sellerLossBps: z.number().int().min(0, "sellerLossBps must be >= 0").max(10000, "sellerLossBps must be <= 10000").optional(),
-  description: z.string().optional(),
-}).superRefine((data: Record<string, unknown>, ctx: any) => {
-  const buyer = (data.buyerLossBps as number) ?? 5000;
-  const seller = (data.sellerLossBps as number) ?? 5000;
-  if (buyer + seller !== 10000) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "sum of buyerLossBps and sellerLossBps must equal 10000", path: ["buyerLossBps"] });
-  }
-});
+/**
+ * Trade creation validation is the CANONICAL shared domain schema
+ * (`./domain/trade`, mirrored in `frontend/src/lib/domain-schemas/trade.ts`),
+ * plus a backend-only checksum-accurate Stellar key check that the
+ * framework-free shared schema can't express.
+ */
+export const createTradeSchema = createTradeInputSchema.superRefine(
+  (data: { buyerAddress?: string; sellerAddress?: string }, ctx: z.RefinementCtx) => {
+    for (const field of ["buyerAddress", "sellerAddress"] as const) {
+      const value = data[field];
+      if (value !== undefined && !StrKey.isValidEd25519PublicKey(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid Stellar public key for ${field}`,
+          path: [field],
+        });
+      }
+    }
+  },
+);
 
 export const tradeIdParamSchema = z.object({
   id: z.string().min(1, "Trade ID is required"),

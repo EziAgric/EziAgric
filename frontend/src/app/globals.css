@@ -33,6 +33,17 @@ body {
   }
 }
 
+/* Skeleton resting pulse — opacity only, so it never causes layout shift. */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 @keyframes slide-up {
   from {
     transform: translateY(100%);
