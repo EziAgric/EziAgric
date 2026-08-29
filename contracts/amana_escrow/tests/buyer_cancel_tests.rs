@@ -1,78 +1,33 @@
 extern crate std;
 
-use amana_escrow::{EscrowContract, EscrowContractClient, TradeStatus};
+use amana_escrow::{TradeStatus, test_fixture::AdminSignerFixture};
 use soroban_sdk::{
-    Address, Env, IntoVal, TryIntoVal, Val, symbol_short,
-    testutils::{Address as _, Events as _},
-    token,
+    Env, IntoVal, TryIntoVal, Val, symbol_short,
+    testutils::Events as _,
     xdr::ContractEventBody,
 };
 
-struct Harness {
-    env: Env,
-    contract_id: Address,
-    usdc_id: Address,
-    buyer: Address,
-    seller: Address,
-    stranger: Address,
-}
+type Harness = AdminSignerFixture;
 
-impl Harness {
-    fn new() -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let buyer = Address::generate(&env);
-        let seller = Address::generate(&env);
-        let treasury = Address::generate(&env);
-        let stranger = Address::generate(&env);
-        let usdc_id = env
-            .register_stellar_asset_contract_v2(admin.clone())
-            .address();
-        let contract_id = env.register(EscrowContract, ());
-        let client = EscrowContractClient::new(&env, &contract_id);
-        client.initialize(&admin, &usdc_id, &treasury, &100u32, &usdc_id);
-
-        Self {
-            env,
-            contract_id,
-            usdc_id,
-            buyer,
-            seller,
-            stranger,
-        }
-    }
-
-    fn client(&self) -> EscrowContractClient<'_> {
-        EscrowContractClient::new(&self.env, &self.contract_id)
-    }
-
-    fn create_trade(&self) -> u64 {
-        self.client().create_trade(
-            &self.buyer,
-            &self.seller,
-            &1_000i128,
-            &5000u32,
-            &5000u32,
-            &None,
-        )
-    }
-
-    fn mint(&self, to: &Address, amount: i128) {
-        token::StellarAssetClient::new(&self.env, &self.usdc_id).mint(to, &amount);
-    }
+fn create_trade(h: &Harness) -> u64 {
+    h.client().create_trade(
+        &h.buyer,
+        &h.seller,
+        &1_000i128,
+        &5000u32,
+        &5000u32,
+        &None,
+    )
 }
 
 #[test]
 fn cancel_by_buyer_cancels_created_trade_and_emits_event() {
     let h = Harness::new();
-    let trade_id = h.create_trade();
+    let trade_id = create_trade(&h);
 
     h.client().cancel_by_buyer(&trade_id);
 
-    let trade = h.client().get_trade(&trade_id);
-    assert!(matches!(trade.status, TradeStatus::Cancelled));
-
+    // Read events before any further host invoke (testutils keeps last-invoke events).
     let all_events = h.env.events().all();
     let events = all_events.events();
     let event = events.last().expect("cancel event should be emitted");
@@ -90,13 +45,16 @@ fn cancel_by_buyer_cancels_created_trade_and_emits_event() {
             }
         }
     }
+
+    let trade = h.client().get_trade(&trade_id);
+    assert!(matches!(trade.status, TradeStatus::Cancelled));
 }
 
 #[test]
 #[should_panic(expected = "Trade must be in Created status")]
 fn cancel_by_buyer_rejects_funded_trade() {
     let h = Harness::new();
-    let trade_id = h.create_trade();
+    let trade_id = create_trade(&h);
     h.mint(&h.buyer, 1_000);
     h.client().deposit(&trade_id);
 
@@ -107,7 +65,7 @@ fn cancel_by_buyer_rejects_funded_trade() {
 #[should_panic]
 fn cancel_by_buyer_rejects_non_buyer_auth() {
     let h = Harness::new();
-    let trade_id = h.create_trade();
+    let trade_id = create_trade(&h);
 
     h.client()
         .mock_auths(&[soroban_sdk::testutils::MockAuth {

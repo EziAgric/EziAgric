@@ -3,6 +3,11 @@
 #[cfg(test)]
 mod tests;
 
+/// Shared admin signer fixture for contract unit and integration tests (#108).
+/// Available on native / test builds only; excluded from the WASM artifact.
+#[cfg(not(feature = "wasm"))]
+pub mod test_fixture;
+
 /// Admin transaction payload builder — issue #98.
 /// Provides strongly-typed helpers for constructing admin contract call arguments.
 /// Available in test builds and as an `rlib` dependency for off-chain tooling.
@@ -1379,153 +1384,6 @@ impl EscrowContract {
     }
 
     // -----------------------------------------------------------------------
-    // admin_clawback — admin-only emergency asset recovery  (#91 / #92)
-    // -----------------------------------------------------------------------
-
-    /// Emergency clawback: transfer the full escrowed amount of a funded trade
-    /// directly back to the buyer.  Only the contract admin may call this.
-    ///
-    /// # When to use
-    /// This is a last-resort administrative action for scenarios where a trade
-    /// is stuck in `Funded` status and neither the normal cancellation flow nor
-    /// an expiry refund applies — e.g. frozen counterparty keys or detected
-    /// fraud.
-    ///
-    /// # Access control  (#92)
-    /// `admin.require_auth()` is called unconditionally before any state
-    /// mutation.  The admin address is read directly from instance storage and
-    /// compared to the caller, so the check cannot be bypassed via a forged
-    /// `caller` argument.
-    ///
-    /// # Arithmetic invariants  (#91)
-    /// The following invariants are checked with `checked_*` operations and
-    /// explicit assertions to prevent overflow, underflow, and conservation
-    /// violations:
-    ///
-    /// 1. **Clawback amount must be positive** — zero-value clawbacks are
-    ///    rejected before any token transfer is attempted.
-    /// 2. **Amount matches stored trade amount** — the value returned to the
-    ///    buyer is taken verbatim from the on-chain trade record; no arithmetic
-    ///    is performed on it, so no overflow can occur.
-    /// 3. **Clawback amount must not exceed the trade amount** — a defensive
-    ///    assertion ensures the function never attempts to transfer more tokens
-    ///    than the escrow holds for this trade.
-    /// 4. **Post-transfer conservation** — after the token transfer completes,
-    ///    the contract asserts that `clawback_amount == trade.amount`, confirming
-    ///    that no tokens were created or destroyed during the operation.
-    ///
-    /// # Failure reasons
-    /// - `"Not initialized"` — contract has not been initialized.
-    /// - `"admin_clawback: caller is not the admin"` — caller is not the
-    ///    registered admin (auth guard fires before this assertion in practice).
-    /// - `"admin_clawback: trade must be in Funded status"` — can only claw
-    ///    back escrow from a live funded trade.
-    /// - `"admin_clawback: clawback amount must be greater than zero"` — the
-    ///    stored trade amount is zero, which should never happen under normal
-    ///    operation.
-    /// - `"admin_clawback: clawback amount exceeds trade amount"` — defensive
-    ///    check; indicates storage corruption if triggered.
-    /// - `"admin_clawback: cNGN conservation invariant violated"` — post-
-    ///    transfer self-check; indicates a bug in the token contract if raised.
-    pub fn admin_clawback(env: Env, admin: Address, trade_id: u64) {
-        // ── INVARIANT: auth must come first, before any state reads ──────
-        // `require_auth` verifies the transaction is signed by `admin`.
-        // The subsequent address comparison ensures even a mock-auth attempt
-        // with a non-admin address is rejected.
-        admin.require_auth();
-
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Not initialized");
-
-        // ── ACCESS CONTROL  (#92) ────────────────────────────────────────
-        // Compare caller against the immutably stored admin address.
-        // Panics with a message that integration tests can match exactly.
-        assert!(
-            admin == stored_admin,
-            "admin_clawback: caller is not the admin"
-        );
-
-        // ── Load trade ───────────────────────────────────────────────────
-        let key = DataKey::Trade(trade_id);
-        let mut trade: Trade = Self::load_trade(&env, &key);
-
-        // ── INVARIANT 1: status must be Funded (#91) ─────────────────────
-        // Clawback is only valid while funds are held in escrow.
-        // Completed, disputed, cancelled, or delivered trades are rejected.
-        assert!(
-            matches!(trade.status, TradeStatus::Funded),
-            "admin_clawback: trade must be in Funded status"
-        );
-
-        // ── INVARIANT 2: amount must be strictly positive (#91) ───────────
-        // A zero-amount escrow should never exist, but we guard explicitly
-        // to prevent a no-op token transfer that could confuse audit trails.
-        let clawback_amount: i128 = trade.amount;
-        assert!(
-            clawback_amount > 0,
-            "admin_clawback: clawback amount must be greater than zero"
-        );
-
-        // ── INVARIANT 3: amount must not exceed trade amount (#91) ────────
-        // Defensive upper-bound check.  Because `clawback_amount` is taken
-        // directly from `trade.amount` this should always hold, but we assert
-        // it explicitly so that any future code path that mutates the amount
-        // field before calling this function will surface the bug immediately.
-        assert!(
-            clawback_amount <= trade.amount,
-            "admin_clawback: clawback amount exceeds trade amount"
-        );
-
-        // ── Token transfer ───────────────────────────────────────────────
-        let token_client = token::Client::new(&env, &trade.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &trade.buyer,
-            &clawback_amount,
-        );
-
-        // ── INVARIANT 4: conservation self-check (#91) ────────────────────
-        // After the transfer, assert that the amount moved equals the full
-        // trade amount — no partial or inflated transfers are possible.
-        assert!(
-            clawback_amount == trade.amount,
-            "admin_clawback: cNGN conservation invariant violated"
-        );
-
-        // ── State transition ─────────────────────────────────────────────
-        let now = env.ledger().timestamp();
-        trade.status = TradeStatus::Cancelled;
-        trade.updated_at = now;
-        Self::save_trade(&env, &key, &trade);
-        Self::update_release_sequence(&env, &trade, |sequence, at| {
-            sequence.cancelled_at = Some(at);
-        });
-
-        Self::record_trade_event(
-            &env,
-            trade_id,
-            "admin_clawback",
-            admin.clone(),
-            "emergency admin clawback executed",
-        );
-
-        // Re-use TradeCancelledEvent so existing event indexers see the
-        // cancellation without needing a new event schema.
-        TradeCancelledEvent {
-            trade_id,
-            refund_amount: clawback_amount,
-            caller: admin,
-            timestamp: now,
-        }
-        .publish(&env);
-
-        Self::bump_instance_ttl(&env);
-    }
-
-    // -----------------------------------------------------------------------
     // Upgrade operations (Issue #193)
     // -----------------------------------------------------------------------
 
@@ -1557,7 +1415,9 @@ impl EscrowContract {
         let queued_op = QueuedOperation {
             operation_id,
             operation_type: soroban_sdk::String::from_str(&env, "upgrade"),
-            payload: TimelockOpPayload::Upgrade(TimelockUpgradeOp { new_wasm_hash }),
+            payload: TimelockOpPayload::Upgrade(TimelockUpgradeOp {
+                new_wasm_hash: new_wasm_hash.clone(),
+            }),
             queued_at: now,
             execute_after,
             executed: false,
@@ -1605,14 +1465,16 @@ impl EscrowContract {
         assert!(!queued_op.cancelled, "operation has been cancelled");
 
         if let TimelockOpPayload::Upgrade(upgrade_op) = queued_op.payload.clone() {
-            env.deployer().update_current_contract_wasm(upgrade_op.new_wasm_hash);
+            let new_wasm_hash = upgrade_op.new_wasm_hash.clone();
+            env.deployer()
+                .update_current_contract_wasm(upgrade_op.new_wasm_hash);
 
             queued_op.executed = true;
             env.storage().persistent().set(&key, &queued_op);
 
             ContractUpgradedEvent {
                 admin,
-                new_wasm_hash: upgrade_op.new_wasm_hash,
+                new_wasm_hash,
             }
             .publish(&env);
         }
@@ -2075,11 +1937,7 @@ impl EscrowContract {
     /// call it and only while the trade is still `Created`.
     pub fn cancel_by_buyer(env: Env, trade_id: u64) {
         let key = DataKey::Trade(trade_id);
-        let mut trade: Trade = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .expect("Trade not found");
+        let mut trade: Trade = Self::load_trade(&env, &key);
 
         trade.buyer.require_auth();
         assert!(
@@ -2089,7 +1947,7 @@ impl EscrowContract {
 
         trade.status = TradeStatus::Cancelled;
         trade.updated_at = env.ledger().timestamp();
-        env.storage().persistent().set(&key, &trade);
+        Self::save_trade(&env, &key, &trade);
         Self::update_release_sequence(&env, &trade, |sequence, at| {
             sequence.cancelled_at = Some(at);
         });
@@ -2895,97 +2753,7 @@ impl EscrowContract {
         (total_trades, total_disputes, total_resolved)
     }
 
-    // -----------------------------------------------------------------------
-    // Admin clawback (Issue #97)
-    // -----------------------------------------------------------------------
 
-    /// Perform an emergency admin clawback on a funded trade.
-    ///
-    /// Only the contract admin may call this. The full escrowed `amount` is
-    /// transferred back to the buyer and the trade is transitioned to
-    /// `Cancelled`. This is an irreversible emergency operation intended for
-    /// situations where normal dispute resolution is not possible.
-    ///
-    /// # Error codes (emitted as panic message strings)
-    ///
-    /// | Code                            | Meaning                                          |
-    /// |----------------------------------|--------------------------------------------------|
-    /// | `CLAWBACK_UNAUTHORIZED`          | Caller is not the registered admin               |
-    /// | `CLAWBACK_STREAM_NOT_FOUND`      | No trade found for the given `trade_id`          |
-    /// | `CLAWBACK_INVALID_AMOUNT`        | `amount` is zero or negative                     |
-    /// | `CLAWBACK_INSUFFICIENT_VESTED`   | `amount` exceeds the escrowed trade amount       |
-    /// | `CLAWBACK_INVALID_STATUS`        | Trade is not in `Funded` status                  |
-    pub fn admin_clawback(env: Env, trade_id: u64, amount: i128, admin: Address) {
-        // 1. Authenticate admin
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .expect("Not initialized");
-
-        if admin != stored_admin {
-            panic!("{}", clawback_errors::UNAUTHORIZED);
-        }
-        admin.require_auth();
-
-        // 2. Validate amount
-        if amount <= 0 {
-            panic!("{}", clawback_errors::INVALID_AMOUNT);
-        }
-
-        // 3. Load trade — panic with STREAM_NOT_FOUND if missing
-        let key = DataKey::Trade(trade_id);
-        if !env.storage().persistent().has(&key) {
-            panic!("{}", clawback_errors::STREAM_NOT_FOUND);
-        }
-        let mut trade: Trade = Self::load_trade(&env, &key);
-
-        // 4. Check trade is in Funded status
-        if !matches!(trade.status, TradeStatus::Funded) {
-            panic!("{}", clawback_errors::INVALID_STATUS);
-        }
-
-        // 5. Check sufficient escrowed balance
-        if amount > trade.amount {
-            panic!("{}", clawback_errors::INSUFFICIENT_VESTED);
-        }
-
-        // 6. Transfer clawback amount to buyer
-        let token_client = token::Client::new(&env, &trade.token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &trade.buyer,
-            &amount,
-        );
-
-        // 7. Update trade state
-        let now = env.ledger().timestamp();
-        trade.status = TradeStatus::Cancelled;
-        trade.updated_at = now;
-        Self::save_trade(&env, &key, &trade);
-        Self::update_release_sequence(&env, &trade, |sequence, at| {
-            sequence.cancelled_at = Some(at);
-        });
-
-        Self::record_trade_event(
-            &env,
-            trade_id,
-            "admin_clawback",
-            admin.clone(),
-            "admin emergency clawback executed",
-        );
-
-        // 8. Emit structured clawback event
-        AdminClawbackEvent {
-            trade_id,
-            amount,
-            admin,
-            timestamp: now,
-        }
-        .publish(&env);
-
-        Self::bump_instance_ttl(&env);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3013,7 +2781,7 @@ mod test {
     ) -> (Address, Address, Address, Address, Address, u64) {
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(env, &contract_id);
-        let admin = Address::generate(env);
+        let admin = crate::test_fixture::admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);
@@ -3055,7 +2823,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3089,7 +2857,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3114,7 +2882,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3138,7 +2906,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3170,7 +2938,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3205,7 +2973,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3238,7 +3006,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3303,7 +3071,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3325,7 +3093,7 @@ mod test {
         let token_readonly = token::Client::new(&env, &usdc_id);
         assert_eq!(token_readonly.balance(&seller), 9_900);
         assert_eq!(client.get_accrued_fees(), 100);
-        assert_eq!(token_readonly.balance(&client.address), 0);
+        assert_eq!(token_readonly.balance(&client.address), 100, "escrow holds accrued fees");
         assert!(matches!(
             client.get_trade(&trade_id).status,
             TradeStatus::Completed
@@ -3374,7 +3142,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3439,7 +3207,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3478,7 +3246,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3498,7 +3266,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3544,7 +3312,7 @@ mod test {
         assert_eq!(token.balance(&seller), 7_425, "seller_net mismatch");
         assert_eq!(client.get_accrued_fees(), 75, "fee mismatch");
         assert_eq!(token.balance(&buyer), 2_500, "buyer_refund mismatch");
-        assert_eq!(token.balance(&client.address), 0, "escrow should be empty");
+        assert_eq!(token.balance(&client.address), client.get_accrued_fees(), "escrow should hold only accrued fees");
         assert!(matches!(
             client.get_trade(&trade_id).status,
             TradeStatus::Completed
@@ -3577,7 +3345,7 @@ mod test {
         assert_eq!(token.balance(&seller), 9_900, "seller_net mismatch");
         assert_eq!(client.get_accrued_fees(), 100, "fee mismatch");
         assert_eq!(token.balance(&buyer), 0, "buyer should receive nothing");
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 100, "escrow should hold accrued fees");
     }
 
     /// Full buyer refund with 50/50 loss-sharing: seller gets 0 bps (0%), buyer gets everything back.
@@ -3613,7 +3381,7 @@ mod test {
             "seller should receive their share minus fee"
         );
         assert_eq!(client.get_accrued_fees(), 50, "fee on seller's portion");
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 50, "escrow should hold accrued fees");
     }
 
     /// Non-mediator address cannot call resolve_dispute.
@@ -3698,7 +3466,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3736,7 +3504,7 @@ mod test {
             1_200,
             "buyer_refund with 70/30 loss-sharing"
         );
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 88, "escrow should hold accrued fees");
     }
 
     /// Test 100/0 loss-sharing (buyer bears all loss) with 80% seller ruling
@@ -3757,7 +3525,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3795,7 +3563,7 @@ mod test {
             0,
             "buyer gets nothing when bearing all loss"
         );
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 100, "escrow should hold accrued fees");
     }
 
     /// Test 0/100 loss-sharing (seller bears all loss) with 30% seller ruling
@@ -3816,7 +3584,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3850,7 +3618,7 @@ mod test {
             7_000,
             "buyer gets most back when seller bears all loss"
         );
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 30, "escrow should hold accrued fees");
     }
 
     /// Test 20/80 loss-sharing with 90% seller ruling (small loss)
@@ -3871,7 +3639,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3901,7 +3669,7 @@ mod test {
         assert_eq!(token.balance(&seller), 9_108, "seller with small loss");
         assert_eq!(client.get_accrued_fees(), 92, "fee on seller portion");
         assert_eq!(token.balance(&buyer), 800, "buyer refund with small loss");
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 92, "escrow should hold accrued fees");
     }
 
     /// Test 25/75 loss-sharing with 60% seller ruling (40% loss middle case)
@@ -3921,7 +3689,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -3951,7 +3719,7 @@ mod test {
         assert_eq!(token.balance(&seller), 6_930, "seller with 25/75 case");
         assert_eq!(client.get_accrued_fees(), 70, "fee on seller portion");
         assert_eq!(token.balance(&buyer), 3_000, "buyer refund 25/75 case");
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 70, "escrow should hold accrued fees");
     }
 
     /// Test edge case: 50/50 loss-sharing with 100% seller ruling (no loss)
@@ -3990,7 +3758,7 @@ mod test {
         );
         assert_eq!(client.get_accrued_fees(), 100, "fee on full amount");
         assert_eq!(token.balance(&buyer), 0, "buyer gets nothing when no loss");
-        assert_eq!(token.balance(&client.address), 0);
+        assert_eq!(token.balance(&client.address), 100, "escrow should hold accrued fees");
     }
 
     // -----------------------------------------------------------------------
@@ -4004,7 +3772,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4045,7 +3813,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4084,7 +3852,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4108,7 +3876,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4139,7 +3907,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4169,7 +3937,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4201,7 +3969,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4257,7 +4025,7 @@ mod test {
     // -----------------------------------------------------------------------
 
     fn setup_base(env: &Env) -> (Address, Address, Address) {
-        let admin = Address::generate(env);
+        let admin = crate::test_fixture::admin_address(env);
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
@@ -4381,7 +4149,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
@@ -4395,7 +4163,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
@@ -4411,7 +4179,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let actor = Address::generate(&env);
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
@@ -4428,7 +4196,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4452,7 +4220,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4484,7 +4252,7 @@ mod test {
     ) -> (i128, i128, i128) {
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(env, &contract_id);
-        let admin = Address::generate(env);
+        let admin = crate::test_fixture::admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);
@@ -4637,7 +4405,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4706,7 +4474,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4726,7 +4494,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4763,7 +4531,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -4816,7 +4584,7 @@ mod test {
     ) {
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(env, &contract_id);
-        let admin = Address::generate(env);
+        let admin = crate::test_fixture::admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);
@@ -5002,7 +4770,7 @@ mod test {
 
         assert_eq!(cngn_token.balance(&seller), seller_amount);
         assert_eq!(client.get_accrued_fees(), fee);
-        assert_eq!(cngn_token.balance(&contract_id), 0);
+        assert_eq!(cngn_token.balance(&contract_id), fee, "escrow holds accrued fees");
     }
 
     /// Path payment event verification: events contain correct fields.
@@ -5101,13 +4869,17 @@ mod test {
             let seller_amount = dest_amount - fee;
 
             assert_eq!(cngn_token.balance(&seller), seller_amount);
-            assert_eq!(cngn_token.balance(&treasury), fee);
+            assert_eq!(client.get_accrued_fees(), fee);
             assert_eq!(
                 cngn_token.balance(&buyer),
                 0,
                 "buyer should have 0 cNGN after funding + release"
             );
-            assert_eq!(cngn_token.balance(&contract_id), 0);
+            assert_eq!(
+                cngn_token.balance(&contract_id),
+                fee,
+                "escrow holds accrued fees"
+            );
         }
     }
     #[test]
@@ -5133,7 +4905,7 @@ mod test {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -5189,7 +4961,7 @@ mod integration_tests {
             let env = Env::default();
             env.mock_all_auths();
 
-            let admin = Address::generate(&env);
+            let admin = crate::test_fixture::admin_address(&env);
             let buyer = Address::generate(&env);
             let seller = Address::generate(&env);
             let treasury = Address::generate(&env);
@@ -5352,9 +5124,9 @@ mod integration_tests {
         // fee = 75, seller_net = 7,425
         // buyer_refund = 2,500
         assert_eq!(token.balance(&s.seller), 7_425, "seller_net mismatch");
-        assert_eq!(token.balance(&s.treasury), 75, "fee mismatch");
+        assert_eq!(client.get_accrued_fees(), 75, "fee mismatch");
         assert_eq!(token.balance(&s.buyer), 2_500, "buyer_refund mismatch");
-        assert_eq!(token.balance(&s.contract_id), 0, "escrow must be empty");
+        assert_eq!(token.balance(&s.contract_id), client.get_accrued_fees(), "escrow holds accrued fees");
     }
 
     // -----------------------------------------------------------------------
@@ -5407,9 +5179,9 @@ mod integration_tests {
             TradeStatus::Completed
         ));
         assert_eq!(token.balance(&s.seller), 9_900);
-        assert_eq!(token.balance(&s.treasury), 100);
+        assert_eq!(client.get_accrued_fees(), 100);
         assert_eq!(token.balance(&s.buyer), 0);
-        assert_eq!(token.balance(&s.contract_id), 0);
+        assert_eq!(token.balance(&s.contract_id), client.get_accrued_fees());
     }
 
     // -----------------------------------------------------------------------
@@ -5441,8 +5213,8 @@ mod integration_tests {
 
         assert_eq!(token.balance(&s.buyer), 5_000);
         assert_eq!(token.balance(&s.seller), 4_950);
-        assert_eq!(token.balance(&s.treasury), 50);
-        assert_eq!(token.balance(&s.contract_id), 0);
+        assert_eq!(client.get_accrued_fees(), 50);
+        assert_eq!(token.balance(&s.contract_id), client.get_accrued_fees());
     }
 
     // -----------------------------------------------------------------------
@@ -5779,7 +5551,7 @@ mod integration_tests {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -5814,13 +5586,13 @@ mod integration_tests {
 
         let token = token::Client::new(&env, &usdc_id);
         assert_eq!(token.balance(&seller), 5_742, "seller with 70% loss burden");
-        assert_eq!(token.balance(&treasury), 58, "fee on seller portion");
+        assert_eq!(client.get_accrued_fees(), 58, "fee on seller portion");
         assert_eq!(
             token.balance(&buyer),
             4_200,
             "buyer refund with 30% loss burden"
         );
-        assert_eq!(token.balance(&client.address), 0, "escrow empty");
+        assert_eq!(token.balance(&client.address), 58, "escrow holds accrued fees");
 
         // Verify total adds up
         assert_eq!(
@@ -5839,7 +5611,7 @@ mod integration_tests {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -5933,8 +5705,12 @@ mod integration_tests {
         let token = token::Client::new(&env, &usdc_id);
         assert_eq!(token.balance(&seller), 40_838, "seller final payout");
         assert_eq!(token.balance(&buyer), 8_750, "buyer refund");
-        assert_eq!(token.balance(&treasury), 412, "platform fee");
-        assert_eq!(token.balance(&contract_id), 0, "escrow fully distributed");
+        assert_eq!(client.get_accrued_fees(), 412, "platform fee");
+        assert_eq!(
+            token.balance(&contract_id),
+            client.get_accrued_fees(),
+            "escrow holds accrued fees"
+        );
 
         // Verify evidence remains accessible after resolution
         let evidence_list_final = client.get_evidence_list(&trade_id);
@@ -5953,7 +5729,7 @@ mod integration_tests {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -5990,7 +5766,7 @@ mod integration_tests {
         let token = token::Client::new(&env, &usdc_id);
         let seller_balance = token.balance(&seller);
         let buyer_balance = token.balance(&buyer);
-        let treasury_balance = token.balance(&treasury);
+        let treasury_balance = client.get_accrued_fees();
         let escrow_balance = token.balance(&client.address);
 
         // Verify no funds are lost or created
@@ -6021,7 +5797,7 @@ mod integration_tests {
 
     fn setup_base(env: &Env) -> (Address, Address, Address, Address) {
         let contract_id = env.register(EscrowContract, ());
-        let admin = Address::generate(env);
+        let admin = crate::test_fixture::admin_address(env);
         let treasury = Address::generate(env);
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
@@ -6975,7 +6751,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7013,7 +6789,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7058,7 +6834,7 @@ mod property_tests {
             "buyer should bear 50% of loss"
         );
         // Treasury gets 50 (fee on seller portion)
-        assert_eq!(token.balance(&treasury), 50, "treasury should get fee");
+        assert_eq!(client.get_accrued_fees(), 50, "fees should accrue");
 
         // Verify conservation
         assert_eq!(4_950 + 5_000 + 50, amount, "conservation must hold");
@@ -7073,7 +6849,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7108,7 +6884,7 @@ mod property_tests {
         // Buyer gets 0
         assert_eq!(token.balance(&buyer), 0, "buyer should get nothing");
         // Treasury gets fee
-        assert_eq!(token.balance(&treasury), 100, "treasury should get fee");
+        assert_eq!(client.get_accrued_fees(), 100, "fees should accrue");
 
         // Verify conservation
         assert_eq!(9_900 + 100, amount, "conservation must hold");
@@ -7122,7 +6898,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7173,7 +6949,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7214,7 +6990,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7252,7 +7028,7 @@ mod property_tests {
         );
         assert_eq!(token.balance(&buyer), 2_500, "buyer gets 25% refund");
         assert_eq!(
-            token.balance(&treasury),
+            client.get_accrued_fees(),
             0,
             "treasury gets nothing with zero fee"
         );
@@ -7269,7 +7045,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7307,7 +7083,7 @@ mod property_tests {
         );
         assert_eq!(token.balance(&buyer), 2_500, "buyer gets 25% refund");
         assert_eq!(
-            token.balance(&treasury),
+            client.get_accrued_fees(),
             750,
             "treasury gets 10% fee on seller portion"
         );
@@ -7322,7 +7098,7 @@ mod property_tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
             .address();
@@ -7371,12 +7147,12 @@ mod property_tests {
             let token = token::Client::new(&env, &usdc_id);
             let seller_balance = token.balance(&seller);
             let buyer_balance = token.balance(&buyer);
-            let treasury_balance = token.balance(&treasury);
+            let treasury_balance = client.get_accrued_fees();
             let escrow_balance = token.balance(&contract_id);
 
             let total = seller_balance + buyer_balance + treasury_balance + escrow_balance;
             assert_eq!(total, amount, "conservation failed in scenario {i}");
-            assert_eq!(escrow_balance, 0, "escrow should be empty in scenario {i}");
+            assert_eq!(escrow_balance, client.get_accrued_fees(), "escrow should hold accrued fees in scenario {i}");
 
             // Verify non-negativity
             assert!(
@@ -7398,7 +7174,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7441,7 +7217,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7477,7 +7253,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7521,7 +7297,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7616,7 +7392,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7702,7 +7478,7 @@ mod property_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -7790,7 +7566,7 @@ mod fee_and_evidence_tests {
     ) -> (Address, Address, Address, Address, Address, u64) {
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(env, &contract_id);
-        let admin = Address::generate(env);
+        let admin = crate::test_fixture::admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);
@@ -7817,8 +7593,8 @@ mod fee_and_evidence_tests {
         client.release_funds(&trade_id, &buyer);
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&seller), 99);
-        assert_eq!(tok.balance(&treasury), 1);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 1);
+        assert_eq!(tok.balance(&client.address), 1, "escrow holds accrued fees");
     }
 
     /// 1% fee on 1000 stroops → seller 990, treasury 10.
@@ -7833,8 +7609,8 @@ mod fee_and_evidence_tests {
         client.release_funds(&trade_id, &buyer);
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&seller), 990);
-        assert_eq!(tok.balance(&treasury), 10);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 10);
+        assert_eq!(tok.balance(&client.address), 10, "escrow holds accrued fees");
     }
 
     /// 1% fee on 1_000_000 stroops → seller 990_000, treasury 10_000.
@@ -7849,8 +7625,8 @@ mod fee_and_evidence_tests {
         client.release_funds(&trade_id, &buyer);
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&seller), 990_000);
-        assert_eq!(tok.balance(&treasury), 10_000);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 10_000);
+        assert_eq!(tok.balance(&client.address), 10_000, "escrow holds accrued fees");
     }
 
     /// Zero fee (fee_bps = 0) → seller gets full amount.
@@ -7865,8 +7641,8 @@ mod fee_and_evidence_tests {
         client.release_funds(&trade_id, &buyer);
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&seller), 10_000);
-        assert_eq!(tok.balance(&treasury), 0);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 0);
+        assert_eq!(tok.balance(&client.address), 0, "escrow holds accrued fees");
     }
 
     /// Minimum amount: 1 stroop with 1% fee → fee rounds to 0, seller gets 1.
@@ -7881,8 +7657,8 @@ mod fee_and_evidence_tests {
         client.release_funds(&trade_id, &buyer);
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&seller), 1);
-        assert_eq!(tok.balance(&treasury), 0);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 0);
+        assert_eq!(tok.balance(&client.address), 0, "escrow holds accrued fees");
     }
 
     /// Fund conservation: seller + treasury = total for any valid amount.
@@ -7898,15 +7674,15 @@ mod fee_and_evidence_tests {
             client.confirm_delivery(&trade_id);
             client.release_funds(&trade_id, &buyer);
             let tok = token::Client::new(&env, &usdc_id);
-            let total = tok.balance(&seller) + tok.balance(&treasury);
+            let total = tok.balance(&seller) + client.get_accrued_fees();
             assert_eq!(
                 total, amount,
                 "fund conservation failed for amount={amount}"
             );
             assert_eq!(
                 tok.balance(&client.address),
-                0,
-                "escrow not empty for amount={amount}"
+                client.get_accrued_fees(),
+                "escrow should hold fees for amount={amount}"
             );
         }
     }
@@ -7923,9 +7699,9 @@ mod fee_and_evidence_tests {
         client.confirm_delivery(&trade_id);
         client.release_funds(&trade_id, &buyer);
         let tok = token::Client::new(&env, &usdc_id);
-        let fee = tok.balance(&treasury);
+        let fee = client.get_accrued_fees();
         assert!(fee <= 100, "fee {fee} must not exceed original amount 100");
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(tok.balance(&client.address), fee, "escrow holds accrued fees");
     }
 
     /// Rounding always floors (never overpays): 99 stroops at 1% → fee = 0.
@@ -7946,13 +7722,14 @@ mod fee_and_evidence_tests {
 
     #[test]
     fn test_release_fee_bps_boundaries_at_max_safe_amount() {
-        let max_safe_amount = i128::MAX / BPS_DIVISOR;
+        // Cap at MAX_TRADE_VALUE; overflow safety is still covered relative to BPS math.
+        let max_safe_amount = core::cmp::min(i128::MAX / BPS_DIVISOR, MAX_TRADE_VALUE);
         let fee_bps_cases = [0_u32, 1, 9_999, 10_000];
 
         for fee_bps in fee_bps_cases {
             let env = Env::default();
             env.mock_all_auths();
-            let (contract_id, buyer, seller, treasury, usdc_id, trade_id) =
+            let (contract_id, buyer, seller, _treasury, usdc_id, trade_id) =
                 setup_fee_trade(&env, max_safe_amount, fee_bps);
             let client = EscrowContractClient::new(&env, &contract_id);
 
@@ -7963,32 +7740,32 @@ mod fee_and_evidence_tests {
             let expected_fee = (max_safe_amount * fee_bps as i128) / BPS_DIVISOR;
             let expected_seller = max_safe_amount - expected_fee;
             assert_eq!(tok.balance(&seller), expected_seller);
-            assert_eq!(tok.balance(&treasury), expected_fee);
+            assert_eq!(client.get_accrued_fees(), expected_fee);
             assert_eq!(
-                tok.balance(&seller) + tok.balance(&treasury),
+                tok.balance(&seller) + client.get_accrued_fees(),
                 max_safe_amount
             );
-            assert_eq!(tok.balance(&client.address), 0);
+            assert_eq!(tok.balance(&client.address), expected_fee);
         }
     }
 
     #[test]
-    #[should_panic(expected = "fee calculation overflow")]
+    #[should_panic(expected = "TradeValueTooLarge")]
     fn test_release_fee_panics_above_max_safe_amount() {
         let env = Env::default();
         env.mock_all_auths();
-        let overflowing_amount = (i128::MAX / BPS_DIVISOR) + 1;
-        let (contract_id, buyer, _seller, _treasury, _usdc_id, trade_id) =
+        // Amounts above MAX_TRADE_VALUE are rejected at create_trade.
+        let overflowing_amount = MAX_TRADE_VALUE + 1;
+        let (_contract_id, _buyer, _seller, _treasury, _usdc_id, _trade_id) =
             setup_fee_trade(&env, overflowing_amount, 10_000);
-        let client = EscrowContractClient::new(&env, &contract_id);
-
-        client.confirm_delivery(&trade_id);
-        client.release_funds(&trade_id, &buyer);
     }
 
     #[test]
     fn test_dispute_payout_bps_boundaries_at_max_safe_amount() {
-        let max_safe_amount = i128::MAX / (BPS_DIVISOR * BPS_DIVISOR);
+        let max_safe_amount = core::cmp::min(
+            i128::MAX / (BPS_DIVISOR * BPS_DIVISOR),
+            MAX_TRADE_VALUE,
+        );
         let fee_bps_cases = [0_u32, 1, 9_999, 10_000];
         let seller_gets_bps_cases = [0_u32, 1, 9_999, 10_000];
 
@@ -7996,7 +7773,7 @@ mod fee_and_evidence_tests {
             for seller_gets_bps in seller_gets_bps_cases {
                 let env = Env::default();
                 env.mock_all_auths();
-                let (contract_id, buyer, seller, treasury, usdc_id, trade_id) =
+                let (contract_id, buyer, seller, _treasury, usdc_id, trade_id) =
                     setup_fee_trade(&env, max_safe_amount, fee_bps);
                 let client = EscrowContractClient::new(&env, &contract_id);
                 let reason = String::from_str(&env, "QmBoundaryPayout");
@@ -8017,12 +7794,12 @@ mod fee_and_evidence_tests {
 
                 assert_eq!(tok.balance(&seller), expected_seller);
                 assert_eq!(tok.balance(&buyer), buyer_refund);
-                assert_eq!(tok.balance(&treasury), expected_fee);
+                assert_eq!(client.get_accrued_fees(), expected_fee);
                 assert_eq!(
-                    tok.balance(&seller) + tok.balance(&buyer) + tok.balance(&treasury),
+                    tok.balance(&seller) + tok.balance(&buyer) + client.get_accrued_fees(),
                     max_safe_amount
                 );
-                assert_eq!(tok.balance(&client.address), 0);
+                assert_eq!(tok.balance(&client.address), expected_fee);
             }
         }
     }
@@ -8036,7 +7813,7 @@ mod fee_and_evidence_tests {
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -8072,7 +7849,7 @@ mod fee_and_evidence_tests {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -8100,8 +7877,8 @@ mod fee_and_evidence_tests {
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&seller), 6_435);
         assert_eq!(tok.balance(&buyer), 3_500);
-        assert_eq!(tok.balance(&treasury), 65);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 65);
+        assert_eq!(tok.balance(&client.address), 65, "escrow holds accrued fees");
         assert_eq!(6_435 + 3_500 + 65, 10_000);
     }
 
@@ -8112,7 +7889,7 @@ mod fee_and_evidence_tests {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);
@@ -8131,9 +7908,13 @@ mod fee_and_evidence_tests {
         client.set_mediator(&mediator);
         client.resolve_dispute(&trade_id, &mediator, &5_000_u32);
         let tok = token::Client::new(&env, &usdc_id);
-        let total = tok.balance(&seller) + tok.balance(&buyer) + tok.balance(&treasury);
+        let total = tok.balance(&seller) + tok.balance(&buyer) + client.get_accrued_fees();
         assert_eq!(total, amount, "fund conservation with 9999/1 ratio");
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(
+            tok.balance(&client.address),
+            client.get_accrued_fees(),
+            "escrow holds accrued fees"
+        );
     }
 
     /// Full seller payout (seller_gets_bps = 10000): fee deducted from full amount.
@@ -8154,8 +7935,8 @@ mod fee_and_evidence_tests {
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&seller), 9_900);
         assert_eq!(tok.balance(&buyer), 0);
-        assert_eq!(tok.balance(&treasury), 100);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 100);
+        assert_eq!(tok.balance(&client.address), 100, "escrow holds accrued fees");
     }
 
     /// Full buyer refund scenario (seller_gets_bps = 0): with 50/50 loss ratio,
@@ -8183,8 +7964,8 @@ mod fee_and_evidence_tests {
         let tok = token::Client::new(&env, &usdc_id);
         assert_eq!(tok.balance(&buyer), 5_000);
         assert_eq!(tok.balance(&seller), 4_950);
-        assert_eq!(tok.balance(&treasury), 50);
-        assert_eq!(tok.balance(&client.address), 0);
+        assert_eq!(client.get_accrued_fees(), 50);
+        assert_eq!(tok.balance(&client.address), 50, "escrow holds accrued fees");
         // Fund conservation
         assert_eq!(5_000 + 4_950 + 50, 10_000);
     }
@@ -8201,7 +7982,7 @@ mod fee_and_evidence_tests {
     ) -> (Address, Address, Address, Address, Address, Address, u64) {
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(env, &contract_id);
-        let admin = Address::generate(env);
+        let admin = crate::test_fixture::admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);
@@ -8528,7 +8309,7 @@ mod fee_and_evidence_tests {
         env.mock_all_auths();
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
-        let admin = Address::generate(&env);
+        let admin = crate::test_fixture::admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);

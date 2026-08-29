@@ -13,6 +13,12 @@ wasm = []
 [dependencies]
 soroban-sdk = "25.3.0"
 
+# Enable testutils on host builds so integration tests can import `test_fixture`
+# without changing `cargo test` flags. WASM builds (target wasm32) keep the
+# lean dependency without testutils.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+soroban-sdk = { version = "25.3.0", features = ["testutils"] }
+
 [dev-dependencies]
 soroban-sdk = { version = "25.3.0", features = ["testutils"] }
 quickcheck = "1.0"
@@ -94,3 +100,8 @@ path = "tests/admin_integration_tests.rs"
 [[test]]
 name = "admin_event_replay_tests"
 path = "tests/admin_event_replay_tests.rs"
+
+# Issue #108 — shared admin signer fixture
+[[test]]
+name = "admin_signer_fixture_tests"
+path = "tests/admin_signer_fixture_tests.rs"
