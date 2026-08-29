@@ -504,6 +504,55 @@ export class HealthService {
   }
 
   /**
+   * Perform readiness check for Kubernetes readiness probe.
+   *
+   * Only checks the critical internal dependencies that directly affect
+   * the ability to serve traffic: database and Redis.
+   *
+   * Deliberately EXCLUDES degraded-but-tolerable external services
+   * (Stellar RPC, IPFS/Pinata, on-chain indexer) so that a brownout on
+   * those services does NOT remove the pod from the load-balancer
+   * rotation and cause a self-inflicted outage.
+   *
+   * k8s usage:
+   *   readinessProbe:
+   *     httpGet: { path: /health/ready, port: 4000 }
+   *     failureThreshold: 3
+   *     periodSeconds: 10
+   */
+  async performReadinessCheck(): Promise<{
+    status: "ready" | "not_ready";
+    timestamp: string;
+    checks: {
+      database: HealthIndicatorResult;
+      redis: HealthIndicatorResult;
+    };
+  }> {
+    const timestamp = new Date().toISOString();
+
+    const [databaseCheck, redisCheck] = await Promise.all([
+      this.checkDatabase(),
+      this.checkRedis(),
+    ]);
+
+    await this.dispatchAlerts(databaseCheck, redisCheck);
+
+    const status =
+      databaseCheck.status === "up" && redisCheck.status === "up"
+        ? "ready"
+        : "not_ready";
+
+    return {
+      status,
+      timestamp,
+      checks: {
+        database: databaseCheck,
+        redis: redisCheck,
+      },
+    };
+  }
+
+  /**
    * Perform startup readiness check
    * Checks critical dependencies needed for the application to start
    */
