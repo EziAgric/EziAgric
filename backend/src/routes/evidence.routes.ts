@@ -17,6 +17,10 @@ import {
 } from "../schemas/evidence.schemas";
 import { tradeIdParamSchema } from "../schemas/trade.schemas";
 import { env } from "../config/env";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+
+const evidenceUploadLimiter = createWalletRateLimiter(RATE_LIMIT_CONFIG.evidenceUpload);
 
 const ALLOWED_MIME_TYPES = ["video/mp4", "video/webm"];
 const MAX_FILE_SIZE = env.EVIDENCE_MAX_BYTES;
@@ -124,6 +128,7 @@ export function createEvidenceRouter(evidenceService = new EvidenceService()) {
     router.post(
         "/evidence/video",
         authMiddleware,
+        evidenceUploadLimiter,
         idempotencyMiddleware,
         handleVideoMulter,
         validateRequest({ body: uploadEvidenceSchema }),

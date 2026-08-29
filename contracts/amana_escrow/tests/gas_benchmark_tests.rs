@@ -9,7 +9,8 @@
 extern crate std;
 
 use amana_escrow::{EscrowContract, EscrowContractClient};
-use soroban_sdk::{Address, Env, String as SStr, testutils::Address as _, token};
+use amana_escrow::test_fixture::admin_address;
+use soroban_sdk::{Address, Env, String as SStr, testutils::{Address as _, Events as _}, token};
 
 struct BenchEnv {
     env: Env,
@@ -25,7 +26,7 @@ impl BenchEnv {
     fn new() -> Self {
         let env = Env::default();
         env.mock_all_auths();
-        let admin = Address::generate(&env);
+        let admin = admin_address(&env);
         let treasury = Address::generate(&env);
         let usdc_id = env
             .register_stellar_asset_contract_v2(admin.clone())
@@ -77,7 +78,7 @@ fn bench_deposit_hot_path() {
     bench.client().deposit(&trade_id);
 
     let events_after = bench.env.events().all();
-    let event_count = events_after.len() - events_before.len();
+    let event_count = events_after.events().len() - events_before.events().len();
 
     std::eprintln!(
         "[#192] deposit hot-path benchmark\n  amount={}\n  events_emitted={}",
@@ -117,7 +118,7 @@ fn bench_release_funds_hot_path() {
     bench.client().release_funds(&trade_id, &bench.buyer);
 
     let events_after = bench.env.events().all();
-    let event_count = events_after.len() - events_before.len();
+    let event_count = events_after.events().len() - events_before.events().len();
 
     std::eprintln!(
         "[#192] release_funds hot-path benchmark\n  amount={}\n  events_emitted={}",
@@ -160,7 +161,7 @@ fn bench_create_trade() {
     }
 
     let events_after = bench.env.events().all();
-    let event_count = events_after.len() - events_before.len();
+    let event_count = events_after.events().len() - events_before.events().len();
 
     std::eprintln!(
         "[#192] create_trade benchmark (10 iterations)\n  avg_amount={}\n  total_events={}",
@@ -193,7 +194,7 @@ fn bench_confirm_delivery() {
     bench.client().confirm_delivery(&trade_id);
 
     let events_after = bench.env.events().all();
-    let event_count = events_after.len() - events_before.len();
+    let event_count = events_after.events().len() - events_before.events().len();
 
     std::eprintln!(
         "[#192] confirm_delivery benchmark\n  amount={}\n  events_emitted={}",

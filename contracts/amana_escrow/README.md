@@ -6,6 +6,49 @@ This crate contains the Soroban escrow contract used by Amana.
 
 - [Admin Governance Flow](docs/admin-governance.md): Comprehensive documentation on admin clawback operations, compliance requirements, and governance workflows
 
+## Test setup
+
+Contract unit and integration tests share a single **admin signer fixture** in
+[`src/test_fixture.rs`](src/test_fixture.rs) (compiled for native / test builds
+only; excluded when building with `--features wasm`).
+
+| Item | Role |
+|------|------|
+| `admin_address(env)` | **Only** place that defines how the test admin is generated. Change this if the admin key / generation strategy changes. |
+| `AdminSignerFixture` | Shared harness: env, contract, token, `admin`, `buyer`, `seller`, `mediator`, `treasury`, `stranger`. |
+| `auth_invoke!` | Build a `MockAuth` for deny-path tests (non-admin callers). |
+
+**Allow path** — `AdminSignerFixture::new()` enables `mock_all_auths()`:
+
+```rust,ignore
+use amana_escrow::test_fixture::AdminSignerFixture;
+
+let f = AdminSignerFixture::new();
+let tid = f.funded_trade(1_000);
+f.client().admin_clawback(&tid, &1_000i128, &f.buyer);
+```
+
+**Deny path** — authorize only a non-admin address:
+
+```rust,ignore
+use amana_escrow::{auth_invoke, test_fixture::{clawback_auth_args, AdminSignerFixture}};
+
+let f = AdminSignerFixture::new();
+let tid = f.funded_trade(1_000);
+let args = clawback_auth_args(&f.env, tid, 1_000, &f.buyer);
+f.client()
+    .mock_auths(&[auth_invoke!(&f, &f.stranger, "admin_clawback", args)])
+    .admin_clawback(&tid, &1_000i128, &f.buyer); // panics: not admin
+```
+
+Run the suite from this directory:
+
+```bash
+cargo test
+# CI:
+cargo test --locked
+```
+
 ## cNGN migration and upgrade notes
 
 ### Migration behavior

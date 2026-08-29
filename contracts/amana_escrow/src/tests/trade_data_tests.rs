@@ -2,11 +2,12 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod trade_data_tests {
+    use crate::test_fixture::admin_address;
     use crate::{DataKey, EscrowContract, EscrowContractClient, TradeData, TradeStatus, TradeV0};
     use soroban_sdk::{Address, Env, testutils::Address as _, token};
 
     fn setup(env: &Env, amount: i128) -> (Address, Address, Address, Address, Address) {
-        let admin = Address::generate(env);
+        let admin = admin_address(env);
         let buyer = Address::generate(env);
         let seller = Address::generate(env);
         let treasury = Address::generate(env);

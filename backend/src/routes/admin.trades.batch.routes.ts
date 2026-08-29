@@ -48,6 +48,7 @@ function isValidTransition(from: TradeStatus, to: TradeStatus): boolean {
 }
 
 const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
+const batchQueryLimiter = createWalletRateLimiter(RATE_LIMIT_CONFIG.batchQuery);
 
 export function createAdminTradeBatchRouter(
   prisma: PrismaClient = defaultPrisma,
@@ -57,6 +58,7 @@ export function createAdminTradeBatchRouter(
   router.post(
     "/api/admin/trades/batch/status",
     authMiddleware,
+    batchQueryLimiter,
     adminMiddleware,
     adminRateLimit,
     createAdminQuotaMiddleware(
