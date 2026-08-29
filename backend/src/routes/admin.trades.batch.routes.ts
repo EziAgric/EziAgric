@@ -41,6 +41,7 @@ const VALID_TRANSITIONS: Record<TradeStatus, TradeStatus[]> = {
   [TradeStatus.DISPUTED]: [TradeStatus.COMPLETED, TradeStatus.CANCELLED],
   [TradeStatus.COMPLETED]: [],
   [TradeStatus.CANCELLED]: [],
+  [TradeStatus.EXPIRED]: [],
 };
 
 function isValidTransition(from: TradeStatus, to: TradeStatus): boolean {

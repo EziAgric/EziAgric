@@ -9,7 +9,12 @@ export type AlertType =
   | "reconciliation_drift_warning"
   | "reconciliation_drift_critical"
   | "reconciliation_job_failure"
-  | "admin_soroban_tx_failure";
+  | "admin_soroban_tx_failure"
+  | "job_missed_heartbeat"
+  | "job_repeated_failures"
+  | "job_failure_rate_high"
+  | "outbox_critical_gaps"
+  | "outbox_scan_failed";
 
 export interface AlertPayload {
   type: AlertType;

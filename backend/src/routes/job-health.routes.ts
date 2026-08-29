@@ -82,28 +82,31 @@ export function createJobHealthRoutes(): Router {
    */
   router.get("/jobs/:jobType", isAdmin, async (req: Request, res: Response) => {
     try {
-      const { jobType } = req.params;
-      const health = await jobHeartbeatService.getJobHealth(jobType as any);
+        const jobTypeParam = Array.isArray(req.params.jobType)
+          ? req.params.jobType[0]
+          : req.params.jobType;
+        const health = await jobHeartbeatService.getJobHealth(jobTypeParam as any);
 
-      if (!health) {
-        return res.status(404).json({
-          error: "Job not found",
-          jobType,
+        if (!health) {
+          return res.status(404).json({
+            error: "Job not found",
+            jobType: jobTypeParam,
+          });
+        }
+
+        res.status(health.status === "healthy" ? 200 : 503).json(health);
+      } catch (error) {
+        appLogger.error(
+          { error, jobType: req.params.jobType },
+          "[JobHealthRoute] Failed to get job health",
+        );
+        res.status(500).json({
+          error: "Failed to retrieve job health",
+          message: String(error),
         });
       }
-
-      res.status(health.status === "healthy" ? 200 : 503).json(health);
-    } catch (error) {
-      appLogger.error(
-        { error, jobType: req.params.jobType },
-        "[JobHealthRoute] Failed to get job health",
-      );
-      res.status(500).json({
-        error: "Failed to retrieve job health",
-        message: String(error),
-      });
-    }
-  });
+    },
+  );
 
   /**
    * GET /health/jobs/dashboard
@@ -199,18 +202,20 @@ export function createJobHealthRoutes(): Router {
     isAdmin,
     async (req: Request, res: Response) => {
       try {
-        const { jobType } = req.params;
-        const health = await jobHeartbeatService.getJobHealth(jobType as any);
+        const jobTypeParam = Array.isArray(req.params.jobType)
+          ? req.params.jobType[0]
+          : req.params.jobType;
+        const health = await jobHeartbeatService.getJobHealth(jobTypeParam as any);
 
         if (!health) {
           return res.status(404).json({
             error: "Job not found",
-            jobType,
+            jobType: jobTypeParam,
           });
         }
 
         appLogger.info(
-          { jobType },
+          { jobType: jobTypeParam },
           "[JobHealthRoute] Manual health check triggered",
         );
 
@@ -240,11 +245,13 @@ export function createJobHealthRoutes(): Router {
     isAdmin,
     async (req: Request, res: Response) => {
       try {
-        const { jobType } = req.params;
+        const jobTypeParam = Array.isArray(req.params.jobType)
+          ? req.params.jobType[0]
+          : req.params.jobType;
         const { reason } = req.body;
 
         await prisma.jobHeartbeat.update({
-          where: { jobType },
+          where: { jobType: jobTypeParam },
           data: {
             failureCount: 0,
             status: "idle",
@@ -253,13 +260,13 @@ export function createJobHealthRoutes(): Router {
         });
 
         appLogger.warn(
-          { jobType, reason },
+          { jobType: jobTypeParam, reason },
           "[JobHealthRoute] Failure count reset by admin",
         );
 
         res.status(200).json({
           message: "Failure count reset",
-          jobType,
+          jobType: jobTypeParam,
         });
       } catch (error) {
         appLogger.error(

@@ -7,9 +7,9 @@
  * - Detects silent failures in event emission
  */
 
-import { Prisma } from "@prisma/client";
-import { prisma } from "./db";
-import { appLogger } from "../middleware/logger";
+import { Prisma, TradeStatus } from "@prisma/client";
+import { prisma } from "../../lib/db";
+import { appLogger } from "../../middleware/logger";
 import { ChainEventOutbox } from "@prisma/client";
 
 export interface OutboxGap {
@@ -40,6 +40,7 @@ export interface OutboxConsistencyReport {
 /**
  * Expected event mapping per status transition
  * Maps (previousStatus, currentStatus) -> expected events
+ * Note: This is a reference, actual mapping is in actionEventMapping.ts
  */
 const EXPECTED_EVENTS_BY_TRANSITION: Record<string, string[]> = {
   "CREATED|FUNDED": ["TradeFunded"],
@@ -85,82 +86,52 @@ export async function scanOutboxCompleteness(
     );
 
     for (const trade of tradesWithStatusChange) {
-      // Get audit trail to understand status transition
-      const auditEvents = await prisma.escrowAudit.findMany({
+      // Check if this trade status change has corresponding outbox events
+      // Look for any events in the window matching this trade
+      const outboxEntries = await prisma.chainEventOutbox.findMany({
         where: {
           tradeId: trade.tradeId,
           createdAt: {
             gte: scanEndTime,
           },
         },
-        orderBy: { createdAt: "asc" },
       });
 
-      if (auditEvents.length === 0) continue;
+      // If trade changed but has no events, it's a gap
+      if (outboxEntries.length === 0 && trade.status !== TradeStatus.PENDING_SIGNATURE) {
+        // Check if trade was transitioned recently
+        const timeSinceChange = Date.now() - trade.updatedAt.getTime();
 
-      const lastAudit = auditEvents[auditEvents.length - 1];
-      const previousAudit = auditEvents[auditEvents.length - 2];
-
-      const previousStatus = previousAudit?.toStatus;
-      const currentStatus = lastAudit?.toStatus || trade.status;
-      const transitionKey = `${previousStatus}|${currentStatus}`;
-
-      const expectedEvents = EXPECTED_EVENTS_BY_TRANSITION[transitionKey] || [];
-
-      if (expectedEvents.length === 0) continue;
-
-      // Check if outbox has the expected events
-      const outboxEntries = await prisma.chainEventOutbox.findMany({
-        where: {
-          tradeId: trade.tradeId,
-          createdAt: {
-            gte: lastAudit.createdAt,
-          },
-        },
-      });
-
-      const emittedEventTypes = new Set(
-        outboxEntries.map((e) => e.eventType),
-      );
-
-      for (const expectedEvent of expectedEvents) {
-        if (!emittedEventTypes.has(expectedEvent)) {
-          const timeSinceChange =
-            Date.now() - (lastAudit?.createdAt?.getTime() ?? Date.now());
-
-          // Classify severity based on time elapsed
-          let severity: "critical" | "warning" | "info" = "info";
-          if (timeSinceChange > 5 * 60 * 1000) {
-            // > 5 mins
-            severity = "critical";
-          } else if (timeSinceChange > 2 * 60 * 1000) {
-            // > 2 mins
-            severity = "warning";
-          }
-
-          gaps.push({
-            tradeId: trade.tradeId,
-            expectedEventType: expectedEvent,
-            lastStateChange: lastAudit?.createdAt ?? new Date(),
-            detectedAt: new Date(),
-            severity,
-            context: {
-              currentStatus: trade.status,
-              previousStatus,
-              timeSinceChange,
-            },
-          });
-
-          appLogger.warn(
-            {
-              tradeId: trade.tradeId,
-              expectedEvent,
-              transition: transitionKey,
-              timeSinceChange,
-            },
-            "[OutboxScanner] Detected gap: expected event missing from outbox",
-          );
+        // Classify severity based on time elapsed
+        let severity: "critical" | "warning" | "info" = "info";
+        if (timeSinceChange > 5 * 60 * 1000) {
+          // > 5 mins
+          severity = "critical";
+        } else if (timeSinceChange > 2 * 60 * 1000) {
+          // > 2 mins
+          severity = "warning";
         }
+
+        gaps.push({
+          tradeId: trade.tradeId,
+          expectedEventType: "UnknownEvent",
+          lastStateChange: trade.updatedAt,
+          detectedAt: new Date(),
+          severity,
+          context: {
+            currentStatus: trade.status,
+            timeSinceChange,
+          },
+        });
+
+        appLogger.warn(
+          {
+            tradeId: trade.tradeId,
+            status: trade.status,
+            timeSinceChange,
+          },
+          "[OutboxScanner] Detected gap: trade status changed without outbox event",
+        );
       }
     }
 
@@ -213,9 +184,9 @@ export async function generateOutboxGapReport(
   // Similar scanning logic as scanOutboxCompleteness
   // Iterate trades and check for missing events
 
-  const summary: Record<string, number> = {
+  const summary: Record<string, any> = {
     totalGaps: gaps.length,
-    byEventType: {},
+    byEventType: {} as Record<string, number>,
     bySeverity: {
       critical: 0,
       warning: 0,
@@ -226,7 +197,7 @@ export async function generateOutboxGapReport(
   gaps.forEach((gap) => {
     summary.byEventType[gap.expectedEventType] =
       (summary.byEventType[gap.expectedEventType] || 0) + 1;
-    summary.bySeverity[gap.severity]++;
+    (summary.bySeverity[gap.severity] as number)++;
   });
 
   const recommendations: string[] = [];

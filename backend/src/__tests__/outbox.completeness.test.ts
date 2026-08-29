@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { prisma } from "../../lib/db";
-import { TradeService } from "../trade.service";
+import { TradeService } from "../services/trade.service";
 import { EventType } from "../../types/events";
 import {
   ACTION_EVENT_MAPPINGS,

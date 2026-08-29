@@ -12,7 +12,9 @@ import {
   generateOutboxGapReport,
   exportOutboxGaps,
 } from "../lib/outbox/outboxScanner";
-import { isAdmin } from "../middleware/auth"; // Assumes admin middleware exists
+import { adminMiddleware } from "../middleware/admin.middleware";
+
+const isAdmin = adminMiddleware;
 
 export function createOutboxRoutes(): Router {
   const router = Router();

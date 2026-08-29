@@ -48,6 +48,8 @@ import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
 import { createPrivacyRouter } from "./routes/privacy.routes";
 import { csrfProtection } from "./middleware/csrf.middleware";
+import { createOutboxRoutes } from "./routes/outbox.routes";
+import { createJobHealthRoutes } from "./routes/job-health.routes";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
  *  Value should be a comma-separated list of allowed origins, e.g.:
@@ -199,6 +201,12 @@ export function createApp(): express.Application {
 
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);
+
+  // Admin outbox consistency monitoring: GET /admin/outbox/health, GET /admin/outbox/gaps
+  app.use(adminFeatureGate, csrfProtection, createOutboxRoutes());
+
+  // Job heartbeat health dashboard: GET /health/jobs, GET /health/jobs/:jobType
+  app.use("/health", createJobHealthRoutes());
 
   // Error handler is registered last so it catches errors from all routes,
   // including any routes added to the app after createApp() returns.

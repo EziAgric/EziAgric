@@ -176,11 +176,15 @@ export class JobHeartbeatService {
 
       // Alert on repeated failures
       if (heartbeat.failureCount > 3) {
-        await alertService.dispatch("job_repeated_failures", {
-          jobType,
-          failureCount: heartbeat.failureCount,
-          lastError: data.error,
-        });
+        await alertService.dispatch(
+          "job_repeated_failures",
+          `Job ${jobType} has failed ${heartbeat.failureCount} times`,
+          {
+            jobType,
+            failureCount: heartbeat.failureCount,
+            lastError: data.error,
+          },
+        );
       }
     } catch (error) {
       appLogger.error(
@@ -218,7 +222,7 @@ export class JobHeartbeatService {
       if (hb.status === "failed" || hb.failureCount > 0) {
         status = "failed";
       } else if (isOverdue && timeSinceExpected > HEARTBEAT_GRACE_PERIOD_MS) {
-        status = "overdue";
+        status = "failed"; // Treat overdue as failed for health status
       } else if (timeSinceLastBeat > hb.intervalMs + HEARTBEAT_GRACE_PERIOD_MS) {
         status = "stale";
       } else {
@@ -239,7 +243,7 @@ export class JobHeartbeatService {
         healthy.push(healthStatus);
       } else if (status === "stale") {
         stale.push(healthStatus);
-      } else if (status === "overdue" || status === "failed") {
+      } else if (status === "failed" || isOverdue) {
         overdue.push(healthStatus);
       }
     }
@@ -276,14 +280,18 @@ export class JobHeartbeatService {
               ? "critical"
               : "warning"; // > 30 mins = critical
 
-          await alertService.dispatch("job_missed_heartbeat", {
-            jobType: job.jobType,
-            severity,
-            lastHeartbeat: job.lastHeartbeat.toISOString(),
-            expectedAt: job.nextExpectedAt.toISOString(),
-            minutesOverdue: Math.floor(timeSinceExpected / 60000),
-            failureCount: job.failureCount,
-          });
+          await alertService.dispatch(
+            "job_missed_heartbeat",
+            `Job ${job.jobType} missed its scheduled heartbeat by ${Math.floor(timeSinceExpected / 60000)} minutes`,
+            {
+              jobType: job.jobType,
+              severity,
+              lastHeartbeat: job.lastHeartbeat.toISOString(),
+              expectedAt: job.nextExpectedAt.toISOString(),
+              minutesOverdue: Math.floor(timeSinceExpected / 60000),
+              failureCount: job.failureCount,
+            },
+          );
 
           appLogger.error(
             {
@@ -331,7 +339,7 @@ export class JobHeartbeatService {
       isOverdue &&
       now - heartbeat.nextExpectedAt.getTime() > HEARTBEAT_GRACE_PERIOD_MS
     ) {
-      status = "overdue";
+      status = "failed"; // Treat overdue as failed
     } else if (timeSinceLastBeat > heartbeat.intervalMs + HEARTBEAT_GRACE_PERIOD_MS) {
       status = "stale";
     } else {
