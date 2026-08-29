@@ -177,6 +177,10 @@ Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr):
 - [Secrets Policy & Rotation](./docs/secrets-policy.md) — secrets inventory (owner, location, max-age), rotation automation, and verification. Rotation reminders are opened automatically by [`.github/workflows/secrets-rotation-reminder.yml`](./.github/workflows/secrets-rotation-reminder.yml).
 - [PII Encryption at Rest](./docs/pii-encryption.md) — classified PII column inventory, app-layer envelope encryption design, blind-index search, key rotation procedure, and decrypt access logging.
 - [Software Bill of Materials (SBOM)](./docs/sbom.md) — CycloneDX SBOM generated for every release artifact via [`.github/workflows/sbom.yml`](./.github/workflows/sbom.yml), attached to GitHub Releases, with a weekly vulnerability diff scan.
+- [Golden Signals Dashboard](./docs/dashboards.md) — Grafana dashboard stored as code ([`infra/grafana/`](./infra/grafana)) covering API latency/traffic/errors and DB/queue saturation, with deploy annotations wired into staging deploys.
+- [Alert Routing Policy](./docs/alert-routing-policy.md) — page-vs-ticket severity rubric, runbook linkage enforced in CI, per-alert dedup windows, and the [monthly alert review log](./docs/alert-review-log.md).
+- [Synthetic Probes Policy](./docs/synthetic-probes-policy.md) — hourly staging probe of the core escrow journey (auth → create → deposit → release), with failure alerting and a results dashboard log.
+- [Incident Response](./docs/runbooks/incident-response.md) — severity levels, incident roles, and channel/ticket conventions; see the [postmortem template](./docs/runbooks/postmortem-template.md), the [postmortem archive](./docs/postmortems/README.md), and a worked [tabletop exercise](./docs/runbooks/tabletop-exercise-escrow-drain.md).
 
 ## 🤝 Contributing
 
