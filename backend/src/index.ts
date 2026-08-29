@@ -12,7 +12,8 @@ import { appLogger } from "./middleware/logger";
 import { initializeTracing } from "./config/tracing";
 import { HealthService } from "./services/health.service";
 import { createReconciliationWorker } from "./jobs/workers/reconciliation.worker";
-import { reconciliationQueue } from "./jobs/queue";
+import { createPiiLogScannerWorker } from "./jobs/workers/piiLogScanner.worker";
+import { reconciliationQueue, piiScanQueue } from "./jobs/queue";
 
 void env;
 
@@ -78,6 +79,7 @@ const eventListenerService = new EventListenerService(prisma);
 const healthService = new HealthService();
 
 let reconciliationWorker: ReturnType<typeof createReconciliationWorker> | undefined;
+let piiLogScannerWorker: ReturnType<typeof createPiiLogScannerWorker> | undefined;
 
 async function startReconciliationCron() {
   if (!env.RECONCILIATION_CRON_ENABLED) {
@@ -102,6 +104,33 @@ async function startReconciliationCron() {
     appLogger.info("Reconciliation daily sweep scheduled (02:00 UTC)");
   } catch (error) {
     appLogger.error({ error }, "Failed to start reconciliation cron");
+  }
+}
+
+async function startPiiScanCron() {
+  if (!env.PII_SCANNER_CRON_ENABLED) {
+    appLogger.info("PII log scanner cron is disabled");
+    return;
+  }
+
+  try {
+    piiLogScannerWorker = createPiiLogScannerWorker();
+    appLogger.info("PII log scanner worker started");
+
+    // Weekly sweep, Sunday 03:00 UTC — offset from the reconciliation sweep
+    // to avoid contending for the same Redis connection/CPU window.
+    await piiScanQueue.add(
+      "weekly-scan",
+      {},
+      {
+        repeat: {
+          pattern: "0 3 * * 0",
+        },
+      },
+    );
+    appLogger.info("PII log scan scheduled (Sundays 03:00 UTC)");
+  } catch (error) {
+    appLogger.error({ error }, "Failed to start PII log scanner cron");
   }
 }
 
@@ -134,6 +163,7 @@ async function bootstrap() {
     }
 
     await startReconciliationCron();
+    await startPiiScanCron();
   });
 }
 
@@ -147,6 +177,9 @@ const shutdown = async (signal: string) => {
   eventListenerService.stop();
   if (reconciliationWorker) {
     await reconciliationWorker.close();
+  }
+  if (piiLogScannerWorker) {
+    await piiLogScannerWorker.close();
   }
   await prisma.$disconnect();
   process.exit(0);

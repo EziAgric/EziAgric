@@ -153,6 +153,13 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value: 'true' | 'false') => value === 'true'),
+
+  // PII log-leak scanner (#233)
+  PII_SCANNER_CRON_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value: 'true' | 'false') => value === 'true'),
+  PII_SCANNER_SAMPLE_SIZE: z.coerce.number().int().positive().default(2000),
 });
 
 export type Env = z.infer<typeof envSchema>;

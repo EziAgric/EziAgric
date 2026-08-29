@@ -59,6 +59,15 @@ export const tradeExpiryQueue = new Queue<TradeExpirySweepJobData>('trade-expiry
   defaultJobOptions,
 });
 
+export interface PiiScanJobData {
+  scanId?: string;
+}
+
+export const piiScanQueue = new Queue<PiiScanJobData>('pii-log-scan', {
+  connection: createQueueConnection(),
+  defaultJobOptions,
+});
+
 export interface ReconciliationSweepJobData {
   sweepId?: string;
 }
