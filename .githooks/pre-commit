@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Lightweight pre-commit hook: blocks commits containing secrets matched by .gitleaks.toml.
+# Installed via scripts/install-git-hooks.sh (sets core.hooksPath=.githooks).
+set -euo pipefail
+
+if ! command -v gitleaks &>/dev/null; then
+  echo "WARNING: gitleaks not installed — skipping local secret scan (CI will still block)." >&2
+  echo "Install: https://github.com/gitleaks/gitleaks#installing" >&2
+  exit 0
+fi
+
+gitleaks protect --config=.gitleaks.toml --staged --verbose

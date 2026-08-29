@@ -3,9 +3,10 @@ import { appLogger } from '../../middleware/logger';
 import { createQueueConnection, NotificationJobData } from '../queue';
 import { prisma } from '../../lib/db';
 import type { Prisma } from '@prisma/client';
+import { attachDeadLetterQueue } from '../deadLetter';
 
 export function createNotificationWorker(): Worker<NotificationJobData> {
-  return new Worker<NotificationJobData>(
+  const worker = new Worker<NotificationJobData>(
     'notifications',
     async (job: Job<NotificationJobData>) => {
       const { userAddress, type, title, message, metadata } = job.data;
@@ -30,4 +31,6 @@ export function createNotificationWorker(): Worker<NotificationJobData> {
     },
     { connection: createQueueConnection() },
   );
+  attachDeadLetterQueue(worker, 'notifications');
+  return worker;
 }
