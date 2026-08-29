@@ -77,26 +77,27 @@ describe("Webhook Logs Route", () => {
     jest.clearAllMocks();
   });
 
-  it("returns 200 with delivery attempts and pagination", async () => {
+  it("returns 200 with delivery attempts and cursor pageInfo by default", async () => {
     mockPrisma.webhook.findUnique.mockResolvedValue({
       id: 1,
       userAddress: ownerAddress,
     });
     mockPrisma.webhookDeliveryAttempt.findMany.mockResolvedValue([
       {
-        timestamp: new Date("2025-01-01T00:00:00Z"),
-        status: "success",
-        statusCode: 200,
-        responseBody: '{"ok":true}',
-      },
-      {
+        id: 2,
         timestamp: new Date("2025-01-02T00:00:00Z"),
         status: "failure",
         statusCode: 500,
         responseBody: null,
       },
+      {
+        id: 1,
+        timestamp: new Date("2025-01-01T00:00:00Z"),
+        status: "success",
+        statusCode: 200,
+        responseBody: '{"ok":true}',
+      },
     ]);
-    mockPrisma.webhookDeliveryAttempt.count.mockResolvedValue(2);
 
     const res = await request(app)
       .get("/webhooks/1/logs")
@@ -105,23 +106,66 @@ describe("Webhook Logs Route", () => {
     expect(res.status).toBe(200);
     expect(res.body.attempts).toHaveLength(2);
     expect(res.body.attempts[0]).toEqual({
-      timestamp: "2025-01-01T00:00:00.000Z",
-      status: "success",
-      statusCode: 200,
-      responseBody: '{"ok":true}',
-    });
-    expect(res.body.attempts[1]).toEqual({
+      id: 2,
       timestamp: "2025-01-02T00:00:00.000Z",
       status: "failure",
       statusCode: 500,
       responseBody: null,
     });
-    expect(res.body.pagination).toEqual({
-      page: 1,
-      limit: 20,
-      total: 2,
-      totalPages: 1,
+    expect(res.body.attempts[1]).toEqual({
+      id: 1,
+      timestamp: "2025-01-01T00:00:00.000Z",
+      status: "success",
+      statusCode: 200,
+      responseBody: '{"ok":true}',
     });
+    expect(res.body.pageInfo).toEqual({ nextCursor: null, hasNextPage: false, limit: 20 });
+  });
+
+  it("paginates forward with the returned cursor and stays stable under concurrent inserts", async () => {
+    mockPrisma.webhook.findUnique.mockResolvedValue({ id: 1, userAddress: ownerAddress });
+    const rows = Array.from({ length: 15 }, (_, i) => ({
+      id: 15 - i,
+      timestamp: new Date(2025, 0, 15 - i),
+      status: "success",
+      statusCode: 200,
+      responseBody: null,
+    }));
+    mockPrisma.webhookDeliveryAttempt.findMany.mockImplementation(
+      ({ take, cursor, skip }: { take: number; cursor?: { id: number }; skip?: number }) => {
+        let start = 0;
+        if (cursor) {
+          const idx = rows.findIndex((r) => r.id === cursor.id);
+          start = idx === -1 ? rows.length : idx + (skip ?? 0);
+        }
+        return Promise.resolve(rows.slice(start, start + take));
+      },
+    );
+
+    const page1 = await request(app)
+      .get("/webhooks/1/logs?limit=5")
+      .set("Authorization", `Bearer ${ownerToken}`);
+    expect(page1.body.attempts.map((a: any) => a.id)).toEqual([15, 14, 13, 12, 11]);
+    expect(page1.body.pageInfo.hasNextPage).toBe(true);
+
+    // Simulate a new row inserted ahead of the page — cursor pagination must
+    // not re-show or skip existing rows because of it.
+    rows.unshift({ id: 16, timestamp: new Date(2025, 0, 16), status: "success", statusCode: 200, responseBody: null });
+
+    const page2 = await request(app)
+      .get(`/webhooks/1/logs?limit=5&cursor=${encodeURIComponent(page1.body.pageInfo.nextCursor)}`)
+      .set("Authorization", `Bearer ${ownerToken}`);
+    expect(page2.body.attempts.map((a: any) => a.id)).toEqual([10, 9, 8, 7, 6]);
+  });
+
+  it("returns 400 for a malformed cursor", async () => {
+    mockPrisma.webhook.findUnique.mockResolvedValue({ id: 1, userAddress: ownerAddress });
+
+    const res = await request(app)
+      .get("/webhooks/1/logs?cursor=not-a-valid-cursor")
+      .set("Authorization", `Bearer ${ownerToken}`);
+
+    expect(res.status).toBe(400);
   });
 
   it("returns 401 without Authorization header", async () => {
@@ -169,15 +213,10 @@ describe("Webhook Logs Route", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.attempts).toEqual([]);
-    expect(res.body.pagination).toEqual({
-      page: 1,
-      limit: 20,
-      total: 0,
-      totalPages: 0,
-    });
+    expect(res.body.pageInfo).toEqual({ nextCursor: null, hasNextPage: false, limit: 20 });
   });
 
-  it("respects pagination query parameters", async () => {
+  it("respects legacy page/limit query parameters and warns about deprecation", async () => {
     mockPrisma.webhook.findUnique.mockResolvedValue({
       id: 1,
       userAddress: ownerAddress,
@@ -208,5 +247,6 @@ describe("Webhook Logs Route", () => {
       total: 25,
       totalPages: 3,
     });
+    expect(res.headers.warning).toContain("deprecated");
   });
 });
