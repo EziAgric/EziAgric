@@ -39,6 +39,10 @@ const config: Config = {
         "text-muted": "#5A7A6A",
         "text-inverse": "#0B1A14",
 
+        // Skeleton / loading placeholder tokens
+        "skeleton-base": "#1A3D2C", // → surface-2
+        "skeleton-sheen": "rgba(240,245,241,0.08)",
+
         // Status chip tokens
         "status-success": "#34D399",
         "status-warning": "#F59E0B",
@@ -165,8 +169,14 @@ const config: Config = {
         "gradient-card-glow":
           "linear-gradient(135deg, rgba(52,211,153,0.05) 0%, rgba(212,168,83,0.05) 100%)",
       },
+      // ── Skeleton / loading tokens ───────────────────────────────────────
+      // Single source of truth for skeleton placeholders. `skeleton-base` is
+      // the resting fill (= surface-2); `skeleton-sheen` is the moving
+      // highlight for the shimmer sweep.
       animation: {
         "slide-up": "slide-up 0.3s ease-out",
+        "skeleton-pulse": "skeleton-pulse 1.6s ease-in-out infinite",
+        "skeleton-shimmer": "shimmer 1.6s infinite",
       },
     },
   },

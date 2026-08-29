@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { StrKey } from "@stellar/stellar-sdk";
+import { formatNaira, formatNumber } from "@/lib/i18n";
 import { useTrade } from "../TradeContext";
 import { validateStep1 } from "../validation";
 
@@ -16,7 +17,11 @@ export default function Step1Details() {
   const price = parseFloat(data.pricePerUnit);
   const totalValue = !isNaN(qty) && !isNaN(price) ? qty * price : NaN;
 
-  const totalNGN = !isNaN(totalValue) ? totalValue.toLocaleString("en-NG") : "—";
+  const totalDisplay = isNaN(totalValue)
+    ? "—"
+    : data.currency === "NGN"
+      ? formatNaira(totalValue)
+      : `${formatNumber(totalValue, { maximumFractionDigits: 2 })} USDC`;
 
   const isQtyValid = data.quantity !== "" && !isNaN(qty) && qty > 0;
   const isPriceValid = data.pricePerUnit !== "" && !isNaN(price) && price > 0;
@@ -130,9 +135,7 @@ export default function Step1Details() {
       {/* Total preview */}
       <div className="flex items-center justify-between rounded-lg bg-bg-elevated px-4 py-3 border border-border-default">
         <span className="text-sm text-text-secondary">Estimated Total</span>
-        <span className="text-gold font-semibold">
-          {totalNGN !== "—" ? `${data.currency} ${totalNGN}` : "—"}
-        </span>
+        <span className="text-gold font-semibold">{totalDisplay}</span>
       </div>
 
       <div className="flex flex-col gap-1">
