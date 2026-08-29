@@ -171,6 +171,13 @@ Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr):
 - [ADR-004: Idempotency and Retry Strategy](./docs/adr/ADR-004-idempotency-and-retry-strategy.md)
 - [ADR-005: Frontend State Management](./docs/adr/ADR-005-frontend-state-management.md)
 
+## 🔐 Security & Operations
+
+- [Threat Model](./docs/threat-model.md) — reviewed quarterly and on trigger events; see §8 for cadence/ownership and `docs/threat-model-review-checklist.md` for the reviewer checklist.
+- [Secrets Policy & Rotation](./docs/secrets-policy.md) — secrets inventory (owner, location, max-age), rotation automation, and verification. Rotation reminders are opened automatically by [`.github/workflows/secrets-rotation-reminder.yml`](./.github/workflows/secrets-rotation-reminder.yml).
+- [PII Encryption at Rest](./docs/pii-encryption.md) — classified PII column inventory, app-layer envelope encryption design, blind-index search, key rotation procedure, and decrypt access logging.
+- [Software Bill of Materials (SBOM)](./docs/sbom.md) — CycloneDX SBOM generated for every release artifact via [`.github/workflows/sbom.yml`](./.github/workflows/sbom.yml), attached to GitHub Releases, with a weekly vulnerability diff scan.
+
 ## 🤝 Contributing
 
 EziAgric is an open-source project aimed at improving food security and trade efficiency. We welcome developers, designers, and agricultural experts!
