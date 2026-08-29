@@ -10,6 +10,7 @@ on:
       - 'scripts/staging-up.sh'
       - 'scripts/staging-validate.sh'
       - 'scripts/staging-admin-smoke-test.sh'
+      - 'scripts/grafana-deploy-annotation.sh'
       - 'scripts/migrate-*.sh'
       - 'backend/**'
       - 'docker-compose.yml'
@@ -22,6 +23,7 @@ on:
       - 'scripts/staging-up.sh'
       - 'scripts/staging-validate.sh'
       - 'scripts/staging-admin-smoke-test.sh'
+      - 'scripts/grafana-deploy-annotation.sh'
       - 'scripts/migrate-*.sh'
       - 'backend/**'
       - 'docker-compose.yml'
@@ -76,6 +78,18 @@ jobs:
       - name: Run Staging Admin Smoke Test
         run: ./scripts/staging-admin-smoke-test.sh
         timeout-minutes: 5
+
+      - name: Annotate Grafana golden-signals dashboard with this deploy
+        if: success()
+        continue-on-error: true
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          DEPLOY_ENV: staging
+          DEPLOY_REF: ${{ github.sha }}
+        run: |
+          chmod +x ./scripts/grafana-deploy-annotation.sh
+          ./scripts/grafana-deploy-annotation.sh
 
       - name: Notify on Staging Validation or Smoke Test Failure
         if: failure()
