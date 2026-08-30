@@ -10,6 +10,7 @@ import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import { ToastContainer } from "@/components/ui/ToastContainer";
 import { ToastProvider } from "@/hooks/useToast";
 import RegisterSW from "@/components/RegisterSW";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -54,15 +55,17 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} font-sans bg-primary text-text-primary antialiased`}
       >
-        <AnalyticsProvider>
-          <AuthProvider>
-            <ToastProvider>
-              <AppShell>{children}</AppShell>
-              <RegisterSW />
-              <ToastContainer />
-            </ToastProvider>
-          </AuthProvider>
-        </AnalyticsProvider>
+        <ErrorBoundary>
+          <AnalyticsProvider>
+            <AuthProvider>
+              <ToastProvider>
+                <AppShell>{children}</AppShell>
+                <RegisterSW />
+                <ToastContainer />
+              </ToastProvider>
+            </AuthProvider>
+          </AnalyticsProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
