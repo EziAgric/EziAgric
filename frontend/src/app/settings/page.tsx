@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -336,6 +337,18 @@ export default function SettingsPage() {
               </button>
             )}
           </div>
+        </SectionCard>
+
+        {/* ── Appearance ── */}
+        <SectionCard
+          title="Appearance"
+          description="Switch between light, dark, or system-preference theme."
+        >
+          <ThemeToggle />
+          <p className="text-xs text-text-muted mt-2">
+            Your preference is saved locally and persists across sessions.
+            System mode follows your operating system setting.
+          </p>
         </SectionCard>
 
         {/* ── Notifications ── */}
