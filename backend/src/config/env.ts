@@ -89,6 +89,10 @@ export const envSchema = z.object({
   OTEL_SERVICE_NAME: z.string().optional(),
   OTEL_EXPORTER_JAEGER_AGENT_HOST: z.string().optional(),
   OTEL_EXPORTER_JAEGER_AGENT_PORT: z.coerce.number().optional(),
+  // Tail-based trace sampling (#231)
+  TRACE_BASELINE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+  TRACE_SLOW_THRESHOLD_MS: z.coerce.number().int().positive().default(2000),
+  TRACE_ROUTE_OVERRIDES: z.string().default("{}"),
 
   // Audit signing
   AUDIT_SIGNING_KEY_ID: z.string().min(1).optional(),
