@@ -447,3 +447,66 @@ export function __resetKpiMetricsForTests(): void {
   tradeGmvHistogram = undefined;
   disputeAnomalyCounter = undefined;
 }
+
+// ---------------------------------------------------------------------------
+// SLO SLI metrics (#SLO)
+//
+// Feeds the SLO recording/alerting rules in infra/prometheus. Each metric is
+// the raw numerator/denominator of an SLI; the error budget is computed from
+// these in Prometheus (see docs/slo.md for the SLO policy and targets).
+// ---------------------------------------------------------------------------
+
+/**
+ * Injectable recorder for unit-testing SLO metric calls without a live OTel
+ * pipeline (mirrors the KPI/Stellar recorder test pattern).
+ */
+export interface SloMetricsRecorder {
+  recordEventListenerLag(seconds: number): void;
+}
+
+let customSloRecorder: SloMetricsRecorder | null = null;
+
+export function __setSloRecorderForTests(recorder: SloMetricsRecorder | null): void {
+  customSloRecorder = recorder;
+}
+
+export function __resetSloMetricsForTests(): void {
+  customSloRecorder = null;
+  eventListenerLagHistogram = undefined;
+}
+
+// Histogram: how far behind the event listener is, in seconds, behind a freshly
+// processed ledger. A histogram (not a gauge) so Prometheus can compute the
+// p95 ("event-processing lag" SLO, target p95 < 5 min). Sampled whenever a
+// health check computes indexer lag.
+let eventListenerLagHistogram: Histogram | undefined;
+
+function getEventListenerLagHistogram(): Histogram {
+  if (!eventListenerLagHistogram) {
+    eventListenerLagHistogram = getMeter().createHistogram(
+      "event_listener_processing_lag_seconds",
+      {
+        description:
+          "Seconds since the most recently processed escrow event was recorded. " +
+          "Drives the event-processing-lag SLO (p95 < 5 min).",
+        unit: "seconds",
+        explicitBucketBoundaries: [1, 5, 15, 60, 120, 300, 600, 1800, 3600],
+      },
+    );
+  }
+  return eventListenerLagHistogram;
+}
+
+/**
+ * Record the event-processing lag SLI: time since the latest processed event
+ * was persisted. A value <= 0 (no events yet / unknown) is treated as 0 so the
+ * SLI never reports a spurious negative lag.
+ */
+export function recordEventListenerLag(seconds: number): void {
+  if (customSloRecorder) {
+    customSloRecorder.recordEventListenerLag(seconds);
+    return;
+  }
+  const safeSeconds = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  getEventListenerLagHistogram().record(safeSeconds);
+}

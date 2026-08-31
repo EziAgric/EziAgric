@@ -13,14 +13,22 @@ import { initializeTracing } from "./config/tracing";
 import { HealthService } from "./services/health.service";
 import { createReconciliationWorker } from "./jobs/workers/reconciliation.worker";
 import { createPiiLogScannerWorker } from "./jobs/workers/piiLogScanner.worker";
-import { reconciliationQueue, piiScanQueue } from "./jobs/queue";
+import { reconciliationQueue, piiScanQueue, closeAllQueueConnections } from "./jobs/queue";
+import { redis } from "./lib/redis";
+import { ShutdownOrchestrator, Shutdownable } from "./lib/shutdown";
+import { formatConfigFingerprint } from "./config/env";
 
 void env;
 
 // Initialize distributed tracing before any other imports
 initializeTracing();
 
-const app = createApp();
+const shutDownOrchestrator = new ShutdownOrchestrator({
+  drainTimeoutMs: Number(process.env.SHUTDOWN_DRAIN_TIMEOUT_MS ?? 20_000),
+  forceExitTimeoutMs: Number(process.env.SHUTDOWN_FORCE_EXIT_TIMEOUT_MS ?? 30_000),
+});
+
+const app = createApp(() => shutDownOrchestrator.isShuttingDown());
 const port = env.PORT;
 
 const docsDir = path.join(__dirname, "docs");
@@ -137,6 +145,14 @@ async function startPiiScanCron() {
 async function bootstrap() {
   const isTest = (process.env.NODE_ENV ?? env.NODE_ENV) === "test";
 
+  // Sanitized effective-config fingerprint. Secret values are redacted to a
+  // stable marker so the boot log confirms which secrets are present without
+  // ever exposing them.
+  appLogger.info(
+    { effectiveConfig: formatConfigFingerprint({ ...process.env }) },
+    "Effective configuration fingerprint",
+  );
+
   if (!isTest) {
     appLogger.info("Performing startup readiness check...");
     try {
@@ -152,7 +168,7 @@ async function bootstrap() {
     }
   }
 
-  app.listen(port, async () => {
+  const server = app.listen(port, async () => {
     appLogger.info({ port }, "Amana backend listening");
 
     try {
@@ -165,25 +181,54 @@ async function bootstrap() {
     await startReconciliationCron();
     await startPiiScanCron();
   });
+
+  // Ordered, bounded, logged graceful shutdown.
+  // 1. Readiness probes return 503 (createApp wired to orchestrator state)
+  // 2. HTTP server drains in-flight requests
+  // 3. Event listener drains in-flight poll and logs the last cursor
+  // 4. BullMQ workers drain active jobs (pause new pickup via worker.close)
+  // 5. Queue producer connections close
+  // 6. Redis singleton disconnects
+  // 7. Prisma/Postgres disconnects
+  const shutdown = async (signal: string) => {
+    const services: Shutdownable[] = [
+      {
+        name: "event-listener",
+        stop: () => eventListenerService.drain(),
+      },
+      {
+        name: "reconciliation-worker",
+        stop: async () => {
+          if (reconciliationWorker) await reconciliationWorker.close();
+          else appLogger.info("Reconciliation worker not running — skipping");
+        },
+      },
+      {
+        name: "pii-worker",
+        stop: async () => {
+          if (piiLogScannerWorker) await piiLogScannerWorker.close();
+          else appLogger.info("PII worker not running — skipping");
+        },
+      },
+      {
+        name: "queue-connections",
+        stop: async () => {
+          await reconciliationQueue.close();
+          await piiScanQueue.close();
+          await closeAllQueueConnections();
+        },
+      },
+      { name: "redis", stop: () => redis.quit() },
+      { name: "database", stop: () => prisma.$disconnect() },
+    ];
+    await shutDownOrchestrator.shutdown(signal, server, services);
+  };
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
 bootstrap().catch((error) => {
   appLogger.fatal({ error }, "Fatal bootstrap error");
   process.exit(1);
 });
-
-const shutdown = async (signal: string) => {
-  appLogger.info({ signal }, "Received shutdown signal. Shutting down gracefully...");
-  eventListenerService.stop();
-  if (reconciliationWorker) {
-    await reconciliationWorker.close();
-  }
-  if (piiLogScannerWorker) {
-    await piiLogScannerWorker.close();
-  }
-  await prisma.$disconnect();
-  process.exit(0);
-};
-
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));

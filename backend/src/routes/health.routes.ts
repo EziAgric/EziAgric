@@ -13,6 +13,8 @@ import { appLogger } from "../middleware/logger";
  *   k8s: readinessProbe → remove from load balancer rotation if non-2xx.
  *   Excludes degraded-but-tolerable externals (Stellar RPC, IPFS, indexer)
  *   so third-party brownouts do NOT crash-loop or route-shed pods.
+ *   During graceful shutdown, returns 503 immediately so k8s stops routing
+ *   traffic before the server begins draining in-flight requests.
  *
  * GET /health/startup — startup probe: same critical subset as readiness
  *   plus config + admin signing key. Used on initial container start.
@@ -21,7 +23,7 @@ import { appLogger } from "../middleware/logger";
  * GET /health         — full check: all dependencies, for observability UIs
  *   (Datadog, UptimeRobot). Not used by any k8s probe directly.
  */
-export function createHealthRouter(): Router {
+export function createHealthRouter(isShuttingDown?: () => boolean): Router {
     const router = Router();
     const healthService = new HealthService();
 
@@ -76,8 +78,20 @@ export function createHealthRouter(): Router {
      * Excludes Stellar RPC, IPFS, and the on-chain indexer because those
      * are degraded-but-tolerable externals. A Stellar RPC slowdown should
      * degrade service gracefully, not trigger a deploy storm.
+     *
+     * During graceful shutdown, returns 503 immediately so the load
+     * balancer stops routing traffic while in-flight requests drain.
      */
     router.get("/ready", async (req: Request, res: Response, next: NextFunction) => {
+        if (isShuttingDown?.()) {
+            res.status(503).json({
+                status: "not_ready",
+                reason: "shutdown_in_progress",
+                timestamp: new Date().toISOString(),
+            });
+            return;
+        }
+
         try {
             const readinessCheck = await healthService.performReadinessCheck();
 

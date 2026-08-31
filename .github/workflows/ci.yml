@@ -304,6 +304,12 @@ jobs:
           chmod +x ../scripts/check-admin-test-coverage.sh
           ../scripts/check-admin-test-coverage.sh
 
+      - name: Validate example env files against the schema
+        if: needs.changes.outputs.backend == 'true'
+        env:
+          NODE_ENV: test
+        run: pnpm tsx scripts/validate-env-examples.ts
+
       - name: Admin auth regression suite
         if: needs.changes.outputs.backend == 'true'
         env:
