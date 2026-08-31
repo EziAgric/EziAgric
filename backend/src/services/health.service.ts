@@ -7,7 +7,7 @@ import { horizonServer, sorobanRpcClient } from "../config/stellar";
 import { getPinataClient } from "../config/ipfs";
 import { AlertService, alertService as defaultAlertService } from "./alert.service";
 import { getCircuitBreakerStates } from "../lib/circuitBreaker";
-import { recordSorobanRpcHealth } from "../lib/metrics";
+import { recordSorobanRpcHealth, recordEventListenerLag } from "../lib/metrics";
 
 interface HealthIndicatorResult {
   status: "up" | "down";
@@ -466,6 +466,10 @@ export class HealthService {
     const indexerLagSeconds = latestLedger
       ? (Date.now() - latestLedger.processedAt.getTime()) / 1000
       : -1;
+
+    // SLO SLI: event-processing lag is sampled whenever a health check runs.
+    // Negative/unknown (no processed event yet) is coerced to 0 by the metric.
+    recordEventListenerLag(indexerLagSeconds);
 
     const missingEnvVars =
       configCheck.status === "down"

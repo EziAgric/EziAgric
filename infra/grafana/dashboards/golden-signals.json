@@ -134,12 +134,72 @@
       "description": "backend/src/lib/metrics.ts: stellar_rpc_duration_ms, per Soroban RPC method (sendTransaction, simulateTransaction, prepareTransaction, getAccount).",
       "type": "timeseries",
       "datasource": "${datasource}",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(stellar_rpc_duration_ms_bucket[5m])) by (le, rpc_method))",
           "legendFormat": "{{rpc_method}}"
         }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "SLO error budget consumed (28d)",
+      "description": "Share of each SLO's 28-day error budget consumed (%). 100% = budget exhausted -> incident + postmortem; >=90% -> feature freeze + reliability sprint. Source: infra/prometheus/slo-recording-rules.yml.",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1.2 },
+        "overrides": []
+      },
+      "thresholds": [
+        { "op": "gt", "color": "green", "value": null },
+        { "op": "gt", "color": "yellow", "value": 0.6 },
+        { "op": "gt", "color": "orange", "value": 0.9 },
+        { "op": "gt", "color": "red", "value": 1.0 }
+      ],
+      "targets": [
+        { "expr": "slo:S1:error_budget_consumed:ratio28d", "legendFormat": "S1 availability" },
+        { "expr": "slo:S2:error_budget_consumed:ratio28d", "legendFormat": "S2 latency p95" },
+        { "expr": "slo:S3:error_budget_consumed:ratio28d", "legendFormat": "S3 payout" },
+        { "expr": "slo:S4:error_budget_consumed:ratio28d", "legendFormat": "S4 event lag" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "SLO good ratio (28d)",
+      "description": "Good ratio per SLO over the 28-day window. A value below target means the SLO is being missed. Source: infra/prometheus/slo-recording-rules.yml.",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1 },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "slo:S1:good_ratio:ratio_rate28d", "legendFormat": "S1 availability (tgt 0.999)" },
+        { "expr": "slo:S2:good_ratio:ratio_rate28d", "legendFormat": "S2 latency p95 (tgt 0.95)" },
+        { "expr": "slo:S3:good_ratio:ratio28d", "legendFormat": "S3 payout (tgt 0.995)" },
+        { "expr": "slo:S4:good_ratio:ratio_rate28d", "legendFormat": "S4 event lag (tgt 0.95)" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "SLO burn rate (current)",
+      "description": "Error-budget burn rate over the 6h slow-burn window per SLO. Crossing ~9.3x (>3-day budget exhaustion) => ticket. Crossing 1200x on the 1h window => page. Source: infra/prometheus/slo-alerting-rules.yml.",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "slo:S1:error_budget_consumed:ratio6h", "legendFormat": "S1 burn (6h)" },
+        { "expr": "slo:S2:error_budget_consumed:ratio6h", "legendFormat": "S2 burn (6h)" },
+        { "expr": "slo:S3:error_budget_consumed:ratio6h", "legendFormat": "S3 burn (6h)" },
+        { "expr": "slo:S4:error_budget_consumed:ratio6h", "legendFormat": "S4 burn (6h)" }
       ]
     }
   ]
