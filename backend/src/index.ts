@@ -16,6 +16,7 @@ import { createPiiLogScannerWorker } from "./jobs/workers/piiLogScanner.worker";
 import { reconciliationQueue, piiScanQueue, closeAllQueueConnections } from "./jobs/queue";
 import { redis } from "./lib/redis";
 import { ShutdownOrchestrator, Shutdownable } from "./lib/shutdown";
+import { formatConfigFingerprint } from "./config/env";
 
 void env;
 
@@ -143,6 +144,14 @@ async function startPiiScanCron() {
 
 async function bootstrap() {
   const isTest = (process.env.NODE_ENV ?? env.NODE_ENV) === "test";
+
+  // Sanitized effective-config fingerprint. Secret values are redacted to a
+  // stable marker so the boot log confirms which secrets are present without
+  // ever exposing them.
+  appLogger.info(
+    { effectiveConfig: formatConfigFingerprint({ ...process.env }) },
+    "Effective configuration fingerprint",
+  );
 
   if (!isTest) {
     appLogger.info("Performing startup readiness check...");
