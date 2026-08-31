@@ -63,12 +63,16 @@ export default function Step2Negotiation() {
           </span>
         </div>
 
+        <label htmlFor="buyerRatio" className="sr-only">Buyer loss ratio percentage</label>
         <input
+          id="buyerRatio"
           type="range"
           min={0}
           max={100}
           step={5}
           value={data.buyerRatio}
+          aria-label="Buyer loss ratio"
+          aria-valuetext={`Buyer absorbs ${data.buyerRatio} percent, Seller absorbs ${data.sellerRatio} percent`}
           onChange={(e) => handleBuyerRatio(parseInt(e.target.value))}
           className="w-full accent-gold"
         />
@@ -89,7 +93,7 @@ export default function Step2Negotiation() {
             )}
           </div>
         </div>
-        {errors.sum && touched.buyerRatio && <p className="text-status-danger text-xs text-center">{errors.sum}</p>}
+        {errors.sum && touched.buyerRatio && <p role="alert" aria-live="polite" className="text-status-danger text-xs text-center">{errors.sum}</p>}
       </div>
 
       {/* Delivery window */}
@@ -110,13 +114,14 @@ export default function Step2Negotiation() {
           onBlur={() => handleBlur("deliveryDays")}
           className="bg-bg-input border border-border-default rounded-md px-4 py-3 text-text-primary focus:outline-none focus:border-border-focus"
         />
-        {errors.deliveryDays && touched.deliveryDays && <p className="text-status-danger text-xs mt-1">{errors.deliveryDays}</p>}
+        {errors.deliveryDays && touched.deliveryDays && <p role="alert" aria-live="polite" className="text-status-danger text-xs mt-1">{errors.deliveryDays}</p>}
       </div>
 
       {/* Notes */}
       <div className="flex flex-col gap-1">
-        <label className="text-sm text-text-secondary">Additional Terms / Notes</label>
+        <label htmlFor="tradeNotes" className="text-sm text-text-secondary">Additional Terms / Notes</label>
         <textarea
+          id="tradeNotes"
           rows={3}
           placeholder="e.g. Goods must be bagged and sealed. Driver must present manifest."
           value={data.notes}

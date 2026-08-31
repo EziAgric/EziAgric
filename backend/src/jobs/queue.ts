@@ -1,11 +1,45 @@
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import { appLogger } from '../middleware/logger';
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
+/**
+ * Queue resilience: BullMQ connections auto-reconnect with exponential backoff.
+ * Consumers resume cleanly after reconnect — jobs are durable in Redis and
+ * workers re-attach. See docs/redis-resilience.md#queue-consumers
+ */
 export function createQueueConnection(): IORedis {
   // @ts-expect-error - ioredis URL+options constructor is valid at runtime
-  return new IORedis(REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: false });
+  const conn: IORedis = new IORedis(REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    // Reconnect strategy: exponential backoff up to 5s, 20 retries then error
+    retryStrategy(times: number) {
+      if (times > 20) {
+        appLogger.error({ times }, "Queue Redis retry exhausted — giving up");
+        return null;
+      }
+      const delay = Math.min(times * 200, 5000);
+      appLogger.warn({ times, delay }, "Queue Redis reconnecting");
+      return delay;
+    },
+  } as any);
+
+  (conn as any).on("error", (err: Error) => {
+    appLogger.error({ err: err.message }, "Queue Redis connection error");
+  });
+  (conn as any).on("close", () => {
+    appLogger.warn("Queue Redis connection closed — will reconnect");
+  });
+  (conn as any).on("reconnecting", () => {
+    appLogger.info("Queue Redis reconnecting");
+  });
+  (conn as any).on("ready", () => {
+    appLogger.info("Queue Redis ready — consumers will resume");
+  });
+
+  return conn;
 }
 
 export interface WebhookJobData {

@@ -134,6 +134,10 @@ jobs:
             }
           "
 
+      - name: A11y axe audit (blocking)
+        if: needs.changes.outputs.frontend == 'true'
+        run: pnpm test -- src/__tests__/accessibility --verbose
+
       - name: Upload coverage report
         if: needs.changes.outputs.frontend == 'true'
         uses: actions/upload-artifact@v4

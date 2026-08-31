@@ -9,6 +9,11 @@ import { api, apiConfig, ApiError } from "@/lib/api";
 import { createTradeInputSchema, fieldErrors } from "@/lib/domain-schemas/trade";
 import Link from "next/link";
 import { LegalDisclaimerModal } from "@/components/ui/LegalDisclaimerModal";
+import { useOffline } from "@/hooks/useOffline";
+import { useOfflineQueueStore } from "@/stores/offlineQueueStore";
+import { useToast, TOAST_CONTRACT } from "@/hooks/useToast";
+import { shouldDedup, registerAction } from "@/lib/actionDedup";
+import { generateIdempotencyKey } from "@/lib/idempotency";
 
 type Row = { label: string; value: string };
 
@@ -25,6 +30,10 @@ export default function Step3Review() {
   const router = useRouter();
   const { data, setStep } = useTrade();
   const { token, isAuthenticated, connectWallet, authenticate, isWalletConnected } = useAuth();
+  const { isOffline } = useOffline();
+  const enqueue = useOfflineQueueStore((s) => s.enqueue);
+  const pendingCount = useOfflineQueueStore((s) => s.queue.length);
+  const { addToast, addToastWithCorrelation, updateToast } = useToast();
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -60,7 +69,10 @@ export default function Step3Review() {
   };
 
   const handleSubmit = async () => {
-    if (submittingRef.current) return;
+    // Action de-duplication window preventing double-submit (rapid triple-click yields single intent)
+    const dedupKey = `create-trade:${data.sellerAddress}:${amountUsdc}:${buyerLossBps}`;
+    const dedup = shouldDedup(dedupKey);
+    if (dedup.dedup || submittingRef.current) return;
     if (!isAuthenticated || !token) {
       setError("Please connect and authenticate your wallet first.");
       return;
@@ -86,12 +98,41 @@ export default function Step3Review() {
       return;
     }
 
+    const correlationId = `corr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const idempotencyKey = generateIdempotencyKey();
+    registerAction(dedupKey, correlationId, idempotencyKey);
+
+    // Offline queue: queue idempotent action locally while offline (draft trades survive refresh)
+    if (isOffline) {
+      enqueue({
+        type: "create-trade",
+        endpoint: "/trades",
+        method: "POST",
+        body: payload,
+        idempotencyKey,
+        correlationId,
+      });
+      // Pending-state UX showing what will send
+      addToastWithCorrelation({
+        type: "info",
+        title: "Queued offline",
+        message: `Draft trade (${data.commodity} ${amountUsdc} cNGN) will send when reconnected.`,
+        correlationId,
+        duration: 6000,
+      });
+      // Keep draft in localStorage (TradeContext) — survives refresh/restart via TradeContext persistence
+      setError(null);
+      return;
+    }
+
     submittingRef.current = true;
     setLoading(true);
     setError(null);
+    // Unified toast contract: pending w/ correlation ID
+    addToastWithCorrelation({ type: "info", title: "In progress", message: "Locking funds…", correlationId, duration: 0 });
 
     try {
-      const createResponse = await api.trades.create(token, payload);
+      const createResponse = await api.trades.create(token, payload, { idempotencyKey, correlationId });
 
       setTradeId(createResponse.tradeId);
 
@@ -124,6 +165,9 @@ export default function Step3Review() {
       }
 
       setTxHash(submitResult.result?.hash || createResponse.tradeId);
+      updateToast(correlationId, { type: "success", title: "Success", message: "Trade created — funds locked.", duration: 5000 });
+      // Clear draft on success
+      try { localStorage.removeItem("amana:draft-trade"); } catch {}
     } catch (err) {
       let errorMessage = "Transaction failed. Please try again.";
       if (err instanceof ApiError) {
@@ -132,6 +176,8 @@ export default function Step3Review() {
         errorMessage = err.message;
       }
       setError(errorMessage);
+      // Snapshot-based rollback for store/state is not needed here (no optimistic patch yet), but ensure toast reflects error with correlation
+      updateToast(correlationId, { type: "error", title: "Error", message: errorMessage, duration: 6000 });
     } finally {
       submittingRef.current = false;
       setLoading(false);
@@ -227,7 +273,13 @@ export default function Step3Review() {
       </div>
 
       {error && (
-        <p className="text-status-danger text-sm text-center">{error}</p>
+        <p role="alert" aria-live="polite" className="text-status-danger text-sm text-center">{error}</p>
+      )}
+      {pendingCount > 0 && (
+        <div className="rounded-lg bg-status-warning/10 border border-status-warning/30 px-4 py-3 flex items-center justify-between">
+          <span className="text-sm text-status-warning">{pendingCount} queued action(s) will send when online</span>
+          <span className="text-xs text-text-muted">Idempotency keys preserved — no duplicates</span>
+        </div>
       )}
 
       <LegalDisclaimerModal
