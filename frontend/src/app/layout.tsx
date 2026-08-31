@@ -10,7 +10,8 @@ import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import { ToastContainer } from "@/components/ui/ToastContainer";
 import { ToastProvider } from "@/hooks/useToast";
 import RegisterSW from "@/components/RegisterSW";
-import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { FeatureFlagsProvider } from "@/components/FeatureFlagsProvider";
+import { FlagDebugPanel } from "@/components/admin/FlagDebugPanel";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,17 +56,18 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} font-sans bg-primary text-text-primary antialiased`}
       >
-        <ErrorBoundary>
-          <AnalyticsProvider>
-            <AuthProvider>
-              <ToastProvider>
+        <AnalyticsProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <FeatureFlagsProvider>
                 <AppShell>{children}</AppShell>
                 <RegisterSW />
                 <ToastContainer />
-              </ToastProvider>
-            </AuthProvider>
-          </AnalyticsProvider>
-        </ErrorBoundary>
+                <FlagDebugPanel />
+              </FeatureFlagsProvider>
+            </ToastProvider>
+          </AuthProvider>
+        </AnalyticsProvider>
       </body>
     </html>
   );

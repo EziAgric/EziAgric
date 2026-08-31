@@ -158,6 +158,82 @@ jobs:
         if: needs.changes.outputs.frontend != 'true'
         run: echo "No frontend file changes detected, required gate passed."
 
+  visual-regression:
+    name: Visual Regression (Playwright)
+    runs-on: ubuntu-latest
+    needs: [changes, frontend]
+    if: needs.changes.outputs.frontend == 'true'
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fetch baselines committed to the repo (snapshot PNGs live in the tree).
+          lfs: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (Chromium only)
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Build Next.js app
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+
+      - name: Run visual regression suite
+        run: pnpm exec playwright test --project=chromium-desktop --project=chromium-mobile tests/visual
+        env:
+          CI: true
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+
+      - name: Upload visual regression report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 14
+
+  flag-catalog-drift:
+    name: Feature Flag Catalog Drift Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install ts-node
+        run: npm install -g ts-node typescript --prefer-offline
+
+      - name: Run catalog drift check
+        run: ts-node --skip-project scripts/check-flag-catalog-drift.ts
+
   backend:
     name: Backend Required Gate
     runs-on: ubuntu-latest
@@ -285,9 +361,181 @@ jobs:
         if: needs.changes.outputs.mobile == 'true'
         run: pnpm lint
 
+      - name: Jest unit tests
+        if: needs.changes.outputs.mobile == 'true'
+        run: pnpm test
+
       - name: Skip note (no mobile changes)
         if: needs.changes.outputs.mobile != 'true'
         run: echo "No mobile file changes detected, required gate passed."
+
+  mobile-e2e-ios:
+    name: Mobile E2E Smoke — iOS
+    runs-on: macos-latest
+    needs: [changes, mobile]
+    if: needs.changes.outputs.mobile == 'true'
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Cache Expo prebuild
+        uses: actions/cache@v4
+        with:
+          path: mobile/ios
+          key: mobile-expo-prebuild-ios-${{ hashFiles('mobile/app.json', 'mobile/package.json') }}
+          restore-keys: mobile-expo-prebuild-ios-
+
+      - name: Expo prebuild (iOS)
+        run: pnpm expo prebuild --platform ios --non-interactive
+        env:
+          CI: true
+
+      - name: Build iOS app for simulator
+        run: |
+          xcodebuild \
+            -workspace ios/Amana.xcworkspace \
+            -scheme Amana \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath ios/build \
+            -destination "platform=iOS Simulator,name=iPhone 15,OS=17.5" \
+            build \
+            | xcpretty --color
+        env:
+          CI: true
+
+      - name: Boot iOS simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep "iPhone 15" | grep "17.5" | head -1 | grep -E -o '\([-A-F0-9]+\)' | tr -d '()')
+          xcrun simctl boot "$UDID" || true
+          echo "SIMULATOR_UDID=$UDID" >> $GITHUB_ENV
+
+      - name: Run Detox smoke tests (iOS)
+        run: pnpm test:e2e:ios
+        env:
+          CI: true
+
+      - name: Upload Detox artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detox-ios-artifacts
+          path: mobile/.detox-artifacts/
+          retention-days: 7
+
+  mobile-e2e-android:
+    name: Mobile E2E Smoke — Android
+    runs-on: ubuntu-latest
+    needs: [changes, mobile]
+    if: needs.changes.outputs.mobile == 'true'
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache AVD
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-Pixel_6_API_34-${{ runner.os }}
+
+      - name: Create AVD (if not cached)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "no" | avdmanager create avd \
+            --force \
+            --name Pixel_6_API_34 \
+            --abi google_apis/x86_64 \
+            --package "system-images;android-34;google_apis;x86_64" \
+            --device "pixel_6"
+
+      - name: Cache Expo prebuild
+        uses: actions/cache@v4
+        with:
+          path: mobile/android
+          key: mobile-expo-prebuild-android-${{ hashFiles('mobile/app.json', 'mobile/package.json') }}
+          restore-keys: mobile-expo-prebuild-android-
+
+      - name: Expo prebuild (Android)
+        run: pnpm expo prebuild --platform android --non-interactive
+        env:
+          CI: true
+
+      - name: Build Android APK (debug)
+        run: |
+          cd android && ./gradlew assembleDebug assembleAndroidTest -DtestBuildType=debug
+        env:
+          CI: true
+
+      - name: Start Android emulator and run Detox smoke tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          avd-name: Pixel_6_API_34
+          script: cd mobile && pnpm test:e2e:android
+        env:
+          CI: true
+
+      - name: Upload Detox artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detox-android-artifacts
+          path: mobile/.detox-artifacts/
+          retention-days: 7
 
   contracts:
     name: Contracts Required Gate
