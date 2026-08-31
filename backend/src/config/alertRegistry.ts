@@ -73,6 +73,14 @@ export const ALERT_REGISTRY: Record<AlertType, AlertRegistryEntry> = {
     // every subsequent run while the same underlying break is being fixed.
     dedupeWindowMs: 15 * 60_000,
   },
+  pii_log_leak_detected: {
+    routing: "ticket",
+    runbookUrl: "docs/pii-log-scanning.md#responding-to-a-scanner-alert",
+    description: "The PII log scanner found emails/phone numbers/secrets that survived log redaction.",
+    // The scanner runs weekly; suppress repeat pages for the same
+    // underlying gap until someone's had a chance to patch the denylist.
+    dedupeWindowMs: 24 * 60 * 60_000,
+  },
 };
 
 export function getAlertRegistryEntry(type: AlertType): AlertRegistryEntry {

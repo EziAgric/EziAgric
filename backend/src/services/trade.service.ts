@@ -4,6 +4,12 @@ import { prisma as defaultPrisma } from "../lib/db";
 import { ContractService } from "./contract.service";
 import { appLogger } from "../middleware/logger";
 import { TracingHelper } from "../config/tracing";
+import {
+  recordTradeFunnelEvent,
+  recordTimeToFund,
+  recordTimeToRelease,
+  recordTradeGmv,
+} from "../lib/metrics";
 
 function parseAdminPubkeys(): Set<string> {
   const raw = process.env.ADMIN_STELLAR_PUBKEYS ?? "";
@@ -87,12 +93,17 @@ export class TradeService {
       userId: sanitizeLogField(input.buyerAddress)
     });
 
-    return this.prisma.trade.create({
+    const trade = await this.prisma.trade.create({
       data: {
         ...input,
         status: TradeStatus.PENDING_SIGNATURE,
       },
     });
+    // KPI: record the pending creation so the funnel tracks attempts from the
+    // DB side (the on-chain TradeCreated event handler records "created" again
+    // once the tx is confirmed, keeping both counts for reconciliation).
+    recordTradeFunnelEvent("created");
+    return trade;
   }
 
   async listUserTrades(address: string, filters: TradeListFilters) {
