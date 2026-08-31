@@ -1,4 +1,4 @@
-import { createQueryString, request } from "./client";
+import { createQueryString, request, withIdempotency } from "./client";
 import type {
   CreateTradeRequest,
   CreateTradeResponse,
@@ -42,35 +42,40 @@ export const tradesApi = {
   getStats: (token: string) =>
     request<TradeStatsResponse>("/trades/stats", { token }),
 
-  create: (token: string, data: CreateTradeRequest) =>
+  create: (token: string, data: CreateTradeRequest, opts?: { idempotencyKey?: string; correlationId?: string }) =>
     request<CreateTradeResponse>("/trades", {
       method: "POST",
       token,
+      headers: withIdempotency(undefined, opts),
       body: JSON.stringify(data),
     }),
 
-  deposit: (token: string, tradeId: string) =>
+  deposit: (token: string, tradeId: string, opts?: { idempotencyKey?: string; correlationId?: string }) =>
     request<DepositResponse>(`/trades/${tradeId}/deposit`, {
       method: "POST",
       token,
+      headers: withIdempotency(undefined, opts),
     }),
 
-  confirmDelivery: (token: string, tradeId: string) =>
+  confirmDelivery: (token: string, tradeId: string, opts?: { idempotencyKey?: string; correlationId?: string }) =>
     request<{ unsignedXdr: string }>(`/trades/${tradeId}/confirm`, {
       method: "POST",
       token,
+      headers: withIdempotency(undefined, opts),
     }),
 
-  releaseFunds: (token: string, tradeId: string) =>
+  releaseFunds: (token: string, tradeId: string, opts?: { idempotencyKey?: string; correlationId?: string }) =>
     request<{ unsignedXdr: string }>(`/trades/${tradeId}/release`, {
       method: "POST",
       token,
+      headers: withIdempotency(undefined, opts),
     }),
 
-  initiateDispute: (token: string, tradeId: string, reason: string, category: string) =>
+  initiateDispute: (token: string, tradeId: string, reason: string, category: string, opts?: { idempotencyKey?: string; correlationId?: string }) =>
     request<{ unsignedXdr: string }>(`/trades/${tradeId}/dispute`, {
       method: "POST",
       token,
+      headers: withIdempotency(undefined, opts),
       body: JSON.stringify({ reason, category }),
     }),
 };

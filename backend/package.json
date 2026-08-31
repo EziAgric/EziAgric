@@ -8,7 +8,9 @@
     "start": "node dist/index.js",
     "test": "jest --config jest.config.js --forceExit --detectOpenHandles",
     "lint": "eslint src/",
-    "postinstall": "npx prisma generate"
+    "postinstall": "npx prisma generate",
+    "mutation": "stryker run stryker.money-math.config.json",
+    "mutation:ci": "stryker run stryker.money-math.config.json --reporters html,json,progress"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -73,6 +75,9 @@
     "ts-jest": "29.4.11",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.62.1"
+    "typescript-eslint": "8.62.1",
+    "@stryker-mutator/core": "8.7.1",
+    "@stryker-mutator/jest-runner": "8.7.1",
+    "@stryker-mutator/typescript-checker": "8.7.1"
   }
 }

@@ -62,10 +62,25 @@ jobs:
               - 'contracts/**'
               - 'scripts/check-contract-deployment-safety.sh'
 
+  validate-quarantine:
+    name: Validate flaky-tests quarantine registry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate quarantine registry (no expired entries)
+        run: node scripts/validate-flaky-quarantine.mjs
+
   frontend:
     name: Frontend Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: frontend
@@ -96,7 +111,32 @@ jobs:
 
       - name: Test
         if: needs.changes.outputs.frontend == 'true'
-        run: pnpm test
+        # --json writes a machine-readable result file used by the flake reporter
+        run: pnpm test -- --json --outputFile=jest-results.json || true
+
+      - name: Detect flake candidates (frontend)
+        if: needs.changes.outputs.frontend == 'true'
+        run: |
+          node ../scripts/flake-reporter.mjs \
+            --results jest-results.json \
+            --registry ../.github/flaky-tests-quarantine.json \
+            --output ../reports/flake/frontend-${{ github.run_number }}.json \
+            --scope frontend | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Fail if tests failed (deferred from --json run)
+        if: needs.changes.outputs.frontend == 'true'
+        run: |
+          node -e "
+            const r = require('./jest-results.json');
+            if (r.success === false || r.numFailedTests > 0) {
+              console.error('Tests failed: ' + r.numFailedTests + ' failure(s)');
+              process.exit(1);
+            }
+          "
+
+      - name: A11y axe audit (blocking)
+        if: needs.changes.outputs.frontend == 'true'
+        run: pnpm test -- src/__tests__/accessibility --verbose
 
       - name: Upload coverage report
         if: needs.changes.outputs.frontend == 'true'
@@ -105,6 +145,14 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/
           retention-days: 7
+
+      - name: Upload flake report (frontend)
+        if: needs.changes.outputs.frontend == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-report-frontend-${{ github.run_number }}
+          path: reports/flake/frontend-${{ github.run_number }}.json
+          retention-days: 30
 
       - name: Skip note (no frontend changes)
         if: needs.changes.outputs.frontend != 'true'
@@ -189,7 +237,7 @@ jobs:
   backend:
     name: Backend Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: backend
@@ -219,7 +267,36 @@ jobs:
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
-        run: pnpm test
+        # --json writes a machine-readable result file used by the flake reporter
+        run: pnpm test -- --json --outputFile=jest-results.json || true
+
+      - name: Detect flake candidates (backend)
+        if: needs.changes.outputs.backend == 'true'
+        run: |
+          node ../scripts/flake-reporter.mjs \
+            --results jest-results.json \
+            --registry ../.github/flaky-tests-quarantine.json \
+            --output ../reports/flake/backend-${{ github.run_number }}.json \
+            --scope backend | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Fail if tests failed (deferred from --json run)
+        if: needs.changes.outputs.backend == 'true'
+        run: |
+          node -e "
+            const r = require('./jest-results.json');
+            if (r.success === false || r.numFailedTests > 0) {
+              console.error('Tests failed: ' + r.numFailedTests + ' failure(s)');
+              process.exit(1);
+            }
+          "
+
+      - name: Upload flake report (backend)
+        if: needs.changes.outputs.backend == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-report-backend-${{ github.run_number }}
+          path: reports/flake/backend-${{ github.run_number }}.json
+          retention-days: 30
 
       - name: Enforce Admin Regression Test Policy
         if: needs.changes.outputs.backend == 'true'
@@ -256,7 +333,7 @@ jobs:
   mobile:
     name: Mobile Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: mobile
@@ -463,7 +540,7 @@ jobs:
   contracts:
     name: Contracts Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: contracts/amana_escrow
