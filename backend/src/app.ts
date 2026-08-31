@@ -7,36 +7,8 @@ import { tracingMiddleware } from "./middleware/tracing.middleware";
 import loggerMiddleware, { appLogger } from "./middleware/logger";
 import { requestIdMiddleware } from "./middleware/requestId";
 import { requestLoggerMiddleware } from "./middleware/request.logger.middleware";
-import { authRoutes } from "./routes/auth.routes";
-import { walletRoutes } from "./routes/wallet.routes";
-import { createTradeRouter } from "./routes/trade.routes";
-import { createTradeTemplateRouter } from "./routes/trade.template.routes";
-import { createTradeWatchlistRouter } from "./routes/trade.watchlist.routes";
-import { createTradeEvidenceRouter } from "./routes/trade.evidence.routes";
-import { createTradeExportRouter } from "./routes/trade.export.routes";
-import { createEscrowReleaseRouter } from "./routes/escrow.release.routes";
-import { createEscrowScheduleRouter } from "./routes/escrow.schedule.routes";
-import { createTradeManifestRouter } from "./routes/trade.manifest.routes";
-import { createManifestRouter } from "./routes/manifest.routes";
-import { createTradeNotesRouter } from "./routes/trade.notes.routes";
-import { createEvidenceRouter } from "./routes/evidence.routes";
-import { createAuditTrailRouter } from "./routes/auditTrail.routes";
-import { createGoalsRouter } from "./routes/goals.routes";
 import { createHealthRouter } from "./routes/health.routes";
 import { createHealthDetailRouter } from "./routes/health.detail.routes";
-import { createNotificationPreferencesRouter } from "./routes/notifications.preferences.routes";
-import { createNotificationsRouter } from "./routes/notifications.inapp.routes";
-import { disputeRoutes } from "./routes/dispute.routes";
-import { disputeCategoryRoutes } from "./routes/disputeCategory.routes";
-import { createTreasuryRouter } from "./routes/treasury.routes";
-import userRoutes from "./routes/user.routes";
-import reputationRoutes from "./routes/reputation.routes";
-import { stellarFeesRoutes } from "./routes/stellar.fees";
-import { stellarTxStatusRoutes } from "./routes/stellar.tx.status";
-import { stellarAssetRoutes } from "./routes/stellar.asset";
-import { stellarAccountBalanceRoutes } from "./routes/stellar.account.balance";
-import { stellarAccountCreateRoutes } from "./routes/stellar.account.create";
-import { createContractStateRouter } from "./routes/contract.state.routes";
 import { createAdminFeaturesRouter } from "./routes/admin.features.routes";
 import { createAdminAuditRouter } from "./routes/admin.audit.routes";
 import { createAdminContractRouter } from "./routes/admin.contract.routes";
@@ -44,11 +16,14 @@ import { createAdminAuthRouter } from "./routes/admin.auth.routes";
 import { createAdminStreamsRouter } from "./routes/admin.streams.routes";
 import { createAdminTradeBatchRouter } from "./routes/admin.trades.batch.routes";
 import { createAdminDlqRouter } from "./routes/admin.dlq.routes";
-import { webhooksRoutes } from "./routes/webhooks.routes";
 import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
-import { createPrivacyRouter } from "./routes/privacy.routes";
 import { csrfProtection } from "./middleware/csrf.middleware";
+import { createPublicApiRouter } from "./routes/publicApi.router";
+import {
+  apiVersionMiddleware,
+  API_VERSION,
+} from "./middleware/apiVersion.middleware";
 
 /** Parse the CORS_ORIGINS env var into a usable allowlist.
  *  Value should be a comma-separated list of allowed origins, e.g.:
@@ -130,55 +105,22 @@ export function createApp(isShuttingDown?: () => boolean): express.Application {
   app.use("/health", createHealthRouter(isShuttingDown));
   app.use("/health", createHealthDetailRouter());
 
-  app.use("/auth", authRoutes);
-  app.use("/wallet", walletRoutes);
-  app.use("/users", userRoutes);
-  app.use(createPrivacyRouter());
-  app.use("/users", reputationRoutes);
-  app.use(createNotificationPreferencesRouter());
-  app.use(createNotificationsRouter());
+  // Resolve and signal the API version served by a request. Placed before the
+  // public mounts so both the versioned and legacy lanes are tagged; admin and
+  // health requests remain "unversioned" and receive no deprecation headers.
+  app.use(apiVersionMiddleware);
 
-  // These literal routes must precede the generic /trades/:id handler.
-  app.use("/trades", createTradeExportRouter());
-  app.use("/trades", createTradeTemplateRouter());
-  app.use("/trades", createTradeWatchlistRouter());
-  app.use("/trades", createTradeEvidenceRouter());
-  app.use("/trades", createEscrowReleaseRouter());
-  app.use("/trades", createEscrowScheduleRouter());
-  app.use("/trades", createTradeRouter());
-
-  // Notes: POST /trades/:id/notes and GET /trades/:id/notes
-  app.use("/trades", createTradeNotesRouter());
-
-  // Manifest: POST /trades/:id/manifest
-  app.use("/trades/:id/manifest", createTradeManifestRouter());
-  app.use("/trades/:id/manifest", createManifestRouter());
-
-  // Evidence: GET /trades/:id/evidence and GET /evidence/:cid/stream
-  app.use(createEvidenceRouter());
-
-  // Audit trail: GET /trades/:id/history
-  app.use("/trades", createAuditTrailRouter());
-
-  // Goals analytics: GET /goals
-  app.use("/goals", createGoalsRouter());
-
-  // Disputes: GET /disputes
-  app.use("/disputes", disputeRoutes);
-
-  // Dispute categories: CRUD /dispute-categories
-  app.use("/dispute-categories", disputeCategoryRoutes);
-
-  // Stellar network endpoints
-  app.use("/stellar/fees", stellarFeesRoutes);
-  app.use("/stellar/tx", stellarTxStatusRoutes);
-  app.use("/stellar/assets", stellarAssetRoutes);
-  app.use("/stellar/account", stellarAccountCreateRoutes);
-  app.use("/stellar/account", stellarAccountBalanceRoutes);
-  app.use("/contract", createContractStateRouter());
-
-  // Treasury management
-  app.use("/treasury", createTreasuryRouter());
+  // The public API is served on TWO lanes sharing one router, so behaviour is
+  // identical by construction:
+  //  1. `/api/v1`  — the stable, versioned lane (current version).
+  //  2. legacy aliases (`/auth`, `/trades`, ...) — deprecated backwards-
+  //     compatibility lane for shipped mobile/web builds that are slow to update.
+  const publicApi = createPublicApiRouter();
+  app.use(`/api/${API_VERSION}`, publicApi);
+  // v1 must be registered first so /api/v1/* never falls through to the root
+  // legacy mount. The legacy lane is mounted at "/" to preserve every current
+  // URL exactly.
+  app.use("/", publicApi);
 
   // Feature flags (admin-managed) — gated by ADMIN_ROUTES_ENABLED
   app.use(adminFeatureGate, csrfProtection, createAdminFeaturesRouter());
@@ -200,9 +142,6 @@ export function createApp(isShuttingDown?: () => boolean): express.Application {
 
   // Admin dead-letter queue inspection/replay: GET /api/admin/dlq/:queue, POST /api/admin/dlq/:queue/:jobId/replay
   app.use(adminFeatureGate, csrfProtection, createAdminDlqRouter());
-
-  // Webhooks: CRUD /webhooks
-  app.use("/webhooks", webhooksRoutes);
 
   // Error handler is registered last so it catches errors from all routes,
   // including any routes added to the app after createApp() returns.

@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { appLogger } from "./logger";
 import { TracedRequest } from "./correlationId.middleware";
+import { apiVersionFrom } from "./apiVersion.middleware";
 
 /**
  * Structured request logging middleware.
@@ -41,6 +42,11 @@ export function requestLoggerMiddleware(
       userId: (req as any).user?.id ?? (req as any).userId ?? undefined,
       userAgent: req.get("user-agent"),
       ip: req.ip,
+      // Which API lane served this request: "v1", "/api/legacy", or
+      // "unversioned". Lets monitoring split traffic share as the sunset
+      // window progresses. Read at finish time so the version middleware has
+      // definitely run.
+      apiVersion: apiVersionFrom(req),
     };
 
     if (status >= 500) {

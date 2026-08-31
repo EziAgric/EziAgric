@@ -1,6 +1,30 @@
 import { describe, it, expect, beforeEach, jest } from "@jest/globals";
-import { request, requestWithResult, ApiError, navigationHelpers } from "@/lib/api/client";
+import { request, requestWithResult, ApiError, navigationHelpers, resolveApiUrl } from "@/lib/api/client";
 import { z } from "zod";
+
+describe("resolveApiUrl (versioning contract)", () => {
+  // These tests rely on the real env defaults: base http://localhost:4000 and
+  // version prefix /api/v1 (see lib/api/env.ts).
+  it("prepends the version prefix to consumer-facing endpoints", () => {
+    expect(resolveApiUrl("/wallet/balance")).toBe(
+      "http://localhost:4000/api/v1/wallet/balance",
+    );
+  });
+
+  it("keeps admin endpoints unversioned", () => {
+    expect(resolveApiUrl("/admin/contract/fee")).toBe(
+      "http://localhost:4000/admin/contract/fee",
+    );
+    expect(resolveApiUrl("/api/admin/dlq/pending")).toBe(
+      "http://localhost:4000/api/admin/dlq/pending",
+    );
+  });
+
+  it("keeps health endpoints unversioned", () => {
+    expect(resolveApiUrl("/health")).toBe("http://localhost:4000/health");
+  });
+});
+
 
 describe("API Client", () => {
   beforeEach(() => {

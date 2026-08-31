@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./env";
+import { getApiBaseUrl, getApiVersionPrefix } from "./env";
 import { trackApiFailure } from "@/lib/analytics";
 import { parseBackendError, BackendErrorResponse } from "../errorHandler";
 import { z } from "zod";
@@ -106,6 +106,26 @@ export function createQueryString(
   return query ? `?${query}` : "";
 }
 
+/**
+ * Consumer-facing endpoints are versioned under `/api/v1` on the backend. The
+ * version prefix is injected here (centrally) so individual API modules don't
+ * each hardcode a version — switching versions is a single env toggle.
+ *
+ * Admin (/admin, /api/admin) and infrastructure (/health*) endpoints are
+ * intentionally excluded: they are unversioned internal/ops routes and must
+ * keep hitting the legacy paths regardless of the version prefix config.
+ */
+export function resolveApiUrl(endpoint: string): string {
+  const isUnversioned =
+    endpoint.startsWith("/admin") ||
+    endpoint.startsWith("/api/admin") ||
+    endpoint.startsWith("/health");
+
+  return isUnversioned
+    ? `${getApiBaseUrl()}${endpoint}`
+    : `${getApiBaseUrl()}${getApiVersionPrefix()}${endpoint}`;
+}
+
 export async function request<T>(
   endpoint: string,
   options: FetchOptions = {},
@@ -115,7 +135,7 @@ export async function request<T>(
   const authToken = token ?? (!skipAuth ? getStoredToken() : null);
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+    const response = await fetch(resolveApiUrl(endpoint), {
       ...fetchOptions,
       headers: createHeaders(headers, authToken),
     });

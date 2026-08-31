@@ -25,8 +25,26 @@ info:
     Error code references in operation descriptions map to backend `ErrorCode` values in
     `backend/src/errors/errorCodes.ts`. Some route handlers still emit legacy `{ error }`
     payloads while centralized validation/runtime failures return `{ code, message, details }`.
+
+    # API Versioning
+
+    The public API is served on two lanes that share identical behaviour:
+
+    - **Versioned lane (current):** all paths below under the `api/v1` URL prefix,
+      e.g. `POST /api/v1/auth/login`.
+    - **Legacy alias (deprecated):** the same paths without a version prefix, e.g.
+      `POST /auth/login`. Served for backwards compatibility with clients that have
+      not yet moved to `/api/v1`.
+
+    The legacy alias sends `Deprecation: true` and a `Sunset` header on every response;
+    client SDKs target `/api/v1`. Admin (`/admin`, `/api/admin`) and health (`/health`)
+    routes are internal/infra and are intentionally unversioned — they are out of scope
+    for the versioning policy in `docs/api-versioning.md`.
 servers:
+  - url: http://localhost:4000/api/v1
+    description: Current versioned lane (recommended)
   - url: http://localhost:4000
+    description: Deprecated legacy alias (serves Deprecation/Sunset headers)
 tags:
   - name: Health
   - name: Auth
