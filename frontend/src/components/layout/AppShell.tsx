@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { AppTopNav } from "@/components/layout/AppTopNav";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { ConnectivityBanner } from "@/components/ui/ConnectivityBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="flex flex-col h-screen">
+      <ConnectivityBanner />
       <AppTopNav
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         isSidebarOpen={sidebarOpen}
@@ -18,7 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />
-        <main className="flex-1 overflow-y-auto h-full">{children}</main>
+        <main className="flex-1 overflow-y-auto h-full pt-2">{children}</main>
       </div>
     </div>
   );

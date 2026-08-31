@@ -65,7 +65,29 @@ function createHeaders(
     resolvedHeaders.Authorization = `Bearer ${token}`;
   }
 
+  // Idempotency: if caller passes Idempotency-Key header via headers param, preserve it
+  // Otherwise, caller should use withIdempotency wrapper. We do not auto-generate here to avoid
+  // leaking keys for idempotent GETs.
   return resolvedHeaders;
+}
+
+/**
+ * Helper to build headers with idempotency + correlation IDs (unified toast contract).
+ * Use for mutations that require exactly-once semantics and toast correlation.
+ */
+export function withIdempotency(headers?: HeadersInit, opts?: { idempotencyKey?: string; correlationId?: string }): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (headers instanceof Headers) {
+    headers.forEach((v, k) => { out[k] = v; });
+  } else if (Array.isArray(headers)) {
+    for (const [k, v] of headers) out[k] = v;
+  } else if (headers) Object.assign(out, headers as Record<string, string>);
+  if (opts?.idempotencyKey) out["Idempotency-Key"] = opts.idempotencyKey;
+  if (opts?.correlationId) {
+    out["X-Correlation-Id"] = opts.correlationId;
+    out["X-Request-Id"] = opts.correlationId;
+  }
+  return out;
 }
 
 export function createQueryString(

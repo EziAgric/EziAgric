@@ -6,4 +6,5 @@ export interface ToastMessage {
   title?: string;
   message: string;
   duration?: number; // Duration in milliseconds before auto-dismiss
+  correlationId?: string; // For unified pending/success/error lifecycle
 }

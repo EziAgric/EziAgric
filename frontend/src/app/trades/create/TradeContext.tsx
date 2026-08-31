@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 
 export type TradeData = {
   // Step 1
@@ -38,9 +38,40 @@ const defaults: TradeData = {
 
 const TradeContext = createContext<TradeContextType>({} as TradeContextType);
 
+const STORAGE_KEY = "amana:draft-trade";
+
 export function TradeProvider({ children }: { children: React.ReactNode }) {
   const [step, setStep] = useState(1);
-  const [data, setData] = useState<TradeData>(defaults);
+  const [data, setData] = useState<TradeData>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return { ...defaults, ...parsed.data } as TradeData;
+        }
+      } catch {}
+    }
+    return defaults;
+  });
+
+  // Persist draft locally — survives refresh/restart, replays via offline queue
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, step, savedAt: new Date().toISOString() }));
+    } catch {}
+  }, [data, step]);
+
+  // Restore step on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.step) setStep(parsed.step);
+      }
+    } catch {}
+  }, []);
 
   const update = (partial: Partial<TradeData>) =>
     setData((prev) => ({ ...prev, ...partial }));
