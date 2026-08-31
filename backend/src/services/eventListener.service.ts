@@ -99,6 +99,7 @@ export class EventListenerService {
   private lastLedger: number = 0;
   private running: boolean = false;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  private currentPollPromise: Promise<void> | null = null;
   private currentBackoffMs: number;
   private stellarCircuit: CircuitBreaker;
 
@@ -152,10 +153,40 @@ export class EventListenerService {
     appLogger.info("[EventListener] Stopped");
   }
 
+  /**
+   * Gracefully stop and wait for any in-flight poll cycle to complete.
+   * Returns the last processed ledger cursor so the caller can log it
+   * or pass it to a resume mechanism.
+   */
+  async drain(): Promise<number> {
+    this.stop();
+    if (this.currentPollPromise) {
+      try {
+        await this.currentPollPromise;
+      } catch {
+        // Swallowed — poll errors are already logged internally
+      }
+      this.currentPollPromise = null;
+    }
+    const cursor = this.lastLedger;
+    appLogger.info(
+      { lastLedger: cursor },
+      "[EventListener] Drained",
+    );
+    return cursor;
+  }
+
+  /** Return the last processed ledger sequence for cursor logging. */
+  getLastLedger(): number {
+    return this.lastLedger;
+  }
+
   /** Schedule the next poll with a given delay. */
   private scheduleNextPoll(delayMs: number): void {
     if (!this.running) return;
-    this.timeoutHandle = setTimeout(() => this.pollEvents(), delayMs);
+    this.timeoutHandle = setTimeout(() => {
+      this.currentPollPromise = this.pollEvents();
+    }, delayMs);
   }
 
   /** Single poll cycle: fetch events from RPC, parse, and dispatch. */

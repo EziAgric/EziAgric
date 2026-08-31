@@ -4,6 +4,8 @@ import { appLogger } from '../middleware/logger';
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
+const queueConnections: IORedis[] = [];
+
 /**
  * Queue resilience: BullMQ connections auto-reconnect with exponential backoff.
  * Consumers resume cleanly after reconnect — jobs are durable in Redis and
@@ -39,7 +41,26 @@ export function createQueueConnection(): IORedis {
     appLogger.info("Queue Redis ready — consumers will resume");
   });
 
+  queueConnections.push(conn);
   return conn;
+}
+
+/**
+ * Close all queue producer Redis connections.
+ * Called during graceful shutdown after workers have been drained.
+ */
+export async function closeAllQueueConnections(): Promise<void> {
+  const results = await Promise.allSettled(
+    queueConnections.map((conn) => conn.quit()),
+  );
+  const failures = results.filter((r) => r.status === "rejected");
+  if (failures.length > 0) {
+    appLogger.warn(
+      { count: failures.length },
+      "Some queue Redis connections failed to close cleanly",
+    );
+  }
+  queueConnections.length = 0;
 }
 
 export interface WebhookJobData {

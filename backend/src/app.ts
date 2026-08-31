@@ -78,7 +78,7 @@ function buildCorsOptions(): cors.CorsOptions {
   };
 }
 
-export function createApp(): express.Application {
+export function createApp(isShuttingDown?: () => boolean): express.Application {
   const app = express();
 
   if (env.TRUST_PROXY) {
@@ -127,7 +127,7 @@ export function createApp(): express.Application {
   app.use(requestLoggerMiddleware);
 
   // Enhanced health check with deep introspection
-  app.use("/health", createHealthRouter());
+  app.use("/health", createHealthRouter(isShuttingDown));
   app.use("/health", createHealthDetailRouter());
 
   app.use("/auth", authRoutes);
