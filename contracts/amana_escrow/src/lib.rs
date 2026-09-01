@@ -13,6 +13,12 @@ pub mod test_fixture;
 /// Available in test builds and as an `rlib` dependency for off-chain tooling.
 pub mod admin_payload;
 
+/// Event topic and field constants generated from the canonical schema
+/// (`schemas/events/amana_escrow.events.json`). Tests assert the emitted shape
+/// against these, so a topic or field rename that is not reflected in the
+/// schema — and therefore not in the TypeScript decoder — fails here.
+pub mod generated;
+
 use soroban_sdk::{
     Address, Bytes, BytesN, Env, String, Symbol, Vec, contract, contractevent, contractimpl,
     contracttype, symbol_short, token,

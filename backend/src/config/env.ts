@@ -144,6 +144,13 @@ export const envSchema = z.object({
   // Admin Soroban tx failure alert tuning
   ADMIN_TX_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(5),
   ADMIN_TX_FAILURE_WINDOW_MS: z.coerce.number().int().positive().default(300_000),
+  // Inbound webhook signature verification.
+  // JSON object of provider -> secret, e.g. {"stellar-anchor":"s3cr3t"}. A
+  // provider may hold comma-separated secrets so old and new overlap during a
+  // rotation; see backend/docs/webhook-secret-rotation.md.
+  INBOUND_WEBHOOK_SECRETS: z.string().optional(),
+  // Replay window, in seconds, for the signed inbound webhook timestamp.
+  INBOUND_WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   WEBHOOK_RETRY_BASE_MS: z.coerce.number().int().positive().default(1000),
   WEBHOOK_RETRY_MAX_MS: z.coerce.number().int().positive().default(30000),

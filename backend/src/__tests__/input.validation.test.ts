@@ -575,12 +575,29 @@ describe("Type coercion edge cases", () => {
     (TradeService.prototype.createPendingTrade as jest.Mock).mockResolvedValue({ tradeId: "1" });
   });
 
-  it("accepts numeric amountUsdc coerced to string '100'", async () => {
+  it("accepts amountUsdc as a decimal string", async () => {
+    const res = await request(app)
+      .post("/trades")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send({ ...base, amountUsdc: "100" });
+    expect(res.status).toBe(201);
+  });
+
+  // Issue #178: a JSON number cannot represent a large stroop amount exactly,
+  // so numeric money is rejected rather than coerced.
+  it("rejects numeric amountUsdc with a message naming the expected type", async () => {
     const res = await request(app)
       .post("/trades")
       .set("Authorization", `Bearer ${buyerToken}`)
       .send({ ...base, amountUsdc: 100 });
-    // Controller normalizes number → string
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts an amountUsdc above 2^53 stroops without losing precision", async () => {
+    const res = await request(app)
+      .post("/trades")
+      .set("Authorization", `Bearer ${buyerToken}`)
+      .send({ ...base, amountUsdc: "9007199254740993.9999999" });
     expect(res.status).toBe(201);
   });
 

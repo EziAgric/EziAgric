@@ -19,6 +19,34 @@ export type StellarRpcOutcome = "success" | "error";
 
 export type SorobanRpcHealthStatus = "up" | "down";
 
+/**
+ * Outcome of an inbound webhook signature check. `verified` is the only
+ * accepting outcome; every other value is a distinct rejection reason, so an
+ * alert can distinguish a misconfigured provider from a forgery attempt.
+ */
+export type WebhookVerificationOutcome =
+  | "verified"
+  | "unknown_provider"
+  | "missing_secret"
+  | "missing_signature"
+  | "missing_timestamp"
+  | "malformed_timestamp"
+  | "stale_timestamp"
+  | "missing_raw_body"
+  | "invalid_signature";
+
+/**
+ * What happened to a payout intent. `duplicate` is the one that matters
+ * operationally: a non-zero rate means retries are reaching the payout path,
+ * and a zero rate after a known incident means the guard was bypassed.
+ */
+export type PayoutIntentOutcome =
+  | "claimed"
+  | "duplicate"
+  | "submitted"
+  | "confirmed"
+  | "failed";
+
 export interface StellarMetricsRecorder {
   recordTransactionSubmission(
     operation: string,
@@ -41,6 +69,8 @@ let submissionDuration: Histogram | undefined;
 let rpcDuration: Histogram | undefined;
 let sorobanRpcHealthGauge: Counter | undefined;
 let sorobanRpcHealthLatency: Histogram | undefined;
+let webhookVerificationCounter: Counter | undefined;
+let payoutIntentCounter: Counter | undefined;
 let customRecorder: StellarMetricsRecorder | null = null;
 
 function getMeter() {
@@ -105,6 +135,56 @@ function getSorobanRpcHealthLatency(): Histogram {
     );
   }
   return sorobanRpcHealthLatency;
+}
+
+function getWebhookVerificationCounter(): Counter {
+  if (!webhookVerificationCounter) {
+    webhookVerificationCounter = getMeter().createCounter(
+      "webhook_signature_verifications_total",
+      {
+        description:
+          "Inbound webhook signature verification results, labelled by provider and outcome",
+      },
+    );
+  }
+  return webhookVerificationCounter;
+}
+
+/**
+ * Records one inbound webhook signature check.
+ *
+ * Alert on a spike in the non-`verified` outcomes: a burst of
+ * `invalid_signature` is an attacker probing the endpoint, while a burst of
+ * `missing_secret` means a provider was deployed without its secret.
+ */
+export function recordWebhookSignatureVerification(
+  provider: string,
+  outcome: WebhookVerificationOutcome,
+): void {
+  getWebhookVerificationCounter().add(1, { provider, outcome });
+}
+
+function getPayoutIntentCounter(): Counter {
+  if (!payoutIntentCounter) {
+    payoutIntentCounter = getMeter().createCounter("payout_intents_total", {
+      description:
+        "Payout intent lifecycle transitions, labelled by payout kind and outcome",
+    });
+  }
+  return payoutIntentCounter;
+}
+
+/**
+ * Records one payout intent transition.
+ *
+ * Alert on `outcome="duplicate"`: every count is a retry that would have been a
+ * second payout without the idempotency guard.
+ */
+export function recordPayoutIntentOutcome(
+  kind: string,
+  outcome: PayoutIntentOutcome,
+): void {
+  getPayoutIntentCounter().add(1, { kind, outcome });
 }
 
 export function recordTransactionSubmission(
@@ -196,6 +276,8 @@ export function __resetMetricsForTests(): void {
   rpcDuration = undefined;
   sorobanRpcHealthGauge = undefined;
   sorobanRpcHealthLatency = undefined;
+  webhookVerificationCounter = undefined;
+  payoutIntentCounter = undefined;
 }
 
 // ---------------------------------------------------------------------------

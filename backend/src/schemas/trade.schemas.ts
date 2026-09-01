@@ -2,27 +2,54 @@ import { z } from "zod";
 import { TradeStatus } from "@prisma/client";
 import { StrKey } from "@stellar/stellar-sdk";
 import { createTradeInputSchema } from "./domain/trade";
+import {
+  MONEY_DECIMALS,
+  MoneyConversionError,
+  normalizeDecimalString,
+  parseDecimalToStroops,
+} from "../lib/money";
 
 /**
  * Trade creation validation is the CANONICAL shared domain schema
  * (`./domain/trade`, mirrored in `frontend/src/lib/domain-schemas/trade.ts`),
- * plus a backend-only checksum-accurate Stellar key check that the
- * framework-free shared schema can't express.
+ * plus backend-only checks the framework-free shared schema can't express:
+ * a checksum-accurate Stellar key check, and a real stroop-conversion pass on
+ * `amountUsdc` (the shared schema only regex-validates the string shape) so an
+ * amount that overflows i128 or loses precision is rejected here rather than
+ * deep in a contract call.
  */
-export const createTradeSchema = createTradeInputSchema.superRefine(
-  (data: { buyerAddress?: string; sellerAddress?: string }, ctx: z.RefinementCtx) => {
-    for (const field of ["buyerAddress", "sellerAddress"] as const) {
-      const value = data[field];
-      if (value !== undefined && !StrKey.isValidEd25519PublicKey(value)) {
+export const createTradeSchema = createTradeInputSchema
+  .superRefine(
+    (data: { buyerAddress?: string; sellerAddress?: string; amountUsdc: string }, ctx: z.RefinementCtx) => {
+      for (const field of ["buyerAddress", "sellerAddress"] as const) {
+        const value = data[field];
+        if (value !== undefined && !StrKey.isValidEd25519PublicKey(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Invalid Stellar public key for ${field}`,
+            path: [field],
+          });
+        }
+      }
+
+      try {
+        const stroops = parseDecimalToStroops(data.amountUsdc, MONEY_DECIMALS);
+        if (stroops <= 0n) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Amount must be positive", path: ["amountUsdc"] });
+        }
+      } catch (error) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Invalid Stellar public key for ${field}`,
-          path: [field],
+          message: error instanceof MoneyConversionError ? error.message : "Invalid amount",
+          path: ["amountUsdc"],
         });
       }
-    }
-  },
-);
+    },
+  )
+  .transform((data: { amountUsdc: string; [key: string]: unknown }) => ({
+    ...data,
+    amountUsdc: normalizeDecimalString(data.amountUsdc, MONEY_DECIMALS),
+  }));
 
 export const tradeIdParamSchema = z.object({
   id: z.string().min(1, "Trade ID is required"),
