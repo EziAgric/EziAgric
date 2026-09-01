@@ -200,6 +200,37 @@ export const envSchema = z.object({
     .default('true')
     .transform((value: 'true' | 'false') => value === 'true'),
 
+  // Buffered Stellar fee estimation (congestion resilience) — see feeEstimator.service.ts
+  STELLAR_FEE_PERCENTILE: z
+    .enum(['p10', 'p20', 'p30', 'p40', 'p50', 'p60', 'p70', 'p80', 'p90', 'p95', 'p99'])
+    .default('p90'),
+  STELLAR_FEE_SAFETY_MULTIPLIER: z.coerce.number().positive().default(1.5),
+  STELLAR_FEE_CONGESTION_BOOST: z.coerce.number().min(1).default(2),
+  STELLAR_FEE_CONGESTION_CAPACITY: z.coerce.number().min(0).max(1).default(0.75),
+  STELLAR_FEE_CONGESTION_FEE_RATIO: z.coerce.number().min(1).default(4),
+  STELLAR_FEE_MIN_STROOPS: z.coerce.number().int().positive().default(100),
+  STELLAR_FEE_MAX_STROOPS: z.coerce.number().int().positive().default(1_000_000),
+  STELLAR_FEE_BUMP_FACTOR: z.coerce.number().gt(1).default(1.5),
+  STELLAR_FEE_MAX_RETRIES: z.coerce.number().int().min(0).default(3),
+
+  // Admin session device binding (issue #198) — see lib/deviceContext.ts,
+  // services/adminSession.service.ts. Off by default so plain admin bearers
+  // keep working until a deployment opts in.
+  ADMIN_SESSION_BINDING_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value: 'true' | 'false') => value === 'true'),
+  // When binding is enabled, also reject admin bearers that carry no device
+  // binding at all (instead of allowing them through the transition window).
+  ADMIN_SESSION_BINDING_ENFORCE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value: 'true' | 'false') => value === 'true'),
+  // TTL (seconds) for a device-bound admin token minted by /api/admin/auth/step-up.
+  ADMIN_BOUND_JWT_EXPIRES_IN: z.coerce.number().int().positive().default(900),
+  ADMIN_IP_V4_PREFIX_BITS: z.coerce.number().int().min(0).max(32).default(24),
+  ADMIN_IP_V6_PREFIX_BITS: z.coerce.number().int().min(0).max(128).default(48),
+
   // PII log-leak scanner (#233)
   PII_SCANNER_CRON_ENABLED: z
     .enum(['true', 'false'])

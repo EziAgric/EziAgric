@@ -1,0 +1,13 @@
+# Trivy ignore list — container & IaC scan exceptions (issue #206).
+#
+# Format: one CVE / misconfig id per line. Every entry MUST be preceded by a
+# `# expires: YYYY-MM-DD` line (UTC). scripts/check-trivyignore-expiry.mjs fails
+# the Container Scan workflow when an entry is past its expiry, forcing the
+# quarterly review.
+#
+# Example:
+#   # expires: 2026-11-30
+#   # reason: base image maintainers have not shipped a fix; not network-exposed. Tracking: #1234
+#   CVE-2025-00000
+#
+# (No active exceptions.)

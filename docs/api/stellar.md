@@ -11,20 +11,65 @@ None of these require a bearer token unless noted.
 
 `GET /stellar/fees`
 
-Current network fee statistics, straight from Horizon's fee stats endpoint.
+Current network fee statistics from Horizon's fee stats endpoint, plus a
+congestion-buffered recommendation (issue #184).
+
+Optional query param `operations` (1–100, default 1) sizes
+`recommended.transactionFee` for a multi-operation transaction.
 
 **Response `200`**
 
 ```json
 {
-  "feeCharged": { "min": "100", "max": "10000", "p50": "100" },
+  "feeCharged": { "min": "100", "max": "10000", "p50": "100", "p90": "120" },
   "maxFee": { "min": "100", "max": "10000", "p50": "100" },
   "ledger": 51234567,
-  "lastLedgerBaseFee": 100
+  "lastLedgerBaseFee": 100,
+  "ledgerCapacityUsage": 0.12,
+  "recommended": {
+    "perOperationFee": 180,
+    "transactionFee": 180,
+    "operations": 1,
+    "percentile": "p90",
+    "percentileFee": 120,
+    "multiplier": 1.5,
+    "congested": false,
+    "cappedAtMax": false,
+    "minStroops": 100,
+    "maxStroops": 1000000
+  }
 }
 ```
 
+`recommended.perOperationFee` is `percentileFee × multiplier`, clamped to
+`[minStroops, maxStroops]`. `multiplier` rises from `STELLAR_FEE_SAFETY_MULTIPLIER`
+to `STELLAR_FEE_SAFETY_MULTIPLIER × STELLAR_FEE_CONGESTION_BOOST` when the
+network looks congested (`ledgerCapacityUsage ≥ STELLAR_FEE_CONGESTION_CAPACITY`,
+or `percentileFee ≥ lastLedgerBaseFee × STELLAR_FEE_CONGESTION_FEE_RATIO`), and a
+`stellar_fee_congestion` ops alert is dispatched (subject to alert cooldown).
+
+The raw Horizon fields are unchanged for backward compatibility.
+
 `502` if Horizon is unreachable or errors.
+
+### Tuning
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `STELLAR_FEE_PERCENTILE` | `p90` | `fee_charged` percentile the estimate is based on |
+| `STELLAR_FEE_SAFETY_MULTIPLIER` | `1.5` | multiplier applied when calm |
+| `STELLAR_FEE_CONGESTION_BOOST` | `2` | extra factor applied when congested |
+| `STELLAR_FEE_CONGESTION_CAPACITY` | `0.75` | `ledger_capacity_usage` congestion threshold |
+| `STELLAR_FEE_CONGESTION_FEE_RATIO` | `4` | percentile-fee / base-fee congestion threshold |
+| `STELLAR_FEE_MIN_STROOPS` | `100` | lower clamp |
+| `STELLAR_FEE_MAX_STROOPS` | `1000000` | upper clamp |
+| `STELLAR_FEE_BUMP_FACTOR` | `1.5` | fee increase per bump-and-retry step |
+| `STELLAR_FEE_MAX_RETRIES` | `3` | bump-and-retry attempts on timeout-style failures |
+
+For Soroban invocations, `feeEstimator.sizeResourceFee(minResourceFee, perOperationFee)`
+folds a simulation's `minResourceFee` into the total, and
+`feeEstimator.withFeeBumpRetry(submit, fee)` re-submits with `bumpFee`-raised
+fees when a submission fails with a timeout-style error.
 
 ## Transaction status
 

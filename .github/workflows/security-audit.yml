@@ -1,0 +1,135 @@
+name: Security Audit
+
+# Blocking dependency vulnerability gate + weekly full scan (issue #204).
+# High/critical advisories fail the build unless covered by an unexpired waiver
+# in .github/audit-waivers.json. Expired waivers also fail.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/security-audit.yml"
+      - ".github/audit-waivers.json"
+      - "scripts/check-audit-waivers.mjs"
+      - "backend/package.json"
+      - "backend/pnpm-lock.yaml"
+      - "frontend/package.json"
+      - "frontend/pnpm-lock.yaml"
+      - "contracts/**/Cargo.toml"
+      - "contracts/Cargo.lock"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/security-audit.yml"
+      - ".github/audit-waivers.json"
+      - "scripts/check-audit-waivers.mjs"
+      - "backend/package.json"
+      - "backend/pnpm-lock.yaml"
+      - "frontend/package.json"
+      - "frontend/pnpm-lock.yaml"
+      - "contracts/**/Cargo.toml"
+      - "contracts/Cargo.lock"
+  schedule:
+    # Weekly full scan — Monday 06:00 UTC.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: npm audit (${{ matrix.workspace }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ${{ matrix.workspace }}/pnpm-lock.yaml
+
+      - name: Install deps (${{ matrix.workspace }})
+        working-directory: ${{ matrix.workspace }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Audit gate (${{ matrix.workspace }})
+        run: node scripts/check-audit-waivers.mjs npm ${{ matrix.workspace }} ${{ matrix.workspace }}
+
+  cargo-audit:
+    name: cargo audit (contracts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo-audit binary
+        id: cache-cargo-audit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-v0.22
+
+      - name: Install cargo-audit
+        if: steps.cache-cargo-audit.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --locked
+
+      - name: Audit gate (contracts)
+        run: node scripts/check-audit-waivers.mjs cargo contracts contracts
+
+  weekly-report:
+    name: Weekly full scan report
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Generate report
+        run: |
+          mkdir -p security-reports
+          {
+            echo "# Weekly dependency audit — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            for ws in backend frontend; do
+              echo "## $ws (pnpm audit)"
+              echo '```'
+              (cd "$ws" && pnpm install --frozen-lockfile --ignore-scripts >/dev/null 2>&1 && pnpm audit --audit-level low) || true
+              echo '```'
+              echo
+            done
+            echo "## contracts (cargo audit)"
+            echo '```'
+            (cd contracts && cargo audit) || true
+            echo '```'
+          } | tee security-reports/audit-report.md
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-report
+          path: security-reports/audit-report.md
+          retention-days: 30

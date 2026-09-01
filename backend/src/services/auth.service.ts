@@ -4,9 +4,10 @@ import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import { Request } from 'express';
 import { findOrCreateUser } from './user.service';
 import { AppError, ErrorCode, isAppError } from '../errors/errorCodes';
-import { env } from '../config/env';
+import { env, runtimeEnvValue } from '../config/env';
 import { redis } from '../lib/redis';
 import { prisma } from '../lib/db';
+import { AdminSessionService } from './adminSession.service';
 
 const CHALLENGE_PREFIX = 'challenge:';
 const REVOKED_PREFIX = 'revoked_jti:';
@@ -36,6 +37,13 @@ export interface JWTPayload {
   /** Set by adminMiddleware at runtime when the caller is on the ADMIN_STELLAR_PUBKEYS allowlist.
    *  Not present in the signed JWT — added to the in-memory request context after verification. */
   isAdmin?: boolean;
+  /** Token tier. `admin` marks a device-bound admin token minted by
+   *  /api/admin/auth/step-up (issue #198). Absent on ordinary wallet tokens. */
+  tier?: 'admin';
+  /** Device fingerprint hash the token is bound to (issue #198). */
+  deviceHash?: string;
+  /** Masked IP-prefix class the token is bound to (issue #198). */
+  ipClass?: string;
 }
 
 export interface AuthRequest extends Request {
@@ -311,5 +319,57 @@ export class AuthService {
     };
 
     return jwt.sign(payload, secret, { algorithm: 'HS256' });
+  }
+
+  /**
+   * Mint a short-TTL admin token bound to a device context and register it in
+   * the admin session registry (issue #198). The caller must already be an
+   * authenticated admin; binding + rotation happens at /api/admin/auth/step-up.
+   */
+  static async issueAdminToken(
+    walletAddress: string,
+    ctx: { deviceHash: string; ipClass: string; userAgent?: string },
+  ): Promise<{ token: string; jti: string; expiresAt: number }> {
+    const secret = process.env.JWT_SECRET ?? env.JWT_SECRET;
+    if (!secret) {
+      throw new AppError(ErrorCode.INFRA_ERROR, 'JWT_SECRET not set', 500);
+    }
+
+    const ttl = runtimeEnvValue('ADMIN_BOUND_JWT_EXPIRES_IN');
+    const now = Math.floor(Date.now() / 1000);
+    const jti = crypto.randomUUID();
+    const expiresAt = now + ttl;
+    const wallet = walletAddress.toLowerCase();
+    const tv = await this.getTokenVersion(wallet);
+
+    const payload: JWTPayload = {
+      sub: wallet,
+      walletAddress: wallet,
+      jti,
+      tv,
+      tier: 'admin',
+      deviceHash: ctx.deviceHash,
+      ipClass: ctx.ipClass,
+      iss: process.env.JWT_ISSUER ?? env.JWT_ISSUER,
+      aud: process.env.JWT_AUDIENCE ?? env.JWT_AUDIENCE,
+      iat: now,
+      nbf: now,
+      exp: expiresAt,
+    };
+
+    const token = jwt.sign(payload, secret, { algorithm: 'HS256' });
+
+    await AdminSessionService.register({
+      jti,
+      walletAddress: wallet,
+      deviceHash: ctx.deviceHash,
+      ipClass: ctx.ipClass,
+      userAgent: ctx.userAgent ?? '',
+      issuedAt: now,
+      expiresAt,
+      lastSeenAt: now,
+    });
+
+    return { token, jti, expiresAt };
   }
 }

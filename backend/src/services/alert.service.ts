@@ -10,6 +10,7 @@ export type AlertType =
   | "reconciliation_drift_warning"
   | "reconciliation_drift_critical"
   | "reconciliation_job_failure"
+  | "stellar_fee_congestion"
   | "admin_soroban_tx_failure"
   | "job_missed_heartbeat"
   | "job_repeated_failures"

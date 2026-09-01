@@ -26,6 +26,12 @@ the caller gets `504`:
 
 Configured via `ADMIN_ROUTE_TIMEOUT_MS` (default `15000`).
 
+Admin sessions can additionally be **device-bound** (opt-in) — see
+[admin-session-device-binding.md](../admin-session-device-binding.md) for
+`POST /api/admin/auth/step-up`, `GET /api/admin/sessions`, per-device revoke,
+and the `ADMIN_SESSION_BINDING_ENABLED` / `ADMIN_SESSION_BINDING_ENFORCE` env
+switches.
+
 There is no separate "admin login" - the same challenge/verify flow in
 [overview.md](./overview.md#authentication) applies; admin status is purely
 a function of which wallet signed in.

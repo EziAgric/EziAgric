@@ -65,6 +65,14 @@ export const ALERT_REGISTRY: Record<AlertType, AlertRegistryEntry> = {
     runbookUrl: "docs/admin-tx-failure-alerting.md",
     description: "Admin Soroban submissions are failing repeatedly (bad key, RPC outage, invalid XDR).",
   },
+  stellar_fee_congestion: {
+    routing: "ticket",
+    runbookUrl: "docs/runbooks/incident-response.md#severity-levels",
+    description: "Stellar network fee estimation detected sustained ledger congestion.",
+    // Congestion tends to persist for a while once detected; avoid re-ticketing
+    // on every request during the same episode.
+    dedupeWindowMs: 15 * 60_000,
+  },
   job_missed_heartbeat: {
     routing: "ticket",
     runbookUrl: "docs/runbooks/incident-response.md#severity-levels",

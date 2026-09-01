@@ -59,6 +59,7 @@ tags:
   - name: Audit Trail
   - name: Treasury
   - name: Goals
+  - name: Stellar
 components:
   securitySchemes:
     bearerAuth:
@@ -1573,6 +1574,88 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /stellar/fees:
+    get:
+      tags: [Stellar]
+      summary: Current network fee stats plus a congestion-buffered recommendation
+      description: |-
+        Proxies Horizon's fee-stats endpoint and adds a `recommended` block
+        (issue #184). The recommendation takes a configurable percentile of
+        recent `fee_charged`, applies a safety multiplier that increases when
+        the network looks congested (`ledger_capacity_usage` high, or the
+        percentile fee far above the base fee), and clamps the result to
+        `[STELLAR_FEE_MIN_STROOPS, STELLAR_FEE_MAX_STROOPS]`.
+
+        Raw Horizon fields (`feeCharged`, `maxFee`, `ledger`,
+        `lastLedgerBaseFee`) are unchanged for backward compatibility.
+      parameters:
+        - in: query
+          name: operations
+          required: false
+          description: Operation count used to size `recommended.transactionFee` (1–100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 1
+      responses:
+        "200":
+          description: Fee stats and buffered recommendation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  feeCharged:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  maxFee:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  ledger:
+                    type: integer
+                  lastLedgerBaseFee:
+                    type: integer
+                  ledgerCapacityUsage:
+                    type: number
+                    format: float
+                  recommended:
+                    type: object
+                    properties:
+                      perOperationFee:
+                        type: integer
+                        description: Buffered per-operation inclusion fee, stroops.
+                      transactionFee:
+                        type: integer
+                        description: perOperationFee × operations, stroops.
+                      operations:
+                        type: integer
+                      percentile:
+                        type: string
+                        example: p90
+                      percentileFee:
+                        type: integer
+                      multiplier:
+                        type: number
+                      congested:
+                        type: boolean
+                      cappedAtMax:
+                        type: boolean
+                      minStroops:
+                        type: integer
+                      maxStroops:
+                        type: integer
+        "502":
+          description: Horizon is unreachable or returned an error.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
   /health:
     get:
       tags: [Health]

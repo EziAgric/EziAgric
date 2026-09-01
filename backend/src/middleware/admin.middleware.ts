@@ -3,6 +3,26 @@ import { trace, SpanStatusCode } from "@opentelemetry/api";
 import { isMediatorAddress } from "../lib/accessControl";
 import { AuthRequest, AuthService } from "../services/auth.service";
 import { AppError, ErrorCode } from "../errors/errorCodes";
+import { runtimeEnvValue } from "../config/env";
+import { deviceContextFromRequest } from "../lib/deviceContext";
+import { adminSessionService } from "../services/adminSession.service";
+
+function annotateDenied(reason: string, address: string): void {
+  try {
+    const activeSpan = trace.getActiveSpan();
+    if (activeSpan && typeof activeSpan.setAttributes === "function") {
+      activeSpan.setAttributes({
+        "admin.attempted": true,
+        "admin.verdict": "denied",
+        "admin.denied_reason": reason,
+        "admin.address": address,
+      });
+      activeSpan.setStatus({ code: SpanStatusCode.ERROR, message: reason });
+    }
+  } catch {
+    // Ignore telemetry failure in mock/test
+  }
+}
 
 /**
  * Admin authentication middleware (adminAuth health guard).
@@ -51,6 +71,63 @@ export const adminMiddleware = async (
     } catch (err) {
       res.status(401).json({ error: "Unauthorized: session revocation check failed" });
       return;
+    }
+  }
+
+  // Device-context binding (issue #198). Off unless ADMIN_SESSION_BINDING_ENABLED.
+  if (runtimeEnvValue("ADMIN_SESSION_BINDING_ENABLED")) {
+    const claims = req.user;
+    const isBound = claims.tier === "admin" && typeof claims.deviceHash === "string";
+
+    if (!isBound) {
+      if (runtimeEnvValue("ADMIN_SESSION_BINDING_ENFORCE")) {
+        annotateDenied("admin session not device-bound", walletAddress);
+        res.status(401).json({
+          code: "ADMIN_BINDING_REQUIRED",
+          error: "Unauthorized: admin session is not device-bound",
+          requiresStepUp: true,
+        });
+        return;
+      }
+      // Transition window: allow legacy unbound admin bearers through.
+    } else {
+      const current = deviceContextFromRequest(req);
+      const deviceMismatch = current.deviceHash !== claims.deviceHash;
+      const ipMismatch = !!claims.ipClass && current.ipClass !== claims.ipClass;
+      if (deviceMismatch || ipMismatch) {
+        annotateDenied(
+          deviceMismatch ? "admin device fingerprint mismatch" : "admin ip class mismatch",
+          walletAddress,
+        );
+        res.status(401).json({
+          code: "ADMIN_CONTEXT_MISMATCH",
+          error: "Unauthorized: admin session context mismatch — step-up required",
+          requiresStepUp: true,
+        });
+        return;
+      }
+
+      if (claims.jti) {
+        try {
+          const session = await adminSessionService.get(claims.jti);
+          if (!session) {
+            annotateDenied("admin session not in registry", walletAddress);
+            res.status(401).json({
+              code: "ADMIN_SESSION_REVOKED",
+              error: "Unauthorized: admin session revoked or expired",
+              requiresStepUp: true,
+            });
+            return;
+          }
+          void adminSessionService.touch(claims.jti);
+        } catch {
+          res.status(401).json({
+            code: "ADMIN_SESSION_CHECK_FAILED",
+            error: "Unauthorized: admin session check failed",
+          });
+          return;
+        }
+      }
     }
   }
 
