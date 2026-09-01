@@ -11,95 +11,88 @@ const config: Config = {
     extend: {
       colors: {
         // ── Surface / Elevation scale ──────────────────────────────────────
-        // surface-0  page canvas (deepest background)
-        // surface-1  card / panel (one step up)
-        // surface-2  elevated surface — active rows, modals, dropdowns
-        // surface-3  overlay / scrim
-        "surface-0": "#0B1A14",
-        "surface-1": "#122A1F",
-        "surface-2": "#1A3D2C",
-        "surface-3": "rgba(11,26,20,0.85)",
+        "surface-0": "var(--surface-0)",
+        "surface-1": "var(--surface-1)",
+        "surface-2": "var(--surface-2)",
+        "surface-3": "var(--surface-3)",
 
-        // Legacy bg-* aliases — kept for backward-compat, map to surface tokens
-        "bg-primary": "#0B1A14", // → surface-0
-        "bg-card": "#122A1F", // → surface-1
-        "bg-elevated": "#1A3D2C", // → surface-2
-        "bg-input": "#0F2219",
-        "bg-overlay": "rgba(11,26,20,0.85)", // → surface-3
+        // Legacy bg-* aliases — kept for backward-compat
+        "bg-primary": "var(--bg-primary)",
+        "bg-card": "var(--bg-card)",
+        "bg-elevated": "var(--bg-elevated)",
+        "bg-input": "var(--bg-input)",
+        "bg-overlay": "var(--bg-overlay)",
 
-        gold: "#D4A853",
-        "gold-hover": "#E0BA6A",
-        "gold-muted": "rgba(212,168,83,0.15)",
-        emerald: "#34D399",
-        "emerald-muted": "rgba(52,211,153,0.15)",
-        "accent-emerald": "#34D399",
+        gold: "var(--gold)",
+        "gold-hover": "var(--gold-hover)",
+        "gold-muted": "var(--gold-muted)",
+        emerald: "var(--emerald)",
+        "emerald-muted": "var(--emerald-muted)",
+        "accent-emerald": "var(--emerald)",
         teal: "#14B8A6",
-        "text-primary": "#F0F5F1",
-        "text-secondary": "#8BA89A",
-        "text-muted": "#5A7A6A",
-        "text-inverse": "#0B1A14",
+
+        "text-primary": "var(--text-primary)",
+        "text-secondary": "var(--text-secondary)",
+        "text-muted": "var(--text-muted)",
+        "text-inverse": "var(--text-inverse)",
 
         // Skeleton / loading placeholder tokens
-        "skeleton-base": "#1A3D2C", // → surface-2
-        "skeleton-sheen": "rgba(240,245,241,0.08)",
+        "skeleton-base": "var(--skeleton-base)",
+        "skeleton-sheen": "var(--skeleton-sheen)",
 
         // Status chip tokens
-        "status-success": "#34D399",
-        "status-warning": "#F59E0B",
-        "status-danger": "#EF4444",
-        "status-info": "#3B82F6",
-        "status-locked": "#D4A853",
-        "status-draft": "#6B7280",
+        "status-success": "var(--status-success)",
+        "status-warning": "var(--status-warning)",
+        "status-danger": "var(--status-danger)",
+        "status-info": "var(--status-info)",
+        "status-locked": "var(--status-locked)",
+        "status-draft": "var(--status-draft)",
 
         // ── Border tokens — elevation-aware ───────────────────────────────
-        "border-subtle": "rgba(139,168,154,0.12)", // surface-0 dividers
-        "border-default": "rgba(139,168,154,0.2)", // surface-1 card borders
-        "border-raised": "rgba(139,168,154,0.32)", // surface-2 elevated borders
-        "border-hover": "rgba(139,168,154,0.4)",
-        "border-focus": "rgba(212,168,83,0.6)",
+        "border-subtle": "var(--border-subtle)",
+        "border-default": "var(--border-default)",
+        "border-raised": "var(--border-raised)",
+        "border-hover": "var(--border-hover)",
+        "border-focus": "var(--border-focus)",
       },
       backgroundColor: {
         // Surface scale
-        "surface-0": "#0B1A14",
-        "surface-1": "#122A1F",
-        "surface-2": "#1A3D2C",
-        "surface-3": "rgba(11,26,20,0.85)",
+        "surface-0": "var(--surface-0)",
+        "surface-1": "var(--surface-1)",
+        "surface-2": "var(--surface-2)",
+        "surface-3": "var(--surface-3)",
         // Legacy aliases
-        primary: "#0B1A14",
-        card: "#122A1F",
-        elevated: "#1A3D2C",
-        input: "#0F2219",
-        overlay: "rgba(11,26,20,0.85)",
+        primary: "var(--bg-primary)",
+        card: "var(--bg-card)",
+        elevated: "var(--bg-elevated)",
+        input: "var(--bg-input)",
+        overlay: "var(--bg-overlay)",
       },
       textColor: {
-        primary: "#F0F5F1",
-        secondary: "#8BA89A",
-        muted: "#5A7A6A",
-        inverse: "#0B1A14",
+        primary: "var(--text-primary)",
+        secondary: "var(--text-secondary)",
+        muted: "var(--text-muted)",
+        inverse: "var(--text-inverse)",
       },
       borderColor: {
-        subtle: "rgba(139,168,154,0.12)",
-        default: "rgba(139,168,154,0.2)",
-        raised: "rgba(139,168,154,0.32)",
-        hover: "rgba(139,168,154,0.4)",
-        focus: "rgba(212,168,83,0.6)",
+        subtle: "var(--border-subtle)",
+        default: "var(--border-default)",
+        raised: "var(--border-raised)",
+        hover: "var(--border-hover)",
+        focus: "var(--border-focus)",
       },
       // ── Elevation / shadow scale ─────────────────────────────────────────
-      // elev-0  flat — surface-0 canvas, no lift
-      // elev-1  subtle lift — cards, panels, sidebar (surface-1)
-      // elev-2  raised — active rows, dropdowns, modals (surface-2)
-      // elev-3  overlay — dialogs, scrim (surface-3)
       boxShadow: {
         "elev-0": "none",
-        "elev-1": "0 1px 4px rgba(0,0,0,0.25), 0 4px 24px rgba(0,0,0,0.3)",
-        "elev-2": "0 4px 12px rgba(0,0,0,0.35), 0 8px 32px rgba(0,0,0,0.4)",
-        "elev-3": "0 16px 48px rgba(0,0,0,0.5)",
+        "elev-1": "var(--shadow-elev-1)",
+        "elev-2": "var(--shadow-elev-2)",
+        "elev-3": "var(--shadow-elev-3)",
         // Legacy aliases
-        card: "0 1px 4px rgba(0,0,0,0.25), 0 4px 24px rgba(0,0,0,0.3)",
-        "card-hover": "0 4px 12px rgba(0,0,0,0.35), 0 8px 32px rgba(0,0,0,0.4)",
+        card: "var(--shadow-elev-1)",
+        "card-hover": "var(--shadow-elev-2)",
         "glow-gold": "0 0 20px rgba(212,168,83,0.2)",
         "glow-emerald": "0 0 20px rgba(52,211,153,0.15)",
-        modal: "0 16px 48px rgba(0,0,0,0.5)",
+        modal: "var(--shadow-elev-3)",
       },
       spacing: {
         1: "4px",
@@ -142,8 +135,6 @@ const config: Config = {
           "monospace",
         ],
       },
-      // #444 — Figma type scale tokens: display → 3xl → 2xl → xl for headings;
-      // lg → base → sm for body and metadata. No ad-hoc sizes in components.
       fontSize: {
         xs: ["12px", { lineHeight: "1.5" }],
         sm: ["14px", { lineHeight: "1.5" }],
@@ -163,16 +154,12 @@ const config: Config = {
       },
       backgroundImage: {
         "gradient-hero":
-          "linear-gradient(135deg, #0B1A14 0%, #122A1F 50%, #1A3D2C 100%)",
+          "linear-gradient(135deg, var(--surface-0) 0%, var(--surface-1) 50%, var(--surface-2) 100%)",
         "gradient-gold-cta":
-          "linear-gradient(135deg, #D4A853 0%, #E0BA6A 100%)",
+          "linear-gradient(135deg, var(--gold) 0%, var(--gold-hover) 100%)",
         "gradient-card-glow":
           "linear-gradient(135deg, rgba(52,211,153,0.05) 0%, rgba(212,168,83,0.05) 100%)",
       },
-      // ── Skeleton / loading tokens ───────────────────────────────────────
-      // Single source of truth for skeleton placeholders. `skeleton-base` is
-      // the resting fill (= surface-2); `skeleton-sheen` is the moving
-      // highlight for the shimmer sweep.
       animation: {
         "slide-up": "slide-up 0.3s ease-out",
         "skeleton-pulse": "skeleton-pulse 1.6s ease-in-out infinite",
