@@ -3,7 +3,7 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import { env } from "../config/env";
 import { withRpcMetrics } from "../lib/metrics";
 import { retryAsync } from "../lib/retry";
-import { TOKEN_BASE, TOKEN_DECIMALS } from "../config/token";
+import { parseDecimalToStroops } from "../lib/money";
 import { TraceContext } from "../middleware/correlationId.middleware";
 import { appLogger } from "../middleware/logger";
 
@@ -236,7 +236,10 @@ export class ContractService {
 
     const account = await getRpcAccount(this.rpcServer, input.buyerAddress);
     const contract = new StellarSdk.Contract(this.contractId);
-    const amount = this.toContractAmount(input.amountUsdc);
+    // Single conversion point for money — see src/lib/money.ts. The private
+    // helper this replaces silently truncated anything past 7 decimals and
+    // never range-checked i128.
+    const amount = parseDecimalToStroops(input.amountUsdc);
 
     const transaction = new StellarSdk.TransactionBuilder(account, {
       fee: StellarSdk.BASE_FEE,
@@ -561,16 +564,6 @@ export class ContractService {
 
     const prepared = await prepareRpcTransaction(this.rpcServer, transaction);
     return { unsignedXdr: prepared.toXDR() };
-  }
-
-  private toContractAmount(amount: string): bigint {
-    const [wholePart, fractionPart = ""] = amount.split(".");
-    const paddedFraction = `${fractionPart}${"0".repeat(Number(TOKEN_DECIMALS))}`.slice(
-      0,
-      Number(TOKEN_DECIMALS),
-    );
-
-    return BigInt(wholePart) * TOKEN_BASE + BigInt(paddedFraction);
   }
 
   private extractTradeId(

@@ -1,29 +1,6 @@
 import * as React from "react";
 import { clsx } from "clsx";
-
-interface SkeletonLineProps {
-  width?: string;
-  height?: string;
-  className?: string;
-}
-
-function SkeletonLine({
-  width = "w-full",
-  height = "h-4",
-  className,
-}: SkeletonLineProps) {
-  return (
-    <div
-      className={clsx(
-        "rounded-md bg-elevated text-transparent",
-        "animate-pulse motion-reduce:animate-none",
-        width,
-        height,
-        className,
-      )}
-    />
-  );
-}
+import { Skeleton } from "./Skeleton";
 
 export interface LoadingStateProps {
   variant?: "card" | "row" | "inline";
@@ -31,6 +8,12 @@ export interface LoadingStateProps {
   className?: string;
 }
 
+/**
+ * Standard loading placeholder for a route segment or panel. Composed entirely
+ * from the shared `Skeleton` primitive so it shares the app-wide skeleton
+ * language and design tokens. Sizes are fixed so swapping in real content does
+ * not shift layout.
+ */
 export function LoadingState({
   variant = "card",
   rows = 3,
@@ -43,8 +26,8 @@ export function LoadingState({
         aria-busy="true"
         aria-label="Loading"
       >
-        <SkeletonLine width="w-3/4" height="h-4" />
-        <SkeletonLine width="w-1/2" height="h-3" />
+        <Skeleton variant="text" width="75%" height={16} />
+        <Skeleton variant="text" width="50%" height={12} />
       </div>
     );
   }
@@ -53,22 +36,18 @@ export function LoadingState({
     return (
       <div
         className={clsx(
-          "flex items-center gap-3 p-3 rounded-lg border border-border-default",
+          "flex items-center gap-3 rounded-lg border border-border-default p-3",
           className,
         )}
         aria-busy="true"
         aria-label="Loading"
       >
-        <div className="h-9 w-9 rounded-md bg-elevated animate-pulse motion-reduce:animate-none flex-shrink-0" />
-        <div className="flex flex-col gap-2 flex-1">
-          <SkeletonLine width="w-1/2" height="h-3" />
-          <SkeletonLine width="w-3/4" height="h-3" />
+        <Skeleton variant="circle" width={36} height={36} className="shrink-0" />
+        <div className="flex flex-1 flex-col gap-2">
+          <Skeleton variant="text" width="50%" height={12} />
+          <Skeleton variant="text" width="75%" height={12} />
         </div>
-        <SkeletonLine
-          width="w-16"
-          height="h-6"
-          className="rounded-full flex-shrink-0"
-        />
+        <Skeleton width={64} height={24} radius={9999} className="shrink-0" />
       </div>
     );
   }
@@ -76,28 +55,29 @@ export function LoadingState({
   return (
     <div
       className={clsx(
-        "bg-card rounded-xl border border-border-default p-6 shadow-card",
+        "rounded-xl border border-border-default bg-card p-6 shadow-card",
         className,
       )}
       aria-busy="true"
       aria-label="Loading"
     >
-      <div className="flex items-center gap-3 mb-5">
-        <div className="h-8 w-8 rounded-md bg-elevated animate-pulse motion-reduce:animate-none" />
-        <SkeletonLine width="w-32" height="h-4" />
+      <div className="mb-5 flex items-center gap-3">
+        <Skeleton width={32} height={32} />
+        <Skeleton variant="text" width={128} height={16} />
       </div>
 
       <div className="flex flex-col gap-3">
         {Array.from({ length: rows }).map((_, i) => (
-          <SkeletonLine
+          <Skeleton
             key={i}
-            width={i % 3 === 2 ? "w-2/3" : i % 3 === 1 ? "w-5/6" : "w-full"}
-            height="h-4"
+            variant="text"
+            height={16}
+            width={i % 3 === 2 ? "66%" : i % 3 === 1 ? "83%" : "100%"}
           />
         ))}
       </div>
 
-      <div className="mt-6 h-10 w-full rounded-lg bg-elevated animate-pulse motion-reduce:animate-none" />
+      <Skeleton height={40} className="mt-6 w-full rounded-lg" />
     </div>
   );
 }

@@ -3,10 +3,11 @@
 #[allow(clippy::module_inception)]
 mod fee_update_tests {
     use crate::{EscrowContract, EscrowContractClient, MAX_FEE_BPS, MIN_FEE_BPS};
+    use crate::test_fixture::admin_address;
     use soroban_sdk::{Address, Env, IntoVal, testutils::Address as _};
 
     fn setup(env: &Env) -> (Address, Address, Address) {
-        let admin = Address::generate(env);
+        let admin = admin_address(env);
         let contract_id = env.register(EscrowContract, ());
         let token = Address::generate(env);
         let treasury = Address::generate(env);

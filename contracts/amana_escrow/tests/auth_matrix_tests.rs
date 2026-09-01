@@ -6,86 +6,19 @@
 /// Allow paths assert the call succeeds; deny paths assert the expected panic.
 extern crate std;
 
-use amana_escrow::{EscrowContract, EscrowContractClient, TradeStatus};
-use soroban_sdk::{Address, Env, String as SStr, testutils::Address as _, token};
+use amana_escrow::{TradeStatus, test_fixture::AdminSignerFixture};
+use soroban_sdk::{Address, Env, String as SStr, testutils::Address as _};
 
-// ---------------------------------------------------------------------------
-// Shared harness
-// ---------------------------------------------------------------------------
+type Harness = AdminSignerFixture;
 
-struct Harness {
-    env: Env,
-    contract_id: Address,
-    usdc_id: Address,
-    admin: Address,
-    buyer: Address,
-    seller: Address,
-    mediator: Address,
-    treasury: Address,
-    stranger: Address,
-}
-
-impl Harness {
-    fn new() -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let buyer = Address::generate(&env);
-        let seller = Address::generate(&env);
-        let mediator = Address::generate(&env);
-        let treasury = Address::generate(&env);
-        let stranger = Address::generate(&env);
-        let usdc_id = env
-            .register_stellar_asset_contract_v2(admin.clone())
-            .address();
-        let contract_id = env.register(EscrowContract, ());
-        let client = EscrowContractClient::new(&env, &contract_id);
-        client.initialize(&admin, &usdc_id, &treasury, &100u32, &usdc_id);
-        client.add_mediator(&mediator);
-        Harness {
-            env,
-            contract_id,
-            usdc_id,
-            admin,
-            buyer,
-            seller,
-            mediator,
-            treasury,
-            stranger,
-        }
-    }
-
-    fn client(&self) -> EscrowContractClient<'_> {
-        EscrowContractClient::new(&self.env, &self.contract_id)
-    }
-
-    fn mint(&self, to: &Address, amount: i128) {
-        token::StellarAssetClient::new(&self.env, &self.usdc_id).mint(to, &amount);
-    }
-
-    fn funded_trade(&self, amount: i128) -> u64 {
-        self.mint(&self.buyer, amount);
-        let tid = self.client().create_trade(
-            &self.buyer,
-            &self.seller,
-            &amount,
-            &5000u32,
-            &5000u32,
-            &None,
-        );
-        self.client().deposit(&tid);
-        tid
-    }
-
-    fn disputed_trade(&self, amount: i128) -> u64 {
-        let tid = self.funded_trade(amount);
-        self.client().initiate_dispute(
-            &tid,
-            &self.buyer,
-            &SStr::from_str(&self.env, "QmAuthMatrix"),
-        );
-        tid
-    }
+fn disputed_trade(h: &Harness, amount: i128) -> u64 {
+    let tid = h.funded_trade(amount);
+    h.client().initiate_dispute(
+        &tid,
+        &h.buyer,
+        &SStr::from_str(&h.env, "QmAuthMatrix"),
+    );
+    tid
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +30,7 @@ impl Harness {
 fn test_auth_initialize_rejects_second_call() {
     let h = Harness::new();
     h.client()
-        .initialize(&h.admin, &h.usdc_id, &h.treasury, &100u32, &h.usdc_id);
+        .initialize(&h.admin, &h.token_id, &h.treasury, &100u32, &h.token_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -446,7 +379,7 @@ fn test_auth_initiate_dispute_stranger_denied() {
 #[test]
 fn test_auth_submit_evidence_buyer_allowed() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().submit_evidence(
         &tid,
         &h.buyer,
@@ -459,7 +392,7 @@ fn test_auth_submit_evidence_buyer_allowed() {
 #[test]
 fn test_auth_submit_evidence_seller_allowed() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().submit_evidence(
         &tid,
         &h.seller,
@@ -472,7 +405,7 @@ fn test_auth_submit_evidence_seller_allowed() {
 #[test]
 fn test_auth_submit_evidence_mediator_allowed() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().submit_evidence(
         &tid,
         &h.mediator,
@@ -486,7 +419,7 @@ fn test_auth_submit_evidence_mediator_allowed() {
 #[should_panic(expected = "Only buyer, seller, or mediator can submit evidence")]
 fn test_auth_submit_evidence_stranger_denied() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().submit_evidence(
         &tid,
         &h.stranger,
@@ -499,7 +432,7 @@ fn test_auth_submit_evidence_stranger_denied() {
 #[should_panic(expected = "Only buyer, seller, or mediator can submit evidence")]
 fn test_auth_submit_evidence_admin_denied() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().submit_evidence(
         &tid,
         &h.admin,
@@ -515,7 +448,7 @@ fn test_auth_submit_evidence_admin_denied() {
 #[test]
 fn test_auth_resolve_dispute_mediator_allowed() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().resolve_dispute(&tid, &h.mediator, &5_000u32);
     assert!(matches!(
         h.client().get_trade(&tid).status,
@@ -527,7 +460,7 @@ fn test_auth_resolve_dispute_mediator_allowed() {
 #[should_panic(expected = "Unauthorized mediator")]
 fn test_auth_resolve_dispute_buyer_denied() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().resolve_dispute(&tid, &h.buyer, &5_000u32);
 }
 
@@ -535,7 +468,7 @@ fn test_auth_resolve_dispute_buyer_denied() {
 #[should_panic(expected = "Unauthorized mediator")]
 fn test_auth_resolve_dispute_seller_denied() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().resolve_dispute(&tid, &h.seller, &5_000u32);
 }
 
@@ -543,7 +476,7 @@ fn test_auth_resolve_dispute_seller_denied() {
 #[should_panic(expected = "Unauthorized mediator")]
 fn test_auth_resolve_dispute_admin_denied() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().resolve_dispute(&tid, &h.admin, &5_000u32);
 }
 
@@ -551,7 +484,7 @@ fn test_auth_resolve_dispute_admin_denied() {
 #[should_panic(expected = "Unauthorized mediator")]
 fn test_auth_resolve_dispute_stranger_denied() {
     let h = Harness::new();
-    let tid = h.disputed_trade(1_000);
+    let tid = disputed_trade(&h, 1_000);
     h.client().resolve_dispute(&tid, &h.stranger, &5_000u32);
 }
 

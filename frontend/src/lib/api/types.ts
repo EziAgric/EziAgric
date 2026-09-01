@@ -59,9 +59,13 @@ export interface EvidenceResponse {
   evidence: EvidenceRecord[];
 }
 
+// Request shape is derived from the shared domain schema so it cannot drift
+// from what the backend accepts. See docs/shared-schemas.md.
+export type { CreateTradeInput } from "@/lib/domain-schemas/trade";
+
 export interface CreateTradeRequest {
   sellerAddress: string;
-  amountCngn: string;
+  amountUsdc: string;
   buyerLossBps: number;
   sellerLossBps: number;
 }

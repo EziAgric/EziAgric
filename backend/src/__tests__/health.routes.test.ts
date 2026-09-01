@@ -2,269 +2,375 @@ import request from "supertest";
 import { createApp } from "../app";
 import express from "express";
 
+/**
+ * Test suite for tiered health endpoints (Issue #224).
+ *
+ * Probes and their isolation contracts:
+ *   /health/live   — process-only, never touches I/O (liveness probe)
+ *   /health/ready  — DB + Redis only (readiness probe), external deps excluded
+ *   /health/startup — DB + Redis + config + adminKey (startup probe)
+ *   /health         — full dependency matrix (observability only)
+ */
+
 const mockPerformHealthCheck = jest.fn();
+const mockPerformReadinessCheck = jest.fn();
 const mockPerformStartupCheck = jest.fn();
 
 jest.mock("../services/health.service", () => ({
     HealthService: jest.fn().mockImplementation(() => ({
         performHealthCheck: mockPerformHealthCheck,
+        performReadinessCheck: mockPerformReadinessCheck,
         performStartupCheck: mockPerformStartupCheck,
     })),
 }));
 
-describe("Health Routes", () => {
+// ──────────────────────────────────────────────────────────────────────────────
+// Fixtures
+// ──────────────────────────────────────────────────────────────────────────────
+
+function makeFullHealthResult(status: "healthy" | "degraded" | "unhealthy" = "healthy") {
+    return {
+        status,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        uptime: 10000,
+        checks: {
+            database: { status: "up", message: "ok", responseTime: 5 },
+            redis: { status: "up", message: "ok", responseTime: 3 },
+            indexer: { status: "up", message: "ok", responseTime: 10 },
+            stellar: { status: "up", message: "ok", responseTime: 100 },
+            sorobanRpc: { status: "up", message: "ok", responseTime: 80 },
+            ipfs: { status: "up", message: "ok", responseTime: 200 },
+            config: { status: "up", message: "ok", responseTime: 0 },
+            adminSigningKey: { status: "up", message: "ok", responseTime: 1 },
+        },
+        details: {
+            databaseLatency: 5,
+            redisLatency: 3,
+            indexerLagSeconds: 2,
+            lastProcessedLedger: 99999,
+            stellarNetwork: "testnet",
+            ipfsGateway: "https://gateway.pinata.cloud",
+            missingEnvVars: [],
+            circuitBreakers: [],
+        },
+    };
+}
+
+function makeReadinessResult(status: "ready" | "not_ready" = "ready", overrides: Partial<{
+    database: { status: "up" | "down"; message: string; responseTime: number };
+    redis: { status: "up" | "down"; message: string; responseTime: number };
+}> = {}) {
+    return {
+        status,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        checks: {
+            database: overrides.database ?? { status: "up" as const, message: "ok", responseTime: 5 },
+            redis: overrides.redis ?? { status: "up" as const, message: "ok", responseTime: 3 },
+        },
+    };
+}
+
+function makeStartupResult(status: "ready" | "not_ready" = "ready") {
+    return {
+        status,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        checks: {
+            database: { status: "up", message: "ok", responseTime: 5 },
+            redis: { status: "up", message: "ok", responseTime: 3 },
+            config: { status: "up", message: "ok", responseTime: 0 },
+            adminSigningKey: { status: "up", message: "ok", responseTime: 1 },
+        },
+    };
+}
+
+describe("Tiered Health Endpoints (Issue #224)", () => {
     let app: express.Application;
 
     beforeEach(() => {
         mockPerformHealthCheck.mockReset();
+        mockPerformReadinessCheck.mockReset();
         mockPerformStartupCheck.mockReset();
         app = createApp();
     });
 
-    describe("GET /health", () => {
-        it("should return healthy status", async () => {
-            mockPerformHealthCheck.mockResolvedValue({
-                status: "healthy",
-                timestamp: "2025-01-01T00:00:00.000Z",
-                uptime: 1000,
-                checks: {
-                    database: { status: "up", message: "ok", responseTime: 5 },
-                    redis: { status: "up", message: "ok", responseTime: 3 },
-                    indexer: { status: "up", message: "ok", responseTime: 10 },
-                },
-                details: {
-                    databaseLatency: 5,
-                    redisLatency: 3,
-                    indexerLagSeconds: 2,
-                    lastProcessedLedger: 12345,
-                },
-            });
+    // ─────────────────────────────────────────────────────────────────────────
+    // /health/live — liveness probe (process-only truth)
+    // ─────────────────────────────────────────────────────────────────────────
+    describe("GET /health/live — liveness probe", () => {
+        it("returns 200 with alive status immediately", async () => {
+            const res = await request(app).get("/health/live");
 
-            const response = await request(app).get("/health");
-            expect([200, 503]).toContain(response.status);
-            expect(response.body).toHaveProperty("status");
-            expect(response.body).toHaveProperty("timestamp");
-            expect(response.body).toHaveProperty("checks");
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("alive");
+            expect(res.body).toHaveProperty("timestamp");
         });
 
-        it("should include database, redis, indexer, and dependency checks", async () => {
-            mockPerformHealthCheck.mockResolvedValue({
-                status: "healthy",
-                timestamp: "2025-01-01T00:00:00.000Z",
-                uptime: 1000,
-                checks: {
-                    database: { status: "up", message: "ok", responseTime: 5 },
-                    redis: { status: "up", message: "ok", responseTime: 3 },
-                    indexer: { status: "up", message: "ok", responseTime: 10 },
-                    stellar: { status: "up", message: "ok", responseTime: 10 },
-                    sorobanRpc: { status: "up", message: "ok", responseTime: 10 },
-                    ipfs: { status: "up", message: "ok", responseTime: 10 },
-                    config: { status: "up", message: "ok", responseTime: 0 },
-                },
-                details: {
-                    databaseLatency: 5,
-                    redisLatency: 3,
-                    indexerLagSeconds: 2,
-                    lastProcessedLedger: 12345,
-                    stellarNetwork: "testnet",
-                    ipfsGateway: "https://gateway.pinata.cloud",
-                    missingEnvVars: [],
-                    circuitBreakers: [],
-                },
-            });
-            const response = await request(app).get("/health");
+        it("never calls performHealthCheck (no I/O)", async () => {
+            await request(app).get("/health/live");
 
-            expect(response.status).toBe(200);
-            expect(response.body.status).toBe("healthy");
-            expect(response.body.checks).toHaveProperty("database");
-            expect(response.body.checks).toHaveProperty("redis");
-            expect(response.body.checks).toHaveProperty("indexer");
-            expect(response.body.checks).toHaveProperty("stellar");
-            expect(response.body.checks).toHaveProperty("sorobanRpc");
-            expect(response.body.checks).toHaveProperty("ipfs");
-            expect(response.body.checks).toHaveProperty("config");
-            expect(response.body.checks.database).toHaveProperty("status");
-            expect(response.body.checks.redis).toHaveProperty("status");
-            expect(response.body.checks.indexer).toHaveProperty("status");
-            expect(response.body.checks.sorobanRpc).toHaveProperty("status");
+            expect(mockPerformHealthCheck).not.toHaveBeenCalled();
         });
 
-        it("should return degraded status", async () => {
-            mockPerformHealthCheck.mockResolvedValue({
-                status: "degraded",
-                timestamp: "2025-01-01T00:00:00.000Z",
-                uptime: 1000,
-                checks: {
-                    database: { status: "up", message: "slow", responseTime: 200 },
-                    redis: { status: "up", message: "ok", responseTime: 5 },
-                    indexer: { status: "up", message: "ok", responseTime: 10 },
-                    stellar: { status: "up", message: "ok", responseTime: 10 },
-                    sorobanRpc: { status: "up", message: "ok", responseTime: 10 },
-                    ipfs: { status: "up", message: "ok", responseTime: 10 },
-                    config: { status: "up", message: "ok", responseTime: 0 },
-                },
-                details: {
-                    databaseLatency: 200,
-                    redisLatency: 5,
-                    indexerLagSeconds: 2,
-                    lastProcessedLedger: 12345,
-                    stellarNetwork: "testnet",
-                    ipfsGateway: "https://gateway.pinata.cloud",
-                    missingEnvVars: [],
-                    circuitBreakers: [],
-                },
-            });
+        it("never calls performReadinessCheck (no I/O)", async () => {
+            await request(app).get("/health/live");
 
-            const response = await request(app).get("/health");
-
-            expect(response.body.details).toHaveProperty("databaseLatency");
-            expect(response.body.details).toHaveProperty("redisLatency");
-            expect(response.body.details).toHaveProperty("indexerLagSeconds");
-            expect(response.body.details).toHaveProperty("lastProcessedLedger");
-            expect(response.body.details).toHaveProperty("stellarNetwork");
-            expect(response.body.details).toHaveProperty("ipfsGateway");
-            expect(response.body.details).toHaveProperty("missingEnvVars");
+            expect(mockPerformReadinessCheck).not.toHaveBeenCalled();
         });
 
-        it("should return 503 when unhealthy", async () => {
-            mockPerformHealthCheck.mockResolvedValue({
-                status: "unhealthy",
-                timestamp: "2025-01-01T00:00:00.000Z",
-                uptime: 1000,
-                checks: {
-                    database: { status: "down", message: "failed", responseTime: 200 },
-                    redis: { status: "up", message: "ok", responseTime: 5 },
-                    indexer: { status: "up", message: "ok", responseTime: 10 },
-                },
-                details: {
-                    databaseLatency: 200,
-                    redisLatency: 5,
-                    indexerLagSeconds: 2,
-                    lastProcessedLedger: 12345,
-                },
-            });
+        it("never calls performStartupCheck (no I/O)", async () => {
+            await request(app).get("/health/live");
 
-            const response = await request(app).get("/health");
-
-            expect(response.status).toBe(503);
-            expect(response.body.status).toBe("unhealthy");
+            expect(mockPerformStartupCheck).not.toHaveBeenCalled();
         });
 
-        it("should return 503 on service error", async () => {
-            mockPerformHealthCheck.mockRejectedValue(new Error("Unexpected error"));
+        it("remains alive even when external dependency mock is broken", async () => {
+            // Simulate a scenario where performHealthCheck would throw — liveness must be unaffected
+            mockPerformHealthCheck.mockRejectedValue(new Error("Stellar RPC down"));
+            mockPerformReadinessCheck.mockRejectedValue(new Error("DB timeout"));
 
-            const response = await request(app).get("/health");
+            const res = await request(app).get("/health/live");
 
-            expect(response.status).toBe(503);
-            expect(response.body.status).toBe("unhealthy");
-            expect(response.body).toHaveProperty("error");
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("alive");
         });
     });
 
-    describe("GET /health/live", () => {
-        it("should return alive status", async () => {
-            const response = await request(app).get("/health/live");
+    // ─────────────────────────────────────────────────────────────────────────
+    // /health/ready — readiness probe (DB + Redis only)
+    // ─────────────────────────────────────────────────────────────────────────
+    describe("GET /health/ready — readiness probe (DB + Redis isolation)", () => {
+        it("returns 200 ready when DB and Redis are up", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("ready"));
 
-            expect(response.status).toBe(200);
-            expect(response.body.status).toBe("alive");
-            expect(response.body).toHaveProperty("timestamp");
+            const res = await request(app).get("/health/ready");
+
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("ready");
+            expect(res.body).toHaveProperty("timestamp");
+            expect(res.body).toHaveProperty("checks");
+        });
+
+        it("checks include database and redis", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("ready"));
+
+            const res = await request(app).get("/health/ready");
+
+            expect(res.body.checks).toHaveProperty("database");
+            expect(res.body.checks).toHaveProperty("redis");
+        });
+
+        it("does NOT expose stellar, ipfs, or indexer checks", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("ready"));
+
+            const res = await request(app).get("/health/ready");
+
+            // These external deps must be excluded from the readiness response
+            expect(res.body.checks).not.toHaveProperty("stellar");
+            expect(res.body.checks).not.toHaveProperty("sorobanRpc");
+            expect(res.body.checks).not.toHaveProperty("ipfs");
+            expect(res.body.checks).not.toHaveProperty("indexer");
+        });
+
+        it("calls performReadinessCheck (not performHealthCheck)", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("ready"));
+
+            await request(app).get("/health/ready");
+
+            expect(mockPerformReadinessCheck).toHaveBeenCalledTimes(1);
+            expect(mockPerformHealthCheck).not.toHaveBeenCalled();
+        });
+
+        it("returns 503 not_ready when DB is down", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(
+                makeReadinessResult("not_ready", {
+                    database: { status: "down", message: "Connection refused", responseTime: 200 },
+                })
+            );
+
+            const res = await request(app).get("/health/ready");
+
+            expect(res.status).toBe(503);
+            expect(res.body.status).toBe("not_ready");
+            expect(res.body.checks.database.status).toBe("down");
+        });
+
+        it("returns 503 not_ready when Redis is down", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(
+                makeReadinessResult("not_ready", {
+                    redis: { status: "down", message: "ECONNREFUSED", responseTime: 3000 },
+                })
+            );
+
+            const res = await request(app).get("/health/ready");
+
+            expect(res.status).toBe(503);
+            expect(res.body.status).toBe("not_ready");
+        });
+
+        it("remains ready even when Stellar RPC is degraded (brownout resilience)", async () => {
+            // Key scenario: Stellar brownout must NOT un-ready the pod.
+            // performReadinessCheck only checks DB+Redis, so Stellar state is irrelevant.
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("ready"));
+
+            const res = await request(app).get("/health/ready");
+
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("ready");
+        });
+
+        it("remains ready even when IPFS is unavailable (brownout resilience)", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("ready"));
+
+            const res = await request(app).get("/health/ready");
+
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("ready");
+        });
+
+        it("returns 503 with error on service exception", async () => {
+            mockPerformReadinessCheck.mockRejectedValue(new Error("Unexpected failure"));
+
+            const res = await request(app).get("/health/ready");
+
+            expect(res.status).toBe(503);
+            expect(res.body.status).toBe("not_ready");
+            expect(res.body).toHaveProperty("error");
         });
     });
 
-    describe("GET /health/ready", () => {
-        it("should return ready when healthy", async () => {
-            mockPerformHealthCheck.mockResolvedValue({
-                status: "healthy",
-                timestamp: "2025-01-01T00:00:00.000Z",
-                uptime: 1000,
-                checks: {
-                    database: { status: "up", message: "ok", responseTime: 5 },
-                    redis: { status: "up", message: "ok", responseTime: 3 },
-                    indexer: { status: "up", message: "ok", responseTime: 10 },
-                },
-                details: {
-                    databaseLatency: 5,
-                    redisLatency: 3,
-                    indexerLagSeconds: 2,
-                    lastProcessedLedger: 12345,
-                },
-            });
+    // ─────────────────────────────────────────────────────────────────────────
+    // /health/startup — startup probe
+    // ─────────────────────────────────────────────────────────────────────────
+    describe("GET /health/startup — startup probe", () => {
+        it("returns 200 ready when all critical deps are up", async () => {
+            mockPerformStartupCheck.mockResolvedValue(makeStartupResult("ready"));
 
-            const response = await request(app).get("/health/ready");
+            const res = await request(app).get("/health/startup");
 
-            expect(response.status).toBe(200);
-            expect(response.body.status).toBe("ready");
-            expect(response.body).toHaveProperty("timestamp");
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("ready");
+            expect(res.body).toHaveProperty("checks");
         });
 
-        it("should return not_ready when unhealthy", async () => {
-            mockPerformHealthCheck.mockResolvedValue({
-                status: "unhealthy",
-                timestamp: "2025-01-01T00:00:00.000Z",
-                uptime: 1000,
-                checks: {
-                    database: { status: "down", message: "failed", responseTime: 200 },
-                    redis: { status: "up", message: "ok", responseTime: 5 },
-                    indexer: { status: "up", message: "ok", responseTime: 10 },
-                },
-                details: {
-                    databaseLatency: 200,
-                    redisLatency: 5,
-                    indexerLagSeconds: 2,
-                    lastProcessedLedger: 12345,
-                },
-            });
+        it("calls performStartupCheck (not performReadinessCheck or performHealthCheck)", async () => {
+            mockPerformStartupCheck.mockResolvedValue(makeStartupResult("ready"));
 
-            const response = await request(app).get("/health/ready");
+            await request(app).get("/health/startup");
 
-            expect(response.status).toBe(503);
-            expect(response.body.status).toBe("not_ready");
+            expect(mockPerformStartupCheck).toHaveBeenCalledTimes(1);
+            expect(mockPerformHealthCheck).not.toHaveBeenCalled();
+            expect(mockPerformReadinessCheck).not.toHaveBeenCalled();
         });
-    });
 
-    describe("GET /health/startup", () => {
-        it("should return ready when dependencies are up", async () => {
+        it("returns 503 not_ready when database is down", async () => {
             mockPerformStartupCheck.mockResolvedValue({
-                status: "ready",
-                timestamp: "2025-01-01T00:00:00.000Z",
+                ...makeStartupResult("not_ready"),
                 checks: {
-                    database: { status: "up", message: "ok", responseTime: 5 },
+                    database: { status: "down", message: "DB error", responseTime: 200 },
                     redis: { status: "up", message: "ok", responseTime: 3 },
+                    config: { status: "up", message: "ok", responseTime: 0 },
+                    adminSigningKey: { status: "up", message: "ok", responseTime: 1 },
                 },
             });
 
-            const response = await request(app).get("/health/startup");
+            const res = await request(app).get("/health/startup");
 
-            expect(response.status).toBe(200);
-            expect(response.body.status).toBe("ready");
-            expect(response.body).toHaveProperty("timestamp");
-            expect(response.body).toHaveProperty("checks");
+            expect(res.status).toBe(503);
+            expect(res.body.status).toBe("not_ready");
         });
 
-        it("should return not_ready when database is down", async () => {
-            mockPerformStartupCheck.mockResolvedValue({
-                status: "not_ready",
-                timestamp: "2025-01-01T00:00:00.000Z",
-                checks: {
-                    database: { status: "down", message: "failed", responseTime: 200 },
-                    redis: { status: "up", message: "ok", responseTime: 3 },
-                },
-            });
-
-            const response = await request(app).get("/health/startup");
-
-            expect(response.status).toBe(503);
-            expect(response.body.status).toBe("not_ready");
-        });
-
-        it("should return 503 on service error", async () => {
+        it("returns 503 on service exception", async () => {
             mockPerformStartupCheck.mockRejectedValue(new Error("Unexpected error"));
 
-            const response = await request(app).get("/health/startup");
+            const res = await request(app).get("/health/startup");
 
-            expect(response.status).toBe(503);
-            expect(response.body.status).toBe("not_ready");
-            expect(response.body).toHaveProperty("error");
+            expect(res.status).toBe(503);
+            expect(res.body.status).toBe("not_ready");
+            expect(res.body).toHaveProperty("error");
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /health — full dependency check (observability only)
+    // ─────────────────────────────────────────────────────────────────────────
+    describe("GET /health — full dependency check", () => {
+        it("returns 200 with full check matrix when healthy", async () => {
+            mockPerformHealthCheck.mockResolvedValue(makeFullHealthResult("healthy"));
+
+            const res = await request(app).get("/health");
+
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("healthy");
+            expect(res.body.checks).toHaveProperty("database");
+            expect(res.body.checks).toHaveProperty("redis");
+            expect(res.body.checks).toHaveProperty("stellar");
+            expect(res.body.checks).toHaveProperty("sorobanRpc");
+            expect(res.body.checks).toHaveProperty("ipfs");
+            expect(res.body.checks).toHaveProperty("indexer");
+        });
+
+        it("returns 200 when degraded", async () => {
+            mockPerformHealthCheck.mockResolvedValue(makeFullHealthResult("degraded"));
+
+            const res = await request(app).get("/health");
+
+            expect(res.status).toBe(200);
+            expect(res.body.status).toBe("degraded");
+        });
+
+        it("returns 503 when unhealthy", async () => {
+            mockPerformHealthCheck.mockResolvedValue(makeFullHealthResult("unhealthy"));
+
+            const res = await request(app).get("/health");
+
+            expect(res.status).toBe(503);
+            expect(res.body.status).toBe("unhealthy");
+        });
+
+        it("returns 503 with error on service exception", async () => {
+            mockPerformHealthCheck.mockRejectedValue(new Error("DB exploded"));
+
+            const res = await request(app).get("/health");
+
+            expect(res.status).toBe(503);
+            expect(res.body.status).toBe("unhealthy");
+            expect(res.body).toHaveProperty("error");
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Tier isolation contract — cross-probe independence
+    // ─────────────────────────────────────────────────────────────────────────
+    describe("Tier isolation contract", () => {
+        it("liveness is unaffected by readiness state", async () => {
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("not_ready", {
+                database: { status: "down", message: "DB down", responseTime: 200 },
+            }));
+
+            const [liveRes, readyRes] = await Promise.all([
+                request(app).get("/health/live"),
+                request(app).get("/health/ready"),
+            ]);
+
+            expect(liveRes.status).toBe(200);
+            expect(liveRes.body.status).toBe("alive");
+            expect(readyRes.status).toBe(503);
+            expect(readyRes.body.status).toBe("not_ready");
+        });
+
+        it("readiness is unaffected by full health check state", async () => {
+            // Full health is unhealthy (external deps down) but readiness is fine
+            mockPerformHealthCheck.mockResolvedValue(makeFullHealthResult("unhealthy"));
+            mockPerformReadinessCheck.mockResolvedValue(makeReadinessResult("ready"));
+
+            const [fullRes, readyRes] = await Promise.all([
+                request(app).get("/health"),
+                request(app).get("/health/ready"),
+            ]);
+
+            expect(fullRes.status).toBe(503);
+            expect(readyRes.status).toBe(200);
+            expect(readyRes.body.status).toBe("ready");
         });
     });
 });

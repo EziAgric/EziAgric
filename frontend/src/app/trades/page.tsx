@@ -9,6 +9,7 @@ import { api, ApiError, TradeResponse } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { NavButton } from "@/components/ui/Navigation";
+import { VirtualizedList } from "@/components/ui/VirtualizedList";
 
 type TradeStatus = "all" | "active" | "pending" | "completed" | "disputed";
 
@@ -31,7 +32,8 @@ const STATUS_STYLES: Record<string, string> = {
   draft:     "text-status-draft   bg-surface-1         border border-border-default",
 };
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 100;
+const ROW_HEIGHT = 52;
 
 function TradesTableSkeleton() {
   return (
@@ -254,7 +256,6 @@ export default function TradesPage() {
             <div className="rounded-lg border border-border-default overflow-hidden shadow-elev-1">
               <table className="w-full text-sm">
                 <thead>
-                  {/* Header: surface-1 (card level), subtle bottom border */}
                   <tr className="border-b border-border-default bg-surface-1">
                     <th className="text-left px-4 py-3 text-text-muted font-medium">
                       ID
@@ -273,46 +274,47 @@ export default function TradesPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {trades.map((trade, i) => (
-                    <tr
-                      key={trade.tradeId}
-                      // Even rows: surface-0 (canvas), odd rows: surface-1 (card).
-                      // Hover lifts to surface-2 + elev-2 shadow for clear depth feedback.
-                      className={`border-b border-border-default last:border-0 hover:bg-surface-2 hover:shadow-elev-2 transition-colors ${
-                        i % 2 === 0 ? "bg-surface-0" : "bg-surface-1"
-                      }`}
-                    >
-                      <td className="px-4 py-3 text-gold font-mono">
-                        <Link
-                          href={`/trades/${trade.tradeId}`}
-                          className="hover:underline underline-offset-4"
-                        >
-                          {trade.tradeId.slice(0, 8)}...
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-text-secondary font-mono">
-                        {formatAddress(trade.sellerAddress)}
-                      </td>
-                      <td className="px-4 py-3 text-text-primary">
-                        {trade.amountCngn} cNGN
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                            STATUS_STYLES[trade.status] ?? "text-text-muted"
-                          }`}
-                        >
-                          {trade.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-text-secondary">
-                        {formatDate(trade.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
               </table>
+              <VirtualizedList
+                items={trades}
+                rowHeight={ROW_HEIGHT}
+                maxHeight={Math.min(trades.length * ROW_HEIGHT, 600)}
+                keyExtractor={(trade) => trade.tradeId}
+                renderItem={(trade, i) => (
+                  <div
+                    className={`grid grid-cols-5 gap-4 px-4 py-3 border-b border-border-default last:border-0 hover:bg-surface-2 transition-colors ${
+                      i % 2 === 0 ? "bg-surface-0" : "bg-surface-1"
+                    }`}
+                  >
+                    <div className="text-gold font-mono">
+                      <Link
+                        href={`/trades/${trade.tradeId}`}
+                        className="hover:underline underline-offset-4"
+                      >
+                        {trade.tradeId.slice(0, 8)}...
+                      </Link>
+                    </div>
+                    <div className="text-text-secondary font-mono">
+                      {formatAddress(trade.sellerAddress)}
+                    </div>
+                    <div className="text-text-primary">
+                      {trade.amountCngn} cNGN
+                    </div>
+                    <div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          STATUS_STYLES[trade.status] ?? "text-text-muted"
+                        }`}
+                      >
+                        {trade.status}
+                      </span>
+                    </div>
+                    <div className="text-text-secondary">
+                      {formatDate(trade.createdAt)}
+                    </div>
+                  </div>
+                )}
+              />
             </div>
           )}
 

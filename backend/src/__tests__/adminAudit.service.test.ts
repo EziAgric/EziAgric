@@ -1,4 +1,5 @@
 import { AdminAuditService } from "../services/adminAudit.service";
+import { encodeCursor } from "../lib/cursorPagination";
 
 describe("AdminAuditService.list", () => {
   let mockPrisma: {
@@ -16,7 +17,7 @@ describe("AdminAuditService.list", () => {
     adminAuditService = new AdminAuditService(mockPrisma as any);
   });
 
-  it("returns paginated results ordered newest-first with default pagination", async () => {
+  it("defaults to cursor pagination ordered newest-first", async () => {
     const records = [
       {
         id: 2,
@@ -28,22 +29,38 @@ describe("AdminAuditService.list", () => {
       },
     ];
     mockPrisma.adminActionAudit.findMany.mockResolvedValue(records);
-    mockPrisma.adminActionAudit.count.mockResolvedValue(1);
 
     const result = await adminAuditService.list();
 
     expect(mockPrisma.adminActionAudit.findMany).toHaveBeenCalledWith({
-      orderBy: { createdAt: "desc" },
-      skip: 0,
-      take: 20,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 21,
     });
-    expect(result).toEqual({
-      items: records,
-      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    expect(result.items).toEqual(records);
+    expect(result.pageInfo).toEqual({ nextCursor: null, hasNextPage: false, limit: 20 });
+    expect(result.pagination).toBeUndefined();
+  });
+
+  it("walks to the next page using the returned cursor", async () => {
+    const page1 = [{ id: 5, action: "A", actorAddress: "G1", targetReference: null, note: null, createdAt: new Date() }];
+    mockPrisma.adminActionAudit.findMany.mockResolvedValueOnce(page1);
+
+    const result = await adminAuditService.list({ limit: 1 });
+    expect(result.pageInfo.hasNextPage).toBe(false);
+
+    mockPrisma.adminActionAudit.findMany.mockResolvedValueOnce([]);
+    const cursor = encodeCursor({ id: 5 });
+    await adminAuditService.list({ cursor, limit: 1 });
+
+    expect(mockPrisma.adminActionAudit.findMany).toHaveBeenLastCalledWith({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      cursor: { id: 5 },
+      skip: 1,
     });
   });
 
-  it("honors page and limit query params", async () => {
+  it("honors legacy page/limit params for backward compatibility", async () => {
     mockPrisma.adminActionAudit.count.mockResolvedValue(45);
 
     const result = await adminAuditService.list({ page: 2, limit: 10 });
@@ -60,11 +77,11 @@ describe("AdminAuditService.list", () => {
     await adminAuditService.list({ limit: 500 });
 
     expect(mockPrisma.adminActionAudit.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 100 }),
+      expect.objectContaining({ take: 101 }),
     );
   });
 
-  it("falls back to defaults for invalid page/limit values", async () => {
+  it("falls back to defaults for invalid legacy page/limit values", async () => {
     await adminAuditService.list({ page: -1, limit: 0 });
 
     expect(mockPrisma.adminActionAudit.findMany).toHaveBeenCalledWith({

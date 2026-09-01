@@ -1,110 +1,108 @@
-import { useCallback, useRef } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
-import type { NavigationProp } from '@react-navigation/native';
+import { useCallback, useEffect, useState } from 'react';
+import type { NavigationContainerRef } from '@react-navigation/native';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuthStore } from '../stores/authStore';
+import {
+  parseDeepLink,
+  requiresAuth,
+  type DeepLinkTarget,
+} from '../constants/links';
 
-export interface DeepLinkTarget {
-  screen: keyof RootStackParamList;
-  params?: Record<string, any>;
+export type { DeepLinkTarget };
+
+/**
+ * Deep-link routing with auth-aware guards (issue #261).
+ *
+ * - A link that lands while authenticated navigates immediately.
+ * - A link that needs auth while signed out is parked; `resumePendingDeepLink`
+ *   replays it once a token appears (login-then-continue).
+ * - Unrecognised / malformed links are dropped (parseDeepLink returns null).
+ *
+ * The pending target lives in a module-level slot so it survives the
+ * WalletConnect -> TradeList remount that happens on login.
+ */
+
+let pendingTarget: DeepLinkTarget | null = null;
+const listeners = new Set<() => void>();
+
+function setPending(target: DeepLinkTarget | null): void {
+  pendingTarget = target;
+  listeners.forEach((l) => l());
 }
 
 interface UseDeepLinkReturn {
   pendingDeepLink: DeepLinkTarget | null;
+  /** Parse a raw URL (cold-start or runtime) and route or park it. */
+  handleUrl: (url: string | null | undefined, navigation?: NavigationContainerRef<RootStackParamList> | null) => void;
+  /** Park an already-parsed target (kept for backwards compat + tests). */
   handleDeepLink: (target: DeepLinkTarget) => void;
-  navigateToDeepLink: (navigation: NavigationProp<RootStackParamList>) => void;
+  /** Replay a parked link once the user is authenticated. */
+  resumePendingDeepLink: (navigation: NavigationContainerRef<RootStackParamList> | null) => void;
+}
+
+function navigate(
+  navigation: NavigationContainerRef<RootStackParamList> | null | undefined,
+  target: DeepLinkTarget,
+): void {
+  if (!navigation) return;
+  navigation.navigate(target.screen as never, (target.params ?? undefined) as never);
 }
 
 export function useDeepLink(): UseDeepLinkReturn {
   const { token } = useAuthStore();
-  const pendingDeepLinkRef = useRef<DeepLinkTarget | null>(null);
+  const [pendingDeepLink, setPendingState] = useState<DeepLinkTarget | null>(pendingTarget);
 
-  // Parse deep link URL and extract screen and params
-  const parseDeepLink = useCallback((url: string): DeepLinkTarget | null => {
-    try {
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname;
-
-      // Match trades/:id pattern
-      const tradeMatch = pathname.match(/\/trades\/([^/]+)$/);
-      if (tradeMatch) {
-        return {
-          screen: 'TradeDetail',
-          params: { id: tradeMatch[1] },
-        };
-      }
-
-      // Match disputes/:id pattern
-      const disputeMatch = pathname.match(/\/disputes\/([^/]+)$/);
-      if (disputeMatch) {
-        return {
-          screen: 'DisputeDetail',
-          params: { id: disputeMatch[1] },
-        };
-      }
-
-      // Match evidence/:tradeId pattern
-      const evidenceMatch = pathname.match(/\/evidence\/([^/]+)$/);
-      if (evidenceMatch) {
-        return {
-          screen: 'EvidenceCapture',
-          params: { tradeId: evidenceMatch[1] },
-        };
-      }
-
-      // Match trade list
-      if (pathname === '/trades' || pathname === '/') {
-        return {
-          screen: 'TradeList',
-        };
-      }
-
-      // Match create trade
-      if (pathname === '/create-trade') {
-        return {
-          screen: 'CreateTrade',
-        };
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error parsing deep link:', error);
-      return null;
-    }
+  useEffect(() => {
+    const sync = () => setPendingState(pendingTarget);
+    listeners.add(sync);
+    return () => {
+      listeners.delete(sync);
+    };
   }, []);
+
+  const routeOrPark = useCallback(
+    (target: DeepLinkTarget, navigation?: NavigationContainerRef<RootStackParamList> | null) => {
+      if (requiresAuth(target) && !token) {
+        setPending(target);
+        return;
+      }
+      setPending(null);
+      navigate(navigation, target);
+    },
+    [token],
+  );
+
+  const handleUrl = useCallback(
+    (url: string | null | undefined, navigation?: NavigationContainerRef<RootStackParamList> | null) => {
+      const target = parseDeepLink(url);
+      if (!target) return; // malformed / unknown → ignore
+      routeOrPark(target, navigation);
+    },
+    [routeOrPark],
+  );
 
   const handleDeepLink = useCallback(
     (target: DeepLinkTarget) => {
-      if (!token) {
-        // Store the target for navigation after authentication
-        pendingDeepLinkRef.current = target;
-      }
+      routeOrPark(target);
     },
-    [token]
+    [routeOrPark],
   );
 
-  const navigateToDeepLink = useCallback(
-    (navigation: NavigationProp<RootStackParamList>) => {
-      const target = pendingDeepLinkRef.current;
-
-      if (target && token) {
-        // Clear the pending deep link
-        pendingDeepLinkRef.current = null;
-
-        // Navigate to the target screen
-        if (target.params) {
-          navigation.navigate(target.screen as never, target.params as never);
-        } else {
-          navigation.navigate(target.screen as never);
-        }
+  const resumePendingDeepLink = useCallback(
+    (navigation: NavigationContainerRef<RootStackParamList> | null) => {
+      if (pendingTarget && token) {
+        const target = pendingTarget;
+        setPending(null);
+        navigate(navigation, target);
       }
     },
-    [token]
+    [token],
   );
 
-  return {
-    pendingDeepLink: pendingDeepLinkRef.current,
-    handleDeepLink,
-    navigateToDeepLink,
-  };
+  return { pendingDeepLink, handleUrl, handleDeepLink, resumePendingDeepLink };
+}
+
+/** Test helper. */
+export function __clearPendingDeepLink(): void {
+  setPending(null);
 }

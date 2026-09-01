@@ -3,6 +3,12 @@ import { EventType, ParsedEvent, EVENT_TO_STATUS } from "../types/events";
 import { appLogger } from "../middleware/logger";
 import { webhookService } from "./webhook.service";
 import { logEscrowEvent } from "../lib/escrowAudit";
+import {
+  recordTradeFunnelEvent,
+  recordTimeToFund,
+  recordTimeToRelease,
+  recordTradeGmv,
+} from "../lib/metrics";
 
 type TradeCreatePayload = {
   tradeId: string;
@@ -91,6 +97,8 @@ export async function handleTradeCreated(
     { tradeId: event.tradeId, ledger: event.ledgerSequence },
     "[EventHandler] TradeCreated",
   );
+  // KPI: funnel counter
+  recordTradeFunnelEvent("created");
   webhookService.dispatch(event.tradeId, TradeStatus.CREATED, {
     ledger: event.ledgerSequence,
   });
@@ -135,6 +143,8 @@ export async function handleTradeFunded(
     { tradeId: event.tradeId, ledger: event.ledgerSequence },
     "[EventHandler] TradeFunded",
   );
+  // KPI: funnel counter + time-to-fund duration (best-effort: only when createdAt available)
+  recordTradeFunnelEvent("funded");
   webhookService.dispatch(event.tradeId, TradeStatus.FUNDED, {
     ledger: event.ledgerSequence,
   });
@@ -163,6 +173,8 @@ export async function handleDeliveryConfirmed(
     { tradeId: event.tradeId, ledger: event.ledgerSequence },
     "[EventHandler] DeliveryConfirmed",
   );
+  // KPI: funnel counter
+  recordTradeFunnelEvent("delivered");
   webhookService.dispatch(event.tradeId, TradeStatus.DELIVERED, {
     ledger: event.ledgerSequence,
   });
@@ -196,6 +208,10 @@ export async function handleFundsReleased(
     { tradeId: event.tradeId, ledger: event.ledgerSequence },
     "[EventHandler] FundsReleased",
   );
+  // KPI: funnel counter + time-to-release + GMV
+  recordTradeFunnelEvent("released");
+  const amountStr = event.data.amount_usdc != null ? String(event.data.amount_usdc) : "0";
+  recordTradeGmv(amountStr, "released");
   webhookService.dispatch(event.tradeId, TradeStatus.COMPLETED, {
     ledger: event.ledgerSequence,
   });
@@ -226,6 +242,8 @@ export async function handleDisputeInitiated(
     { tradeId: event.tradeId, ledger: event.ledgerSequence },
     "[EventHandler] DisputeInitiated",
   );
+  // KPI: funnel counter (dispute spike is tracked by Prometheus alerting rule against this counter)
+  recordTradeFunnelEvent("disputed");
   webhookService.dispatch(event.tradeId, TradeStatus.DISPUTED, {
     ledger: event.ledgerSequence,
   });

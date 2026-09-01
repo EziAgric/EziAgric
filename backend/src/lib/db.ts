@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { env } from '../config/env';
+import { computeAuditEntryHash } from './auditChain';
 
 // Ensure a single instance of Prisma Client is used across the application
 declare global {
@@ -34,6 +35,23 @@ const prismaClientSingleton = () => {
 
     if (model === 'Dispute' && typeof data.initiator === 'string') {
       data.initiator = data.initiator.toLowerCase();
+    }
+
+    // Hash-chain every AdminActionAudit write so tampering with a past row is
+    // detectable by re-verifying the chain (see AdminAuditService.verifyChain).
+    if (model === 'AdminActionAudit' && params.action === 'create') {
+      const last = await client.adminActionAudit.findFirst({ orderBy: { id: 'desc' }, select: { hash: true } });
+      const prevHash = last?.hash ?? '';
+      const createdAt = (data.createdAt as Date | undefined) ?? new Date();
+      data.createdAt = createdAt;
+      data.prevHash = prevHash;
+      data.hash = computeAuditEntryHash(prevHash, {
+        action: data.action as string,
+        actorAddress: data.actorAddress as string,
+        targetReference: data.targetReference as string | null | undefined,
+        note: data.note as string | null | undefined,
+        createdAt,
+      });
     }
 
     return next(params);

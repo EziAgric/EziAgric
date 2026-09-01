@@ -28,77 +28,10 @@
 /// them without reading the full function body.
 extern crate std;
 
-use amana_escrow::{EscrowContract, EscrowContractClient, TradeStatus, MAX_TRADE_VALUE};
-use soroban_sdk::{Address, Env, testutils::Address as _, token};
+use amana_escrow::{TradeStatus, MAX_TRADE_VALUE, test_fixture::AdminSignerFixture};
+use soroban_sdk::{testutils::Address as _, Address};
 
-// ---------------------------------------------------------------------------
-// Shared setup
-// ---------------------------------------------------------------------------
-
-struct Harness {
-    env: Env,
-    contract_id: Address,
-    usdc_id: Address,
-    admin: Address,
-    buyer: Address,
-    seller: Address,
-    treasury: Address,
-}
-
-impl Harness {
-    fn new() -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let buyer = Address::generate(&env);
-        let seller = Address::generate(&env);
-        let treasury = Address::generate(&env);
-        let usdc_id = env
-            .register_stellar_asset_contract_v2(admin.clone())
-            .address();
-        let contract_id = env.register(EscrowContract, ());
-        EscrowContractClient::new(&env, &contract_id)
-            .initialize(&admin, &usdc_id, &treasury, &100u32, &usdc_id);
-
-        Harness {
-            env,
-            contract_id,
-            usdc_id,
-            admin,
-            buyer,
-            seller,
-            treasury,
-        }
-    }
-
-    fn client(&self) -> EscrowContractClient<'_> {
-        EscrowContractClient::new(&self.env, &self.contract_id)
-    }
-
-    fn mint(&self, to: &Address, amount: i128) {
-        token::StellarAssetClient::new(&self.env, &self.usdc_id).mint(to, &amount);
-    }
-
-    fn token(&self) -> token::Client<'_> {
-        token::Client::new(&self.env, &self.usdc_id)
-    }
-
-    /// Fund a trade with the given amount.
-    fn funded_trade(&self, amount: i128) -> u64 {
-        self.mint(&self.buyer, amount);
-        let tid = self.client().create_trade(
-            &self.buyer,
-            &self.seller,
-            &amount,
-            &5000u32,
-            &5000u32,
-            &None,
-        );
-        self.client().deposit(&tid);
-        tid
-    }
-}
+type Harness = AdminSignerFixture;
 
 // ===========================================================================
 // INVARIANT 1: Amount must be positive (#91)
@@ -112,7 +45,7 @@ fn test_clawback_invariant_minimum_amount_one_stroop() {
     let amount = 1i128; // 1 stroop — absolute minimum
     let tid = h.funded_trade(amount);
 
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     // Buyer receives 1 stroop back
     assert_eq!(h.token().balance(&h.buyer), 1);
@@ -144,7 +77,7 @@ fn test_clawback_invariant_buyer_receives_exact_amount() {
     assert_eq!(buyer_before, 0, "buyer should have no balance before clawback");
     assert_eq!(contract_before, amount, "contract should hold the full escrow");
 
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     // Post-conditions: conservation invariant
     let buyer_after = h.token().balance(&h.buyer);
@@ -171,32 +104,14 @@ fn test_clawback_invariant_buyer_receives_exact_amount() {
 /// Clawback with fee_bps = 0 (no platform fee) — amount conservation is the same.
 #[test]
 fn test_clawback_invariant_conservation_with_zero_fee() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let buyer = Address::generate(&env);
-    let seller = Address::generate(&env);
-    let treasury = Address::generate(&env);
-    let usdc_id = env
-        .register_stellar_asset_contract_v2(admin.clone())
-        .address();
-    let contract_id = env.register(EscrowContract, ());
-    // fee_bps = 0
-    EscrowContractClient::new(&env, &contract_id)
-        .initialize(&admin, &usdc_id, &treasury, &0u32, &usdc_id);
-    let client = EscrowContractClient::new(&env, &contract_id);
-    let token = token::Client::new(&env, &usdc_id);
-
+    let h = Harness::new_with_fee_bps(0);
     let amount = 10_000i128;
-    token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &amount);
-    let tid = client.create_trade(&buyer, &seller, &amount, &5000u32, &5000u32, &None);
-    client.deposit(&tid);
+    let tid = h.funded_trade(amount);
 
-    client.admin_clawback(&admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
-    assert_eq!(token.balance(&buyer), amount);
-    assert_eq!(token.balance(&client.address), 0);
+    assert_eq!(h.token().balance(&h.buyer), amount);
+    assert_eq!(h.token().balance(&h.client().address), 0);
 }
 
 // ===========================================================================
@@ -211,7 +126,7 @@ fn test_clawback_invariant_max_trade_value() {
     let amount = MAX_TRADE_VALUE; // 1_000_000_000_000 stroops
     let tid = h.funded_trade(amount);
 
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     assert_eq!(h.token().balance(&h.buyer), amount);
     assert_eq!(h.token().balance(&h.client().address), 0);
@@ -228,7 +143,7 @@ fn test_clawback_invariant_one_below_max_trade_value() {
     let amount = MAX_TRADE_VALUE - 1;
     let tid = h.funded_trade(amount);
 
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     assert_eq!(h.token().balance(&h.buyer), amount);
     assert_eq!(h.token().balance(&h.client().address), 0);
@@ -241,23 +156,25 @@ fn test_clawback_invariant_one_below_max_trade_value() {
 /// After a successful clawback, the trade status must be `Cancelled`.
 /// Attempting a second clawback must panic because the state is no longer `Funded`.
 #[test]
-#[should_panic(expected = "admin_clawback: trade must be in Funded status")]
+#[should_panic(expected = "Trade must be in Funded or Disputed status for clawback")]
 fn test_clawback_invariant_idempotency_second_call_rejected() {
     let h = Harness::new();
-    let tid = h.funded_trade(1_000);
+    let amount = 1_000i128;
+    let tid = h.funded_trade(amount);
 
     // First call succeeds and moves trade to Cancelled
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     // Second call must panic — INVARIANT: status guard prevents re-entrancy
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 }
 
 /// The trade status transitions correctly from Funded → Cancelled.
 #[test]
 fn test_clawback_invariant_status_transitions_to_cancelled() {
     let h = Harness::new();
-    let tid = h.funded_trade(500);
+    let amount = 500i128;
+    let tid = h.funded_trade(amount);
 
     let before = h.client().get_trade(&tid);
     assert!(
@@ -265,7 +182,7 @@ fn test_clawback_invariant_status_transitions_to_cancelled() {
         "pre-condition: trade must be Funded"
     );
 
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     let after = h.client().get_trade(&tid);
     assert!(
@@ -278,22 +195,24 @@ fn test_clawback_invariant_status_transitions_to_cancelled() {
 // INVARIANT: Trade history record (#91)
 // ===========================================================================
 
-/// After a successful `admin_clawback`, the trade history must contain an
-/// entry with `event_type == "admin_clawback"`.
+/// After a successful `admin_clawback`, the trade history must contain a
+/// clawback-related event entry.
 #[test]
 fn test_clawback_invariant_history_record_written() {
     let h = Harness::new();
-    let tid = h.funded_trade(1_000);
+    let amount = 1_000i128;
+    let tid = h.funded_trade(amount);
 
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     let history = h.client().get_trade_history(&tid);
     let found = history.iter().any(|evt| {
-        evt.event_type == soroban_sdk::String::from_str(&h.env, "admin_clawback")
+        evt.event_type == soroban_sdk::String::from_str(&h.env, "clawback_full")
+            || evt.event_type == soroban_sdk::String::from_str(&h.env, "admin_clawback")
     });
     assert!(
         found,
-        "INVARIANT: trade history must contain an 'admin_clawback' event"
+        "INVARIANT: trade history must contain a clawback event"
     );
 }
 
@@ -332,7 +251,7 @@ fn test_clawback_invariant_other_trades_unaffected() {
     );
 
     // Clawback only trade A
-    h.client().admin_clawback(&h.admin, &tid_a);
+    h.client().admin_clawback(&tid_a, &amount_a, &h.buyer);
 
     // Trade A cancelled, trade B still funded
     assert!(matches!(
@@ -375,7 +294,7 @@ fn test_clawback_invariant_asymmetric_loss_ratios_full_refund() {
     );
     h.client().deposit(&tid);
 
-    h.client().admin_clawback(&h.admin, &tid);
+    h.client().admin_clawback(&tid, &amount, &h.buyer);
 
     // Admin clawback ignores loss ratios — buyer gets everything back
     assert_eq!(
