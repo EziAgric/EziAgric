@@ -62,6 +62,7 @@ jobs:
             contracts:
               - 'contracts/**'
               - 'scripts/check-contract-deployment-safety.sh'
+              - 'scripts/check-storage-layout-gate.sh'
             events:
               - 'schemas/events/**'
               - 'scripts/codegen-events.mjs'
@@ -637,6 +638,36 @@ jobs:
             echo "ERROR: WASM artifact not found at $WASM_FILE"
             exit 1
           fi
+
+      - name: Skip note (no contract changes)
+        if: needs.changes.outputs.contracts != 'true'
+        run: echo "No contract file changes detected, required gate passed."
+
+  storage-layout:
+    name: Storage Layout Required Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Checkout
+        # Full history: the gate diffs the branch against its merge base to see
+        # which layout artefacts moved, which a shallow clone cannot resolve.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        if: needs.changes.outputs.contracts == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Storage layout compatibility gate
+        if: needs.changes.outputs.contracts == 'true'
+        env:
+          # Exported so the gate can read the PR's intent markers. Treated as
+          # data by the script, never evaluated as shell.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: ./scripts/check-storage-layout-gate.sh "${{ github.event.pull_request.base.sha || 'origin/main' }}"
 
       - name: Skip note (no contract changes)
         if: needs.changes.outputs.contracts != 'true'
