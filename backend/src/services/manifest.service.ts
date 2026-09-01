@@ -4,6 +4,7 @@ import { prisma as defaultPrisma } from "../lib/db";
 import { getMediatorAllowlist } from "../lib/accessControl";
 import { env } from "../config/env";
 import { EncryptionService } from "./encryption.service";
+import { logPiiAccess } from "../lib/piiAudit";
 
 export interface SubmitManifestInput {
     tradeId: string;
@@ -186,6 +187,17 @@ export class ManifestService {
         const decryptedDriverIdNumber = this.encryptionService.decrypt(manifest.driverIdNumber, tradeId);
         const decryptedVehicleRegistration = this.encryptionService.decrypt(manifest.vehicleRegistration, tradeId);
         const decryptedRouteDescription = this.encryptionService.decrypt(manifest.routeDescription, tradeId);
+
+        // Access logging on decrypt (docs/pii-encryption.md #5) — records who
+        // read plaintext PII off this manifest, regardless of which view they
+        // end up receiving.
+        logPiiAccess({
+            resource: "DeliveryManifest",
+            recordId: tradeId,
+            fields: ["driverName", "driverIdNumber", "vehicleRegistration", "routeDescription"],
+            actor: callerAddress,
+            action: "manifest.view",
+        });
 
         if (isBuyer) {
             return {

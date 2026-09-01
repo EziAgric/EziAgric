@@ -27,96 +27,43 @@
 
 extern crate std;
 
-use amana_escrow::{EscrowContract, EscrowContractClient, TradeStatus};
+use amana_escrow::{TradeStatus, test_fixture::AdminSignerFixture};
 use soroban_sdk::{
     testutils::{Address as _, Events as _},
-    token,
     xdr::ContractEventBody,
     xdr::ScVal,
-    Address, Env, String as SStr,
+    Address, String as SStr,
 };
 
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
+type Harness = AdminSignerFixture;
 
-struct Harness {
-    env: Env,
-    contract_id: Address,
-    usdc_id: Address,
-    admin: Address,
-    buyer: Address,
-    seller: Address,
-    treasury: Address,
+fn disputed_trade(h: &Harness, amount: i128) -> u64 {
+    let trade_id = h.funded_trade(amount);
+    h.client().initiate_dispute(
+        &trade_id,
+        &h.buyer,
+        &SStr::from_str(&h.env, "QmClawbackTest"),
+    );
+    trade_id
 }
 
-impl Harness {
-    fn new(amount: i128) -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let buyer = Address::generate(&env);
-        let seller = Address::generate(&env);
-        let treasury = Address::generate(&env);
-        let usdc_id = env
-            .register_stellar_asset_contract_v2(admin.clone())
-            .address();
-        let contract_id = env.register(EscrowContract, ());
-        let client = EscrowContractClient::new(&env, &contract_id);
-        client.initialize(&admin, &usdc_id, &treasury, &100_u32, &usdc_id);
-        token::StellarAssetClient::new(&env, &usdc_id).mint(&buyer, &amount);
-        Harness { env, contract_id, usdc_id, admin, buyer, seller, treasury }
-    }
-
-    fn client(&self) -> EscrowContractClient<'_> {
-        EscrowContractClient::new(&self.env, &self.contract_id)
-    }
-
-    fn token(&self) -> token::Client<'_> {
-        token::Client::new(&self.env, &self.usdc_id)
-    }
-
-    fn funded_trade(&self, amount: i128) -> u64 {
-        let trade_id = self.client().create_trade(
-            &self.buyer,
-            &self.seller,
-            &amount,
-            &5000_u32,
-            &5000_u32,
-            &None,
-        );
-        self.client().deposit(&trade_id);
-        trade_id
-    }
-
-    fn disputed_trade(&self, amount: i128) -> u64 {
-        let trade_id = self.funded_trade(amount);
-        self.client().initiate_dispute(
-            &trade_id,
-            &self.buyer,
-            &SStr::from_str(&self.env, "QmClawbackTest"),
-        );
-        trade_id
-    }
-
-    /// Helper: return the raw ScVal fields of the most-recently emitted event.
-    fn last_event_data(&self) -> std::vec::Vec<ScVal> {
-        let all = self.env.events().all();
-        let events = all.events();
-        let last = events.last().unwrap();
-        match &last.body {
-            ContractEventBody::V0(v0) => match &v0.data {
-                ScVal::Map(Some(map)) => {
-                    let mut vals = std::vec::Vec::new();
-                    for entry in map.iter() {
-                        vals.push(entry.val.clone());
-                    }
-                    vals
+/// Helper: return the raw ScVal fields of the most-recently emitted event.
+fn last_event_data(h: &Harness) -> std::vec::Vec<ScVal> {
+    let all = h.env.events().all();
+    let events = all.events();
+    let last = events.last().unwrap();
+    match &last.body {
+        ContractEventBody::V0(v0) => match &v0.data {
+            ScVal::Map(Some(map)) => {
+                let mut vals = std::vec::Vec::new();
+                for entry in map.iter() {
+                    vals.push(entry.val.clone());
                 }
-                ScVal::Vec(Some(fields)) => fields.to_vec(),
-                other => panic!("unexpected event data shape: {other:?}"),
-            },
-        }
+                vals
+            }
+            ScVal::Vec(Some(fields)) => fields.to_vec(),
+            other => panic!("unexpected event data shape: {other:?}"),
+        },
     }
 }
 
@@ -126,7 +73,7 @@ impl Harness {
 
 #[test]
 fn partial_clawback_reduces_trade_amount() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(10_000);
     let destination = Address::generate(&h.env);
 
@@ -150,7 +97,7 @@ fn partial_clawback_reduces_trade_amount() {
 
 #[test]
 fn partial_clawback_transfers_correct_token_amount() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(10_000);
     let destination = Address::generate(&h.env);
 
@@ -181,7 +128,7 @@ fn partial_clawback_transfers_correct_token_amount() {
 
 #[test]
 fn multiple_partial_clawbacks_reduce_balance_incrementally() {
-    let h = Harness::new(12_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(12_000);
     let dest = Address::generate(&h.env);
 
@@ -213,7 +160,7 @@ fn multiple_partial_clawbacks_reduce_balance_incrementally() {
 
 #[test]
 fn get_clawback_total_tracks_cumulative_clawback() {
-    let h = Harness::new(20_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(20_000);
     let dest = Address::generate(&h.env);
 
@@ -245,7 +192,7 @@ fn get_clawback_total_tracks_cumulative_clawback() {
 
 #[test]
 fn full_clawback_cancels_trade() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(10_000);
     let dest = Address::generate(&h.env);
 
@@ -267,7 +214,7 @@ fn full_clawback_cancels_trade() {
 
 #[test]
 fn sequential_clawbacks_reaching_zero_cancel_trade() {
-    let h = Harness::new(6_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(6_000);
     let dest = Address::generate(&h.env);
 
@@ -291,8 +238,8 @@ fn sequential_clawbacks_reaching_zero_cancel_trade() {
 
 #[test]
 fn partial_clawback_allowed_on_disputed_trade() {
-    let h = Harness::new(10_000);
-    let trade_id = h.disputed_trade(10_000);
+    let h = Harness::new();
+    let trade_id = disputed_trade(&h, 10_000);
     let dest = Address::generate(&h.env);
 
     // Clawback while Disputed
@@ -314,7 +261,7 @@ fn partial_clawback_allowed_on_disputed_trade() {
 #[test]
 #[should_panic(expected = "clawback_amount exceeds remaining escrowed amount")]
 fn over_clawback_is_rejected() {
-    let h = Harness::new(5_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(5_000);
     let dest = Address::generate(&h.env);
 
@@ -330,9 +277,9 @@ fn over_clawback_is_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "clawback_amount must be greater than zero")]
+#[should_panic(expected = "CLAWBACK_INVALID_AMOUNT")]
 fn zero_clawback_is_rejected() {
-    let h = Harness::new(5_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(5_000);
     let dest = Address::generate(&h.env);
 
@@ -346,7 +293,7 @@ fn zero_clawback_is_rejected() {
 #[test]
 #[should_panic(expected = "Trade must be in Funded or Disputed status for clawback")]
 fn clawback_blocked_on_created_trade() {
-    let h = Harness::new(5_000);
+    let h = Harness::new();
     let trade_id = h.client().create_trade(
         &h.buyer,
         &h.seller,
@@ -367,7 +314,7 @@ fn clawback_blocked_on_created_trade() {
 #[test]
 #[should_panic(expected = "Trade must be in Funded or Disputed status for clawback")]
 fn clawback_blocked_on_completed_trade() {
-    let h = Harness::new(5_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(5_000);
     h.client().confirm_delivery(&trade_id);
     h.client().release_funds(&trade_id, &h.buyer);
@@ -382,13 +329,13 @@ fn clawback_blocked_on_completed_trade() {
 
 #[test]
 fn clawback_event_payload_has_correct_fields() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(10_000);
     let dest = Address::generate(&h.env);
 
     h.client().admin_clawback(&trade_id, &4_000_i128, &dest);
 
-    let data = h.last_event_data();
+    let data = last_event_data(&h);
     // ClawbackExecutedEvent has 6 fields:
     // admin, clawback_amount, destination, remaining_amount, schema_version, trade_id
     assert_eq!(
@@ -414,7 +361,7 @@ fn clawback_event_payload_has_correct_fields() {
 
 #[test]
 fn clawback_total_zero_for_untouched_trade() {
-    let h = Harness::new(5_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(5_000);
     assert_eq!(
         h.client().get_clawback_total(&trade_id),
@@ -429,7 +376,7 @@ fn clawback_total_zero_for_untouched_trade() {
 
 #[test]
 fn remaining_funds_after_partial_clawback_can_be_released() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(10_000);
     let dest = Address::generate(&h.env);
 
@@ -456,4 +403,43 @@ fn remaining_funds_after_partial_clawback_can_be_released() {
         expected_seller,
         "seller must receive remaining funds minus fee"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Feature flag gating (Issue #113)
+// ---------------------------------------------------------------------------
+
+/// Clawback is enabled by default (unset flag preserves current behavior for
+/// upgraded deployments).
+#[test]
+fn clawback_enabled_by_default() {
+    let h = Harness::new();
+    assert!(h.client().is_clawback_enabled());
+}
+
+/// Once an admin disables the feature, `admin_clawback` must be rejected.
+#[test]
+#[should_panic(expected = "admin_clawback: clawback feature is currently disabled")]
+fn clawback_rejected_while_disabled() {
+    let h = Harness::new();
+    let trade_id = h.funded_trade(10_000);
+    let dest = Address::generate(&h.env);
+
+    h.client().set_clawback_enabled(&false);
+    h.client().admin_clawback(&trade_id, &3_000_i128, &dest);
+}
+
+/// Re-enabling the feature restores normal clawback behavior.
+#[test]
+fn clawback_succeeds_after_re_enabling() {
+    let h = Harness::new();
+    let trade_id = h.funded_trade(10_000);
+    let dest = Address::generate(&h.env);
+
+    h.client().set_clawback_enabled(&false);
+    h.client().set_clawback_enabled(&true);
+    h.client().admin_clawback(&trade_id, &3_000_i128, &dest);
+
+    let trade = h.client().get_trade(&trade_id);
+    assert_eq!(trade.amount, 7_000_i128);
 }

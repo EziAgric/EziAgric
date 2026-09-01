@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { AlertService } from "../services/alert.service";
+import { ALERT_REGISTRY } from "../config/alertRegistry";
 
 jest.mock("../middleware/logger", () => ({
   appLogger: {
@@ -101,5 +102,27 @@ describe("AlertService", () => {
     await service.dispatch("db_connection_failure", "Database down again");
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("includes the alert registry's routing class and runbook link", async () => {
+    const service = new AlertService("https://alerts.example.com/hook", undefined, 1000);
+
+    await service.dispatch("admin_soroban_tx_failure", "Admin tx failing");
+
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.routing).toBe(ALERT_REGISTRY.admin_soroban_tx_failure.routing);
+    expect(payload.runbookUrl).toBe(ALERT_REGISTRY.admin_soroban_tx_failure.runbookUrl);
+  });
+
+  it("uses a per-alert-type dedupe window in preference to the global cooldown", async () => {
+    // Global cooldown is short (1s), but synthetic_probe_failure carries its
+    // own 15-minute dedupe window in the registry, so a second dispatch a
+    // moment later must still be suppressed.
+    const service = new AlertService("https://alerts.example.com/hook", undefined, 1000);
+
+    await service.dispatch("synthetic_probe_failure", "Probe failed");
+    await service.dispatch("synthetic_probe_failure", "Probe failed again");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

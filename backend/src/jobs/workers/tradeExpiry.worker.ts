@@ -2,13 +2,14 @@ import { Worker, Job } from 'bullmq';
 import { appLogger } from '../../middleware/logger';
 import { createQueueConnection } from '../queue';
 import { tradeExpiryService } from '../../services/tradeExpiry.service';
+import { attachDeadLetterQueue } from '../deadLetter';
 
 export interface TradeExpirySweepJobData {
   batchSize?: number;
 }
 
 export function createTradeExpiryWorker(): Worker<TradeExpirySweepJobData> {
-  return new Worker<TradeExpirySweepJobData>(
+  const worker = new Worker<TradeExpirySweepJobData>(
     'trade-expiry',
     async (job: Job<TradeExpirySweepJobData>) => {
       const { batchSize = 100 } = job.data;
@@ -19,4 +20,6 @@ export function createTradeExpiryWorker(): Worker<TradeExpirySweepJobData> {
     },
     { connection: createQueueConnection() },
   );
+  attachDeadLetterQueue(worker, 'trade-expiry');
+  return worker;
 }

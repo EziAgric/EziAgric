@@ -9,7 +9,7 @@
 ///   - Settlement invariants hold after all interleaved operations
 extern crate std;
 
-use amana_escrow::{EscrowContract, EscrowContractClient, TradeStatus};
+use amana_escrow::{EscrowContract, EscrowContractClient, TradeStatus, test_fixture::admin_address};
 use soroban_sdk::{
     Address, Env, String as SStr,
     testutils::{Address as _, Ledger as _},
@@ -35,7 +35,7 @@ impl Stress {
     fn new(fee_bps: u32) -> Self {
         let env = Env::default();
         env.mock_all_auths();
-        let admin = Address::generate(&env);
+        let admin = admin_address(&env);
         let buyer = Address::generate(&env);
         let seller = Address::generate(&env);
         let treasury = Address::generate(&env);

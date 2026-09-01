@@ -7,6 +7,11 @@ import { authMiddleware } from "../middleware/auth.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
 import { ContractService } from "../services/contract.service";
+import {
+  DuplicatePayoutError,
+  PayoutIntentService,
+  payoutIntentService as defaultPayoutIntentService,
+} from "../services/payoutIntent.service";
 
 const releaseParamsSchema = z.object({
   id: z.string().min(1),
@@ -20,6 +25,7 @@ type ReleasePrisma = PrismaClient & {
   escrowReleaseMilestone?: {
     findMany: (args: any) => Promise<Array<{
       milestoneIndex: number;
+      amountUsdc: string;
       dueAt: Date;
       releasedAt: Date | null;
     }>>;
@@ -43,6 +49,18 @@ function canRelease(trade: { buyerAddress: string }, walletAddress: string): boo
   );
 }
 
+/**
+ * Reads the caller's `Idempotency-Key` header. Absent, the service derives a
+ * deterministic key from the payout itself, so a retry that omits the header is
+ * still recognised as the same payout.
+ */
+function idempotencyKeyFrom(req: AuthRequest): string | undefined {
+  const raw = req.headers["idempotency-key"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
 function tradeWhere(id: string) {
   const numericId = Number(id);
   const orConditions: Array<Record<string, unknown>> = [{ tradeId: id }];
@@ -55,6 +73,7 @@ function tradeWhere(id: string) {
 export function createEscrowReleaseRouter(
   prisma: ReleasePrisma = defaultPrisma as ReleasePrisma,
   contractService: Pick<ContractService, "buildReleaseMilestoneTx"> = new ContractService(),
+  payoutIntents: Pick<PayoutIntentService, "claim"> = defaultPayoutIntentService,
 ) {
   const router = Router();
 
@@ -126,13 +145,55 @@ export function createEscrowReleaseRouter(
           return;
         }
 
+        // Claim the payout before building anything. `milestone.releasedAt`
+        // above is only set once the on-chain event is confirmed, so it does
+        // not cover the window between a successful submission and that write —
+        // which is exactly where a retry used to produce a second payout.
+        let intentKey: string;
+        try {
+          const { intent, duplicate } = await payoutIntents.claim({
+            idempotencyKey: idempotencyKeyFrom(req),
+            kind: "MILESTONE_RELEASE",
+            tradeId: trade.tradeId,
+            milestoneIndex,
+            amountUsdc: milestone.amountUsdc,
+            destination: trade.sellerAddress,
+            requestedBy: walletAddress,
+          });
+          intentKey = intent.idempotencyKey;
+
+          if (duplicate) {
+            // An earlier attempt is unresolved. Reconciliation decides its
+            // outcome; re-issuing a transaction here could double-pay.
+            res.status(409).json({
+              error: "A release for this milestone is already in progress",
+              idempotencyKey: intent.idempotencyKey,
+              status: intent.status,
+              txHash: intent.txHash,
+            });
+            return;
+          }
+        } catch (error) {
+          if (error instanceof DuplicatePayoutError) {
+            res.status(409).json({
+              error: "This milestone has already been released",
+              idempotencyKey: error.intent.idempotencyKey,
+              txHash: error.intent.txHash,
+            });
+            return;
+          }
+          throw error;
+        }
+
         const { unsignedXdr } = await contractService.buildReleaseMilestoneTx({
           tradeId: trade.tradeId,
           sourceAddress: walletAddress,
           milestoneIndex,
         });
 
-        res.status(200).json({ unsignedXdr });
+        // The key goes back to the caller so the signed submission can be tied
+        // to this intent, and so a retry can reuse it verbatim.
+        res.status(200).json({ unsignedXdr, idempotencyKey: intentKey });
       } catch (error) {
         next(error);
       }

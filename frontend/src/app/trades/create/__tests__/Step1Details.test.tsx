@@ -242,7 +242,7 @@ describe('Step1Details', () => {
             await user.type(priceInput, '450');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN 225,000');
+            expect(totalElement).toHaveTextContent('₦225,000.00');
         });
 
         it('should update total when quantity changes', async () => {
@@ -256,12 +256,12 @@ describe('Step1Details', () => {
             await user.type(priceInput, '100');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN 10,000');
+            expect(totalElement).toHaveTextContent('₦10,000.00');
 
             await user.clear(quantityInput);
             await user.type(quantityInput, '200');
 
-            expect(totalElement).toHaveTextContent('NGN 20,000');
+            expect(totalElement).toHaveTextContent('₦20,000.00');
         });
 
         it('should update total when price changes', async () => {
@@ -275,12 +275,12 @@ describe('Step1Details', () => {
             await user.type(priceInput, '100');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN 10,000');
+            expect(totalElement).toHaveTextContent('₦10,000.00');
 
             await user.clear(priceInput);
             await user.type(priceInput, '200');
 
-            expect(totalElement).toHaveTextContent('NGN 20,000');
+            expect(totalElement).toHaveTextContent('₦20,000.00');
         });
 
         it('should display currency in total', async () => {
@@ -296,7 +296,7 @@ describe('Step1Details', () => {
             await user.selectOptions(currencySelect, 'cNGN');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('cNGN 10,000');
+            expect(totalElement).toHaveTextContent('10,000 USDC');
         });
 
         it('should handle decimal calculations', async () => {
@@ -310,7 +310,7 @@ describe('Step1Details', () => {
             await user.type(priceInput, '67.89');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN 8,381.02');
+            expect(totalElement).toHaveTextContent('₦8,381.02');
         });
     });
 
@@ -427,7 +427,7 @@ describe('Step1Details', () => {
             await user.type(priceInput, '100');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN 0');
+            expect(totalElement).toHaveTextContent('₦0.00');
         });
 
         it('should handle zero price', async () => {
@@ -441,7 +441,7 @@ describe('Step1Details', () => {
             await user.type(priceInput, '0');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN 0');
+            expect(totalElement).toHaveTextContent('₦0.00');
         });
 
         it('should handle very large numbers', async () => {
@@ -455,7 +455,7 @@ describe('Step1Details', () => {
             await user.type(priceInput, '999999999');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN 999,999,998,000,000,000');
+            expect(totalElement).toHaveTextContent('₦999,999,998,000,000,000');
         });
 
         it('should handle negative quantity', async () => {
@@ -469,7 +469,7 @@ describe('Step1Details', () => {
             await user.type(priceInput, '50');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN -5,000');
+            expect(totalElement).toHaveTextContent('-₦5,000.00');
         });
 
         it('should handle negative price', async () => {
@@ -483,7 +483,7 @@ describe('Step1Details', () => {
             await user.type(priceInput, '-50');
 
             const totalElement = screen.getByText(/estimated total/i).nextElementSibling;
-            expect(totalElement).toHaveTextContent('NGN -5,000');
+            expect(totalElement).toHaveTextContent('-₦5,000.00');
         });
 
         it('should handle invalid Stellar address (too short)', async () => {

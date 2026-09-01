@@ -95,6 +95,9 @@ cp .env.example .env.local
 Configure for your environment:
 
 - `EXPO_PUBLIC_API_URL` – backend API endpoint (default: http://localhost:4000)
+- `EXPO_PUBLIC_API_VERSION_PREFIX` – API version prefix (default: `/api/v1`). Leave as-is
+  to use the versioned backend lane; set empty to fall back to legacy aliases (deprecated).
+  Admin and health endpoints are never versioned.
 - `EXPO_PUBLIC_STELLAR_NETWORK` – testnet or public network
 - `EXPO_PUBLIC_PUSH_PROVIDER` – expo or firebase
 

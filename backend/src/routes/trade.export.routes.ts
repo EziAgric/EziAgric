@@ -6,6 +6,10 @@ import { prisma as defaultPrisma } from "../lib/db";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
+import { createWalletRateLimiter } from "../lib/rateLimit";
+import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+
+const tradeExportLimiter = createWalletRateLimiter(RATE_LIMIT_CONFIG.tradeExport);
 
 const exportQuerySchema = z.object({
   format: z.enum(["csv", "json"]).default("json"),
@@ -84,6 +88,7 @@ export function createTradeExportRouter(prisma: PrismaClient = defaultPrisma) {
   router.get(
     "/export",
     authMiddleware,
+    tradeExportLimiter,
     validateRequest({ query: exportQuerySchema }),
     async (req: AuthRequest, res: Response, next) => {
       try {

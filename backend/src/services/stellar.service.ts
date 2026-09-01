@@ -661,6 +661,27 @@ public async getAccountBalance(publicKey: string, assetCode: string = TOKEN_CONF
     }
   }
 
+  /**
+   * Resolves what the chain did with a submitted transaction.
+   *
+   * `NOT_FOUND` is deliberately distinct from `FAILED`: the RPC keeps only a
+   * limited history, and a transaction it has not yet seen tells us nothing.
+   * Payout reconciliation depends on that distinction — treating "unknown" as
+   * failure would release an idempotency key while the payout may still land.
+   *
+   * @param txHash - Soroban transaction hash.
+   * @returns `SUCCESS` or `FAILED` once the chain has ruled, `NOT_FOUND` while
+   * the outcome is still unknown.
+   */
+  public async getTransactionStatus(
+    txHash: string,
+  ): Promise<"SUCCESS" | "FAILED" | "NOT_FOUND"> {
+    const response = await this.sorobanRpc.getTransaction(txHash);
+    if (response.status === "SUCCESS") return "SUCCESS";
+    if (response.status === "FAILED") return "FAILED";
+    return "NOT_FOUND";
+  }
+
   public async loadAccount(publicKey: string): Promise<Horizon.AccountResponse> {
     try {
       return await this.horizonServer.loadAccount(publicKey);

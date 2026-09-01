@@ -55,3 +55,14 @@ If CI fails with the message `POLICY VIOLATION: Admin code modified without test
    ./scripts/check-admin-test-coverage.sh main
    ```
 4. Push your commits to trigger re-evaluation by GitHub Actions.
+
+---
+
+## 6. Admin OpenAPI Documentation Gate
+
+In addition to regression test coverage, the `backend` job runs a **Validate admin OpenAPI docs** step that executes `backend/src/__tests__/openapi.drift.test.ts` and `backend/src/__tests__/openapi.docs.test.ts`.
+
+- `openapi.drift.test.ts` fails the build if an implemented route (including `/admin/*` and `/api/admin/*` paths) is missing from `backend/src/docs/openapi.yaml`, or vice versa.
+- `openapi.docs.test.ts` fails the build if a documented admin path is missing required metadata (e.g. auth `security` requirements or admin-header parameters).
+
+If this step fails, update `backend/src/docs/openapi.yaml` (and the generated `openapi.json`) to match the actual route surface before pushing again.

@@ -110,16 +110,20 @@ Install Gitleaks locally to catch secrets before pushing:
 ```bash
 # Install gitleaks (macOS)
 brew install gitleaks
+```
 
-# Run manually
+Then wire the repo's pre-commit hook (checked into [`.githooks/`](../.githooks/)):
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+This points git at `.githooks/pre-commit`, which runs `gitleaks protect --config=.gitleaks.toml --staged` on every commit and blocks it if a match is found. If gitleaks isn't installed locally, the hook warns and lets the commit through — CI (§ below) still blocks the push.
+
+You can also run a full-repo scan manually at any time:
+
+```bash
 gitleaks detect --config=.gitleaks.toml --source=. --verbose
-
-# Or install as a pre-commit hook
-cat > .git/hooks/pre-commit << 'EOF'
-#!/usr/bin/env bash
-gitleaks protect --config=.gitleaks.toml --staged --verbose
-EOF
-chmod +x .git/hooks/pre-commit
 ```
 
 ---
@@ -167,4 +171,45 @@ Admin signing key (`ADMIN_SECRET_KEY`) rotation is governed by the following ope
 3. Run validation check: `ADMIN_SECRET_KEY="S..." ./scripts/validate-admin-secret.sh http://api.amanavault.com`
 4. In case of validation error, perform immediate rollback: `kubectl rollout undo deployment/backend`
 
-For detailed step-by-step instructions, see [docs/admin-secret-rotation.md](file:///home/kaycee/Desktop/OS/EziAgric/docs/admin-secret-rotation.md).
+For detailed step-by-step instructions, see [docs/admin-secret-rotation.md](./admin-secret-rotation.md).
+
+---
+
+## 8. Secrets Inventory & Automated Rotation Schedule
+
+This is the canonical inventory of platform secrets, their owners, storage location, and maximum age before rotation is required. It is also linked from the README's [Security & Operations](../README.md#-security--operations) section.
+
+| Secret | Owner | Location | Max age | Rotation trigger |
+|---|---|---|---|---|
+| `JWT_SECRET` | Backend team (`@Ndifreke000`) | K8s secret `amana-secrets` / `backend/.env` | 90 days | Scheduled + suspected leak |
+| `ADMIN_SECRET_KEY` | Backend team (`@Ndifreke000`) | K8s secret `amana-secrets` | 90 days | Scheduled + offboarding (see §7) |
+| Webhook HMAC signing secret (`WEBHOOK_SIGNING_SECRET`) | Backend team | K8s secret `amana-secrets` | 180 days | Scheduled + consumer offboarding |
+| `SUPABASE_SERVICE_ROLE_KEY` | Backend team | Supabase dashboard + K8s secret | 90 days | Scheduled + suspected leak |
+| `STAGING_POSTGRES_PASSWORD` / `STAGING_REDIS_PASSWORD` | DevOps | GitHub Actions secrets | 180 days | Scheduled |
+| Stellar signer keys (mediator/treasury automation, if any) | Backend team | Isolated key custody (see §7 Step 1) | 90 days | Scheduled + suspected leak |
+
+### 8.1 Scheduled reminders
+
+[`.github/workflows/secrets-rotation-reminder.yml`](../.github/workflows/secrets-rotation-reminder.yml) runs weekly and opens a tracked GitHub issue (label `secrets-rotation`) for any secret in the inventory above whose `max age` is within 14 days of elapsing, based on the `lastRotated` timestamps recorded in [`backend/scripts/secrets-rotation-status.json`](../backend/scripts/secrets-rotation-status.json). Update that file's `lastRotated` field every time you complete a rotation — the reminder and verification job both read from it.
+
+### 8.2 Dual-secret acceptance window
+
+For zero-downtime rotation of verification secrets (`JWT_SECRET`, webhook HMAC), the backend should accept both the outgoing and incoming secret for a bounded window during rollout (mirrors the `keyVersion` pattern already used by `EncryptionService`, see [docs/pii-encryption.md](./pii-encryption.md)). Concretely:
+
+1. Deploy the new secret as a *secondary* verifier (e.g. `JWT_SECRET_NEXT`) alongside the current `JWT_SECRET`, without invalidating existing sessions/signatures.
+2. Once all pods are running with both accepted, promote `JWT_SECRET_NEXT` to `JWT_SECRET` and roll again.
+3. Retire the old value only after the rollout is confirmed healthy — this is what makes rotation zero-downtime instead of an outage.
+
+### 8.3 Verification
+
+Run `./scripts/verify-secrets-rotation.sh` to assert every secret in the inventory has a `lastRotated` timestamp younger than its `max age`. This is the "verification job asserting last-rotated timestamps" required by issue #203; wire it into a scheduled CI job (the same `secrets-rotation-reminder.yml` workflow runs it and fails the job — surfacing as a red check — if any secret is overdue).
+
+### 8.4 Staging rotation drill
+
+Follow `docs/admin-secret-rotation.md` end-to-end against the staging environment to drill a JWT/admin secret rotation without downtime: generate → deploy as secondary → roll → promote → validate via `./scripts/validate-admin-secret.sh` → retire old secret → record the drill date below.
+
+**Drill log:**
+
+| Date | Secret | Environment | Outcome | Notes |
+|---|---|---|---|---|
+| TODO | `JWT_SECRET` | staging | Not yet run | Schedule the first drill and record the outcome here. |

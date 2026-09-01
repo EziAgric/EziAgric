@@ -6,6 +6,7 @@ import { AuthRequest, AuthService } from "../services/auth.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
 import { prisma } from "../lib/db";
+import { csrfToken } from "../middleware/csrf.middleware";
 
 function toIso(seconds: number | undefined): string | null {
   return typeof seconds === "number"
@@ -17,6 +18,8 @@ const adminRateLimit = createWalletRateLimiter(RATE_LIMIT_CONFIG.admin);
 
 export function createAdminAuthRouter(): Router {
   const router = Router();
+
+  router.get("/api/admin/csrf-token", authMiddleware, adminMiddleware, csrfToken);
 
   // Diagnostic endpoint so admins can verify exactly which JWT claims the
   // backend parsed from their bearer token, without decoding it by hand.

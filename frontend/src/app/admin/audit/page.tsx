@@ -13,8 +13,10 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ForbiddenState } from "@/components/ui/ForbiddenState";
 import { SkeletonList } from "@/components/ui/SkeletonList";
 import { Button } from "@/components/ui/Button";
+import { VirtualizedList } from "@/components/ui/VirtualizedList";
 
 const PAGE_SIZE = 20;
+const AUDIT_ROW_HEIGHT = 120;
 
 function formatTimestamp(dateString: string): string {
   return new Date(dateString).toLocaleString("en-US", {
@@ -132,42 +134,43 @@ export default function AdminAuditHistoryPage() {
         <h1 className="text-3xl font-bold text-text-primary">Admin Action History</h1>
       </div>
 
-      <div className="space-y-4">
-        {entries.length === 0 ? (
+      <VirtualizedList
+        items={entries}
+        rowHeight={AUDIT_ROW_HEIGHT}
+        maxHeight={Math.min(entries.length * AUDIT_ROW_HEIGHT, 600)}
+        keyExtractor={(entry) => String(entry.id)}
+        isEmpty={entries.length === 0}
+        emptyState={
           <div className="text-center py-12 text-text-secondary">No admin actions recorded yet</div>
-        ) : (
-          entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="p-6 bg-bg-elevated rounded-lg border border-border-default"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-lg font-semibold text-text-primary">
-                      {formatAction(entry.action)}
-                    </span>
-                  </div>
+        }
+        renderItem={(entry) => (
+          <div className="p-6 bg-bg-elevated rounded-lg border border-border-default mb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-lg font-semibold text-text-primary">
+                    {formatAction(entry.action)}
+                  </span>
+                </div>
+                <div className="text-sm text-text-secondary mb-1">
+                  Admin: {entry.actorAddress}
+                </div>
+                {entry.targetReference && (
                   <div className="text-sm text-text-secondary mb-1">
-                    Admin: {entry.actorAddress}
+                    Reference: {entry.targetReference}
                   </div>
-                  {entry.targetReference && (
-                    <div className="text-sm text-text-secondary mb-1">
-                      Reference: {entry.targetReference}
-                    </div>
-                  )}
-                  {entry.note && (
-                    <div className="text-sm text-text-secondary mb-1">Note: {entry.note}</div>
-                  )}
-                </div>
-                <div className="text-sm text-text-secondary whitespace-nowrap">
-                  {formatTimestamp(entry.createdAt)}
-                </div>
+                )}
+                {entry.note && (
+                  <div className="text-sm text-text-secondary mb-1">Note: {entry.note}</div>
+                )}
+              </div>
+              <div className="text-sm text-text-secondary whitespace-nowrap">
+                {formatTimestamp(entry.createdAt)}
               </div>
             </div>
-          ))
+          </div>
         )}
-      </div>
+      />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2 mt-8">

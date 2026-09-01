@@ -5,13 +5,20 @@ import { prisma as defaultPrisma } from "../lib/db";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { validateRequest } from "../middleware/validateRequest";
 import { AuthRequest } from "../services/auth.service";
+import {
+  paginateWithCursor,
+  normalizeCursorLimit,
+  CURSOR_DEPRECATION_WARNING,
+  InvalidCursorError,
+} from "../lib/cursorPagination";
 
 const webhookLogsParamsSchema = z.object({
   id: z.string().regex(/^\d+$/, "Webhook ID must be a numeric string"),
 });
 
 const webhookLogsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
+  cursor: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
@@ -37,8 +44,11 @@ export function createWebhookLogsRouter(prisma: PrismaClient = defaultPrisma) {
         if (!walletAddress) return;
 
         const webhookId = Number(req.params.id);
-        const { page, limit } = req.query as unknown as { page: number; limit: number };
-        const skip = (page - 1) * limit;
+        const { page, limit, cursor } = req.query as unknown as {
+          page?: number;
+          limit: number;
+          cursor?: string;
+        };
 
         const webhook = await prisma.webhook.findUnique({
           where: { id: webhookId },
@@ -55,34 +65,63 @@ export function createWebhookLogsRouter(prisma: PrismaClient = defaultPrisma) {
           return;
         }
 
-        const [attempts, total] = await Promise.all([
-          prisma.webhookDeliveryAttempt.findMany({
-            where: { webhookId },
-            orderBy: { timestamp: "desc" },
-            skip,
-            take: limit,
-            select: {
-              timestamp: true,
-              status: true,
-              statusCode: true,
-              responseBody: true,
+        const select = {
+          id: true,
+          timestamp: true,
+          status: true,
+          statusCode: true,
+          responseBody: true,
+        } as const;
+
+        // Legacy offset mode: engaged only when a caller still sends `page`
+        // and no `cursor`. New/updated clients should use `cursor` instead.
+        if (page !== undefined && !cursor) {
+          const skip = (page - 1) * limit;
+          const [attempts, total] = await Promise.all([
+            prisma.webhookDeliveryAttempt.findMany({
+              where: { webhookId },
+              orderBy: { timestamp: "desc" },
+              skip,
+              take: limit,
+              select,
+            }),
+            prisma.webhookDeliveryAttempt.count({ where: { webhookId } }),
+          ]);
+
+          res.setHeader("Warning", CURSOR_DEPRECATION_WARNING);
+          res.status(200).json({
+            attempts,
+            pagination: {
+              page,
+              limit,
+              total,
+              totalPages: Math.ceil(total / limit),
             },
-          }),
-          prisma.webhookDeliveryAttempt.count({
-            where: { webhookId },
-          }),
-        ]);
+          });
+          return;
+        }
+
+        const result = await paginateWithCursor({
+          findMany: (args) =>
+            prisma.webhookDeliveryAttempt.findMany({
+              where: { webhookId },
+              select,
+              ...args,
+            } as any),
+          orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+          cursor,
+          limit: normalizeCursorLimit(limit),
+        });
 
         res.status(200).json({
-          attempts,
-          pagination: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit),
-          },
+          attempts: result.items,
+          pageInfo: result.pageInfo,
         });
       } catch (error) {
+        if (error instanceof InvalidCursorError) {
+          res.status(400).json({ error: error.message });
+          return;
+        }
         next(error);
       }
     },

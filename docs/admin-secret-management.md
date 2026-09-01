@@ -70,6 +70,19 @@ The `backend-deployment.yaml` mounts the secret as an environment variable:
 
 The backend reads it via `env.ADMIN_SECRET_KEY` in `src/config/env.ts`.
 
+### 4. Validate the manifest reference
+
+Before/after applying manifests, confirm the Deployment's `secretKeyRef` actually
+resolves to a provisioned key (catches drift such as a renamed Secret or a missing
+`ADMIN_SECRET_KEY` entry):
+
+```bash
+./scripts/validate-k8s-admin-secret.sh
+```
+
+It checks the live cluster Secret when `kubectl` context is available, and falls back
+to validating `infra/k8s/secrets.yaml` otherwise.
+
 ## Access Controls
 
 | Who | Permission | How |

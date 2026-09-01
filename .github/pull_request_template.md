@@ -17,3 +17,9 @@
 - [ ] **Admin Regression Tests**: If this PR modifies admin routes, controllers, middleware, or services, corresponding regression tests under `backend/src/__tests__/` have been added or updated (enforced by CI policy).
 - [ ] **Secret Management**: No secrets, private keys, or credentials are hardcoded.
 - [ ] **Network Isolation & Security**: Infrastructure changes preserve network isolation for admin endpoints.
+
+## Contract Changes (complete if this PR modifies `contracts/`)
+- [ ] **Security Review Checklist**: If this PR adds or modifies a contract admin function (e.g. `admin_clawback`), the [Contract E2E Security Review Checklist](../contracts/amana_escrow/docs/security-review-checklist.md) has been completed and attached or linked above.
+- [ ] **Safe Upgrade Guide**: If this PR changes the contract ABI, storage layout, or introduces new events, the [Safe Upgrade Guide](../contracts/amana_escrow/docs/safe-upgrade-guide.md) release notes section has been updated.
+- [ ] **Upgrade Simulation**: `./scripts/simulate-contract-upgrade.sh` has been run and exits 0.
+- [ ] **Event Symbol Registry**: Any new contract event symbols are registered in [`upgrade-considerations.md`](../contracts/amana_escrow/docs/upgrade-considerations.md).

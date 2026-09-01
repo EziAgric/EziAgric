@@ -65,6 +65,16 @@ services:
       POSTGRES_USER: ${STAGING_POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${STAGING_POSTGRES_PASSWORD:-staging-password}
       POSTGRES_DB: ${STAGING_POSTGRES_DB:-amana_staging}
+    # pg_stat_statements + slow-query logging so scripts/capture-slow-queries.sh
+    # has data to report on — see docs/query-performance-review.md.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - log_min_duration_statement=200
     ports:
       - "${STAGING_POSTGRES_PORT:-5434}:5432"
     volumes:

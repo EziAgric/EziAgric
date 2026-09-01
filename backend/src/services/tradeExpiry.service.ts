@@ -2,6 +2,7 @@ import { PrismaClient, TradeStatus } from '@prisma/client';
 import { prisma as defaultPrisma } from '../lib/db';
 import { appLogger } from '../middleware/logger';
 import { notificationQueue } from '../jobs/queue';
+import { recordTradeFunnelEvent } from '../lib/metrics';
 
 export interface SweepResult {
   scanned: number;
@@ -82,6 +83,7 @@ export class TradeExpiryService {
         ]);
 
         result.expired++;
+        recordTradeFunnelEvent("expired");
         appLogger.info({ tradeId: trade.tradeId, previousStatus: trade.status }, 'Trade expired by sweeper');
       } catch (err) {
         result.errors++;

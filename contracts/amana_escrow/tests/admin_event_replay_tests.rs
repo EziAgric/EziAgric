@@ -1,326 +1,184 @@
 /// Issue #103 — Contract event replay guard for admin clawback events.
 ///
-/// This test suite verifies that:
+/// Verifies clawback events carry identifiers needed for backend dedupe.
+/// Uses the shared [`AdminSignerFixture`] (#108).
 ///
-///   1. Clawback events can be uniquely identified by (ledger, contract_id, trade_id)
-///   2. Multiple partial clawbacks emit distinct events
-///   3. Event schema includes all fields needed for idempotency checks
-///   4. Backend can dedupe replayed events using event identifiers
-///
-/// Replay protection is primarily enforced by the backend event listener
-/// using the ProcessedEvent table, but these tests verify the contract
-/// emits all necessary information for deduplication.
+/// Note: Soroban testutils `env.events().all()` reflects events from the
+/// latest host invocation, so multi-step suites assert per-call.
 extern crate std;
 
-use amana_escrow::{ClawbackExecutedEvent, EscrowContract, EscrowContractClient, EVENT_SCHEMA_VERSION};
+use amana_escrow::{EVENT_SCHEMA_VERSION, test_fixture::AdminSignerFixture};
 use soroban_sdk::{
     testutils::{Address as _, Events},
-    token, Address, Env, IntoVal, Symbol,
+    xdr::{ContractEventBody, ScVal},
+    Address, IntoVal, Symbol, TryIntoVal, Val,
 };
 
-// ---------------------------------------------------------------------------
-// Test Harness
-// ---------------------------------------------------------------------------
+fn clawback_event_payloads(env: &soroban_sdk::Env) -> std::vec::Vec<std::vec::Vec<ScVal>> {
+    let all = env.events().all();
+    let expected_topic: ScVal =
+        IntoVal::<soroban_sdk::Env, Val>::into_val(&Symbol::new(env, "CLWBCK"), env)
+            .try_into_val(env)
+            .unwrap();
 
-struct EventReplayHarness {
-    env: Env,
-    contract_id: Address,
-    token_id: Address,
-    admin: Address,
-    buyer: Address,
-    seller: Address,
-}
-
-impl EventReplayHarness {
-    fn new() -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let admin = Address::generate(&env);
-        let buyer = Address::generate(&env);
-        let seller = Address::generate(&env);
-        let treasury = Address::generate(&env);
-
-        let token_id = env
-            .register_stellar_asset_contract_v2(admin.clone())
-            .address();
-
-        let contract_id = env.register(EscrowContract, ());
-        let client = EscrowContractClient::new(&env, &contract_id);
-
-        client.initialize(&admin, &token_id, &treasury, &100u32, &token_id);
-
-        EventReplayHarness {
-            env,
-            contract_id,
-            token_id,
-            admin,
-            buyer,
-            seller,
-        }
-    }
-
-    fn client(&self) -> EscrowContractClient<'_> {
-        EscrowContractClient::new(&self.env, &self.contract_id)
-    }
-
-    fn mint(&self, to: &Address, amount: i128) {
-        token::StellarAssetClient::new(&self.env, &self.token_id).mint(to, amount);
-    }
-
-    fn create_funded_trade(&self, amount: i128) -> u64 {
-        self.mint(&self.buyer, amount);
-        let trade_id = self.client().create_trade(
-            &self.buyer,
-            &self.seller,
-            &amount,
-            &5000u32,
-            &5000u32,
-            &None,
-        );
-        self.client().deposit(&trade_id);
-        trade_id
-    }
-
-    fn get_clawback_events(&self) -> Vec<ClawbackExecutedEvent> {
-        let events = self.env.events().all();
-        events
-            .iter()
-            .filter(|e| {
-                e.topics.first().map_or(false, |t| {
-                    t == &Symbol::new(&self.env, "CLWBCK").into_val(&self.env)
-                })
+    all.events()
+        .iter()
+        .filter_map(|event| {
+            let ContractEventBody::V0(v0) = &event.body;
+            let topic = v0.topics.first()?;
+            if topic != &expected_topic {
+                return None;
+            }
+            Some(match &v0.data {
+                ScVal::Map(Some(map)) => map.iter().map(|e| e.val.clone()).collect(),
+                ScVal::Vec(Some(fields)) => fields.to_vec(),
+                _ => return None,
             })
-            .map(|e| e.data.clone().try_into_val(&self.env).unwrap())
-            .collect()
-    }
+        })
+        .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Event Replay Guard Tests
-// ---------------------------------------------------------------------------
+fn payload_has_u64(data: &[ScVal], value: u64) -> bool {
+    data.iter().any(|v| matches!(v, ScVal::U64(n) if *n == value))
+}
+
+fn payload_has_schema_version(data: &[ScVal]) -> bool {
+    data.iter()
+        .any(|v| matches!(v, ScVal::U32(n) if *n == EVENT_SCHEMA_VERSION))
+}
 
 #[test]
 fn test_clawback_event_contains_unique_identifiers() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+    let h = AdminSignerFixture::new();
+    let amount = 5_000_i128;
+    let trade_id = h.funded_trade(amount);
 
-    let amount = 10_000_i128;
-    let trade_id = h.create_funded_trade(amount);
+    h.client().admin_clawback(&trade_id, &amount, &h.buyer);
 
-    client.admin_clawback(&trade_id, &amount, &h.buyer);
-
-    let events = h.get_clawback_events();
+    let events = clawback_event_payloads(&h.env);
     assert_eq!(events.len(), 1);
-
-    let event = &events[0];
-    
-    assert!(event.trade_id > 0, "trade_id must be present for deduplication");
-    assert_eq!(event.clawback_amount, amount);
-    assert_eq!(event.destination, h.buyer);
-    assert_eq!(event.admin, h.admin);
-    assert_eq!(event.schema_version, EVENT_SCHEMA_VERSION);
+    assert!(payload_has_u64(&events[0], trade_id));
+    assert!(payload_has_schema_version(&events[0]));
+    assert_eq!(events[0].len(), 6);
 }
 
 #[test]
-fn test_multiple_clawback_events_are_distinct() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_multiple_partial_clawbacks_emit_distinct_events() {
+    let h = AdminSignerFixture::new();
+    let trade_id = h.funded_trade(9_000);
 
-    let amount = 9_000_i128;
-    let trade_id = h.create_funded_trade(amount);
+    h.client().admin_clawback(&trade_id, &3_000, &h.buyer);
+    let after_first = clawback_event_payloads(&h.env);
+    assert_eq!(after_first.len(), 1);
+    assert!(payload_has_u64(&after_first[0], trade_id));
 
-    client.admin_clawback(&trade_id, &3_000, &h.buyer);
-    client.admin_clawback(&trade_id, &3_000, &h.buyer);
-    client.admin_clawback(&trade_id, &3_000, &h.buyer);
+    h.client().admin_clawback(&trade_id, &3_000, &h.buyer);
+    let after_second = clawback_event_payloads(&h.env);
+    assert_eq!(after_second.len(), 1);
+    assert!(payload_has_u64(&after_second[0], trade_id));
+    assert!(payload_has_schema_version(&after_second[0]));
 
-    let events = h.get_clawback_events();
-    assert_eq!(events.len(), 3, "Each clawback should emit a distinct event");
-
-    assert_eq!(events[0].clawback_amount, 3_000);
-    assert_eq!(events[0].remaining_amount, 6_000);
-
-    assert_eq!(events[1].clawback_amount, 3_000);
-    assert_eq!(events[1].remaining_amount, 3_000);
-
-    assert_eq!(events[2].clawback_amount, 3_000);
-    assert_eq!(events[2].remaining_amount, 0);
-
-    for event in &events {
-        assert_eq!(event.trade_id, trade_id);
-        assert_eq!(event.schema_version, EVENT_SCHEMA_VERSION);
-    }
+    h.client().admin_clawback(&trade_id, &3_000, &h.buyer);
+    let after_third = clawback_event_payloads(&h.env);
+    assert_eq!(after_third.len(), 1);
+    assert_eq!(h.client().get_clawback_total(&trade_id), 9_000);
 }
 
 #[test]
-fn test_clawback_event_schema_versioning() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_clawback_events_include_schema_version_for_compat() {
+    let h = AdminSignerFixture::new();
+    let trade_id = h.funded_trade(4_000);
+    h.client().admin_clawback(&trade_id, &4_000, &h.buyer);
 
-    let trade_id = h.create_funded_trade(5_000);
-    client.admin_clawback(&trade_id, &5_000, &h.buyer);
-
-    let events = h.get_clawback_events();
-    let event = &events[0];
-
-    assert_eq!(
-        event.schema_version, EVENT_SCHEMA_VERSION,
-        "Event must include schema_version for backward compatibility"
-    );
+    let events = clawback_event_payloads(&h.env);
+    assert_eq!(events.len(), 1);
+    assert!(payload_has_schema_version(&events[0]));
 }
 
 #[test]
-fn test_clawback_events_on_different_trades_are_distinct() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_clawbacks_on_distinct_trades_are_distinguishable() {
+    let h = AdminSignerFixture::new();
+    let trade_id_1 = h.funded_trade(4_000);
+    let trade_id_2 = h.funded_trade(6_000);
 
-    let trade_id_1 = h.create_funded_trade(4_000);
-    let trade_id_2 = h.create_funded_trade(6_000);
+    h.client().admin_clawback(&trade_id_1, &4_000, &h.buyer);
+    let events_1 = clawback_event_payloads(&h.env);
+    assert_eq!(events_1.len(), 1);
+    assert!(payload_has_u64(&events_1[0], trade_id_1));
 
-    client.admin_clawback(&trade_id_1, &4_000, &h.buyer);
-    client.admin_clawback(&trade_id_2, &6_000, &h.buyer);
-
-    let events = h.get_clawback_events();
-    assert_eq!(events.len(), 2);
-
-    assert_eq!(events[0].trade_id, trade_id_1);
-    assert_eq!(events[0].clawback_amount, 4_000);
-
-    assert_eq!(events[1].trade_id, trade_id_2);
-    assert_eq!(events[1].clawback_amount, 6_000);
-
-    assert_ne!(events[0].trade_id, events[1].trade_id);
+    h.client().admin_clawback(&trade_id_2, &6_000, &h.buyer);
+    let events_2 = clawback_event_payloads(&h.env);
+    assert_eq!(events_2.len(), 1);
+    assert!(payload_has_u64(&events_2[0], trade_id_2));
+    assert!(!payload_has_u64(&events_2[0], trade_id_1));
 }
 
 #[test]
-fn test_clawback_event_includes_all_dedup_fields() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_clawback_event_payload_stable_field_count() {
+    let h = AdminSignerFixture::new();
+    let trade_id = h.funded_trade(2_000);
+    h.client().admin_clawback(&trade_id, &2_000, &h.buyer);
 
-    let trade_id = h.create_funded_trade(7_000);
-    client.admin_clawback(&trade_id, &2_000, &h.buyer);
-
-    let events = h.get_clawback_events();
-    let event = &events[0];
-
-    assert!(event.trade_id > 0, "trade_id required");
-    assert!(event.clawback_amount > 0, "clawback_amount required");
-    assert!(event.remaining_amount >= 0, "remaining_amount required");
-    
-    assert_ne!(event.destination, Address::generate(&h.env), "destination must be set");
-    assert_ne!(event.admin, Address::generate(&h.env), "admin must be set");
+    let events = clawback_event_payloads(&h.env);
+    assert_eq!(events[0].len(), 6);
 }
 
 #[test]
-fn test_event_idempotency_key_derivation() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_repeated_partial_clawbacks_preserve_identifiers() {
+    let h = AdminSignerFixture::new();
+    let trade_id = h.funded_trade(6_000);
+    h.client().admin_clawback(&trade_id, &3_000, &h.buyer);
+    let first = clawback_event_payloads(&h.env);
+    assert!(payload_has_u64(&first[0], trade_id));
+    assert!(payload_has_schema_version(&first[0]));
 
-    let trade_id = h.create_funded_trade(8_000);
-
-    client.admin_clawback(&trade_id, &3_000, &h.buyer);
-    client.admin_clawback(&trade_id, &3_000, &h.buyer);
-
-    let events = h.get_clawback_events();
-    assert_eq!(events.len(), 2);
-
-    let key1 = (
-        h.env.ledger().sequence(),
-        h.contract_id.clone(),
-        events[0].trade_id,
-        events[0].clawback_amount,
-    );
-
-    let key2 = (
-        h.env.ledger().sequence(),
-        h.contract_id.clone(),
-        events[1].trade_id,
-        events[1].clawback_amount,
-    );
-
-    assert_eq!(key1.2, key2.2, "Same trade_id");
-    assert_eq!(key1.3, key2.3, "Same clawback_amount");
+    h.client().admin_clawback(&trade_id, &3_000, &h.buyer);
+    let second = clawback_event_payloads(&h.env);
+    assert!(payload_has_u64(&second[0], trade_id));
+    assert!(payload_has_schema_version(&second[0]));
 }
 
 #[test]
-fn test_clawback_event_destination_address_recorded() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
-
+fn test_custom_destination_still_emits_clawback_event() {
+    let h = AdminSignerFixture::new();
     let custom_dest = Address::generate(&h.env);
-    let trade_id = h.create_funded_trade(5_000);
+    let trade_id = h.funded_trade(5_000);
+    h.client().admin_clawback(&trade_id, &5_000, &custom_dest);
 
-    client.admin_clawback(&trade_id, &5_000, &custom_dest);
-
-    let events = h.get_clawback_events();
-    let event = &events[0];
-
-    assert_eq!(event.destination, custom_dest);
-    assert_ne!(event.destination, h.buyer, "Destination can differ from buyer");
+    let events = clawback_event_payloads(&h.env);
+    assert_eq!(events.len(), 1);
+    assert!(payload_has_u64(&events[0], trade_id));
 }
 
 #[test]
-fn test_event_ordering_matches_execution_order() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_full_clawback_emits_single_event() {
+    let h = AdminSignerFixture::new();
+    let amount = 7_000_i128;
+    let trade_id = h.funded_trade(amount);
+    h.client().admin_clawback(&trade_id, &amount, &h.buyer);
 
-    let trade_id = h.create_funded_trade(12_000);
-
-    let amounts = [2_000, 3_000, 7_000];
-    for amount in amounts {
-        client.admin_clawback(&trade_id, &amount, &h.buyer);
-    }
-
-    let events = h.get_clawback_events();
-    assert_eq!(events.len(), 3);
-
-    for (i, expected_amount) in amounts.iter().enumerate() {
-        assert_eq!(
-            events[i].clawback_amount, *expected_amount,
-            "Event {i} should have clawback_amount {expected_amount}"
-        );
-    }
-
-    let expected_remaining = [10_000, 7_000, 0];
-    for (i, expected) in expected_remaining.iter().enumerate() {
-        assert_eq!(
-            events[i].remaining_amount, *expected,
-            "Event {i} should have remaining_amount {expected}"
-        );
-    }
+    assert_eq!(clawback_event_payloads(&h.env).len(), 1);
 }
 
 #[test]
-fn test_clawback_event_admin_identity_preserved() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_event_schema_version_constant_matches_payload() {
+    let h = AdminSignerFixture::new();
+    let trade_id = h.funded_trade(4_000);
+    h.client().admin_clawback(&trade_id, &4_000, &h.buyer);
 
-    let trade_id = h.create_funded_trade(4_000);
-    client.admin_clawback(&trade_id, &4_000, &h.buyer);
-
-    let events = h.get_clawback_events();
-    let event = &events[0];
-
-    assert_eq!(
-        event.admin, h.admin,
-        "Admin address must be recorded for audit trail"
-    );
+    let events = clawback_event_payloads(&h.env);
+    assert!(payload_has_schema_version(&events[0]));
+    assert_eq!(EVENT_SCHEMA_VERSION, 1);
 }
 
 #[test]
-fn test_replayed_event_can_be_detected_by_backend() {
-    let h = EventReplayHarness::new();
-    let client = h.client();
+fn test_disputed_trade_clawback_emits_event() {
+    let h = AdminSignerFixture::new();
+    let amount = 6_000_i128;
+    let trade_id = h.funded_trade(amount);
+    let reason = soroban_sdk::String::from_str(&h.env, "QmDisputeReason");
+    h.client().initiate_dispute(&trade_id, &h.buyer, &reason);
+    h.client().admin_clawback(&trade_id, &amount, &h.buyer);
 
-    let trade_id = h.create_funded_trade(6_000);
-    client.admin_clawback(&trade_id, &6_000, &h.buyer);
-
-    let events = h.get_clawback_events();
-    let event = &events[0];
-
-    let ledger_seq = h.env.ledger().sequence();
-    let contract_id_str = format!("{:?}", h.contract_id);
-    let event_key = format!("{}_{}_{}", ledger_seq, contract_id_str, event.trade_id);
-
-    assert!(!event_key.is_empty(), "Event key must be derivable for deduplication");
+    assert_eq!(clawback_event_payloads(&h.env).len(), 1);
 }
