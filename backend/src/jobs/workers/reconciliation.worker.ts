@@ -10,13 +10,14 @@ import { Worker, Job } from "bullmq";
 import { appLogger } from "../../middleware/logger";
 import { createQueueConnection } from "../queue";
 import { dailyReconciliationService } from "../../services/dailyReconciliation.service";
+import { attachDeadLetterQueue } from "../deadLetter";
 
 export interface ReconciliationSweepJobData {
   sweepId?: string;
 }
 
 export function createReconciliationWorker(): Worker<ReconciliationSweepJobData> {
-  return new Worker<ReconciliationSweepJobData>(
+  const worker = new Worker<ReconciliationSweepJobData>(
     "reconciliation",
     async (job: Job<ReconciliationSweepJobData>) => {
       const { sweepId = job.id } = job.data;
@@ -39,4 +40,6 @@ export function createReconciliationWorker(): Worker<ReconciliationSweepJobData>
     },
     { connection: createQueueConnection() },
   );
+  attachDeadLetterQueue(worker, "reconciliation");
+  return worker;
 }

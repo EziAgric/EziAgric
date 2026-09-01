@@ -1,0 +1,202 @@
+name: Nightly E2E Trade Lifecycle (Stellar Testnet)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run nightly at 02:00 UTC
+    - cron: "0 2 * * *"
+
+env:
+  STELLAR_NETWORK_PASSPASSPHRASE: "Test SDF Network ; September 2015"
+  STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
+  STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NODE_ENV: test
+  JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
+
+jobs:
+  e2e-lifecycle:
+    name: E2E Trade Lifecycle — Testnet
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      pass_count: ${{ steps.run-tests.outputs.pass_count }}
+      fail_count: ${{ steps.run-tests.outputs.fail_count }}
+      flake_status: ${{ steps.flake-check.outputs.flake_status }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      # ── Contract Build ──────────────────────────────────────────────────
+      - name: Build WASM contract
+        working-directory: contracts/amana_escrow
+        run: cargo build --target wasm32-unknown-unknown --release --features wasm
+
+      - name: Verify WASM artifact
+        run: |
+          WASM_FILE="contracts/amana_escrow/target/wasm32-unknown-unknown/release/amana_escrow.wasm"
+          if [ ! -f "$WASM_FILE" ]; then
+            echo "ERROR: WASM artifact not found"
+            exit 1
+          fi
+          echo "WASM hash: $(sha256sum "$WASM_FILE" | cut -d' ' -f1)"
+          echo "WASM size: $(wc -c < "$WASM_FILE") bytes"
+
+      # ── Backend Setup ───────────────────────────────────────────────────
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run backend unit tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
+        run: pnpm test -- --forceExit --detectOpenHandles
+
+      # ── Contract Unit Tests ─────────────────────────────────────────────
+      - name: Run contract tests
+        working-directory: contracts/amana_escrow
+        run: cargo test --locked
+
+      # ── E2E Test Suite ──────────────────────────────────────────────────
+      - name: Run E2E lifecycle tests
+        id: run-tests
+        working-directory: frontend
+        env:
+          STELLAR_NETWORK_PASSPHRASE: ${{ env.STELLAR_NETWORK_PASSPHRASE }}
+          STELLAR_RPC_URL: ${{ env.STELLAR_RPC_URL }}
+          STELLAR_HORIZON_URL: ${{ env.STELLAR_HORIZON_URL }}
+          E2E_MODE: testnet
+          NEXT_PUBLIC_API_URL: http://localhost:4001
+        run: |
+          set +e
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Nightly E2E Trade Lifecycle — Stellar Testnet"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Network:  $STELLAR_NETWORK_PASSPHRASE"
+          echo "RPC:      $STELLAR_RPC_URL"
+          echo "Horizon:  $STELLAR_HORIZON_URL"
+          echo "Mode:     $E2E_MODE"
+          echo ""
+
+          # Run the lifecycle integration tests
+          pnpm test -- --forceExit --detectOpenHandles \
+            --testPathPattern='e2e.*lifecycle|lifecycle.*e2e' \
+            --verbose 2>&1 | tee /tmp/e2e-output.log
+
+          EXIT_CODE=$?
+
+          # Count results
+          PASS_COUNT=$(grep -c "✓\|PASS\|passed" /tmp/e2e-output.log 2>/dev/null || echo "0")
+          FAIL_COUNT=$(grep -c "✗\|FAIL\|failed" /tmp/e2e-output.log 2>/dev/null || echo "0")
+
+          echo "pass_count=$PASS_COUNT" >> $GITHUB_OUTPUT
+          echo "fail_count=$FAIL_COUNT" >> $GITHUB_OUTPUT
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "⚠️  E2E tests had failures (exit code: $EXIT_CODE)"
+          else
+            echo "✅ All E2E lifecycle tests passed"
+          fi
+
+          exit $EXIT_CODE
+
+      # ── Flake Detection ─────────────────────────────────────────────────
+      - name: Check for flake patterns
+        id: flake-check
+        if: always()
+        run: |
+          FLAKE_PATTERNS=(
+            "ECONNREFUSED"
+            "ETIMEDOUT"
+            "Socket hang up"
+            "Request failed"
+            "Connection reset"
+            "Transaction failed"
+            "Rate limit"
+          )
+
+          FLAKE_FOUND=false
+          for pattern in "${FLAKE_PATTERNS[@]}"; do
+            if grep -q "$pattern" /tmp/e2e-output.log 2>/dev/null; then
+              FLAKE_FOUND=true
+              echo "Flake detected: $pattern"
+            fi
+          done
+
+          if [ "$FLAKE_FOUND" = true ]; then
+            echo "flake_status=quarantined" >> $GITHUB_OUTPUT
+            echo "⚠️  Potential flaky test detected — quarantining"
+          else
+            echo "flake_status=clean" >> $GITHUB_OUTPUT
+            echo "✅ No flake patterns detected"
+          fi
+
+      # ── Artifacts ───────────────────────────────────────────────────────
+      - name: Collect failure artifacts
+        if: failure()
+        run: |
+          mkdir -p /tmp/e2e-artifacts
+          cp /tmp/e2e-output.log /tmp/e2e-artifacts/ 2>/dev/null || true
+
+          # Collect backend logs if available
+          if [ -d "backend/logs" ]; then
+            cp -r backend/logs /tmp/e2e-artifacts/ 2>/dev/null || true
+          fi
+
+          # Generate tx link summary
+          echo "# E2E Trade Lifecycle — Testnet Run" > /tmp/e2e-artifacts/SUMMARY.md
+          echo "" >> /tmp/e2e-artifacts/SUMMARY.md
+          echo "**Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> /tmp/e2e-artifacts/SUMMARY.md
+          echo "**Network:** Stellar Testnet" >> /tmp/e2e-artifacts/SUMMARY.md
+          echo "**RPC:** $STELLAR_RPC_URL" >> /tmp/e2e-artifacts/SUMMARY.md
+          echo "" >> /tmp/e2e-artifacts/SUMMARY.md
+          echo "## Test Output" >> /tmp/e2e-artifacts/SUMMARY.md
+          echo '```' >> /tmp/e2e-artifacts/SUMMARY.md
+          tail -100 /tmp/e2e-output.log >> /tmp/e2e-artifacts/SUMMARY.md 2>/dev/null || true
+          echo '```' >> /tmp/e2e-artifacts/SUMMARY.md
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-lifecycle-artifacts
+          path: /tmp/e2e-artifacts/
+          retention-days: 14
+
+      # ── Reporting ───────────────────────────────────────────────────────
+      - name: Post summary
+        if: always()
+        run: |
+          echo "## Nightly E2E Trade Lifecycle — Testnet" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Date | $(date -u +%Y-%m-%d) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Network | Stellar Testnet |" >> $GITHUB_STEP_SUMMARY
+          echo "| Passes | ${{ steps.run-tests.outputs.pass_count || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failures | ${{ steps.run-tests.outputs.fail_count || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Flake Status | ${{ steps.flake-check.outputs.flake_status || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.run-tests.outputs.fail_count || '0' }}" -gt "0" ]; then
+            echo "### ⚠️ Failures Detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the [artifacts](../actions) for detailed logs and tx links." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ All Clear" >> $GITHUB_STEP_SUMMARY
+          fi

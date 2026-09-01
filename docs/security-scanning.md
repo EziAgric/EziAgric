@@ -11,6 +11,7 @@ Security audits run in the existing CI jobs (`.github/workflows/ci.yml`) and **f
 | `frontend` | npm audit | `npm audit --audit-level=high` | high + critical |
 | `backend` | npm audit | `npm audit --audit-level=high` | high + critical |
 | `contracts` | cargo audit | `cargo audit` | any advisory |
+| `gitleaks` (`.github/workflows/secrets-scan.yml`) | Gitleaks | `gitleaks detect --config=.gitleaks.toml` | any finding (see [secrets-policy.md](secrets-policy.md)) |
 
 Docker image scanning via Trivy can be added once the project ships Dockerfiles (see [docker-profiles.md](docker-profiles.md)).
 

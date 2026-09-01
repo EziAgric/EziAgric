@@ -82,19 +82,27 @@ export function VideoUploadCard({ onUpload }: VideoUploadCardProps) {
       glowVariant="gold"
       className="h-full"
     >
-      {/* Drop zone */}
+      {/* Drop zone — accessible */}
       <div
         role="button"
         tabIndex={0}
+        aria-label="Upload delivery proof video — drag and drop or press Enter to browse"
+        aria-disabled={uploading}
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click(); }}
+        onClick={() => { if (!uploading) inputRef.current?.click(); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!uploading) inputRef.current?.click();
+          }
+        }}
         className="
           border-2 border-dashed border-border-default
           rounded-xl p-6 flex flex-col items-center justify-center gap-3
           cursor-pointer
           hover:border-border-hover hover:bg-bg-elevated
+          focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2
           transition-colors duration-200
           min-h-[140px]
         "
@@ -122,6 +130,9 @@ export function VideoUploadCard({ onUpload }: VideoUploadCardProps) {
         ref={inputRef}
         type="file"
         accept="video/mp4,video/webm"
+        aria-label="Choose proof video file"
+        aria-hidden={false}
+        tabIndex={-1}
         className="hidden file:rounded-full file:bg-elevated file:text-gold"
         onChange={handleChange}
       />
@@ -142,9 +153,9 @@ export function VideoUploadCard({ onUpload }: VideoUploadCardProps) {
         </div>
       )}
 
-      {/* Error */}
+      {/* Error — announced to AT */}
       {error && (
-        <p className="mt-3 text-xs text-status-danger">{error}</p>
+        <p role="alert" aria-live="polite" className="mt-3 text-xs text-status-danger">{error}</p>
       )}
 
       {/* IPFS hash link */}
@@ -165,19 +176,23 @@ export function VideoUploadCard({ onUpload }: VideoUploadCardProps) {
         </div>
       )}
 
-      {/* Submit button */}
+      {/* Submit button — disabled state communicated via aria */}
       <button
         disabled={!ipfsHash || uploading}
+        aria-disabled={!ipfsHash || uploading}
+        aria-describedby={!ipfsHash ? "video-upload-hint" : undefined}
         className="
           mt-4 w-full py-2 rounded-xl text-sm font-semibold
           bg-gold text-text-inverse
           hover:bg-gold-hover
           disabled:opacity-40 disabled:cursor-not-allowed
+          focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2
           transition-colors duration-200
         "
       >
         Submit Proof
       </button>
+      {!ipfsHash && <p id="video-upload-hint" className="sr-only">Upload video evidence before submitting proof</p>}
     </BentoCard>
   );
 }

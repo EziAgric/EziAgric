@@ -1,29 +1,55 @@
 import { z } from "zod";
 import { TradeStatus } from "@prisma/client";
 import { StrKey } from "@stellar/stellar-sdk";
+import { createTradeInputSchema } from "./domain/trade";
+import {
+  MONEY_DECIMALS,
+  MoneyConversionError,
+  normalizeDecimalString,
+  parseDecimalToStroops,
+} from "../lib/money";
 
-const stellarPublicKey = (fieldName: string) =>
-  z.string().refine((v: string) => StrKey.isValidEd25519PublicKey(v), {
-    message: `Invalid Stellar public key for ${fieldName}`,
-  });
+/**
+ * Trade creation validation is the CANONICAL shared domain schema
+ * (`./domain/trade`, mirrored in `frontend/src/lib/domain-schemas/trade.ts`),
+ * plus backend-only checks the framework-free shared schema can't express:
+ * a checksum-accurate Stellar key check, and a real stroop-conversion pass on
+ * `amountUsdc` (the shared schema only regex-validates the string shape) so an
+ * amount that overflows i128 or loses precision is rejected here rather than
+ * deep in a contract call.
+ */
+export const createTradeSchema = createTradeInputSchema
+  .superRefine(
+    (data: { buyerAddress?: string; sellerAddress?: string; amountUsdc: string }, ctx: z.RefinementCtx) => {
+      for (const field of ["buyerAddress", "sellerAddress"] as const) {
+        const value = data[field];
+        if (value !== undefined && !StrKey.isValidEd25519PublicKey(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Invalid Stellar public key for ${field}`,
+            path: [field],
+          });
+        }
+      }
 
-export const createTradeSchema = z.object({
-  buyerAddress: stellarPublicKey("buyerAddress").optional(),
-  sellerAddress: stellarPublicKey("sellerAddress"),
-  amountUsdc: z.union([
-    z.string().regex(/^\d+(\.\d{1,7})?$/, "Invalid amount format"),
-    z.number().positive("Amount must be positive").transform(String),
-  ]),
-  buyerLossBps: z.number().int().min(0, "buyerLossBps must be >= 0").max(10000, "buyerLossBps must be <= 10000").optional(),
-  sellerLossBps: z.number().int().min(0, "sellerLossBps must be >= 0").max(10000, "sellerLossBps must be <= 10000").optional(),
-  description: z.string().optional(),
-}).superRefine((data: Record<string, unknown>, ctx: any) => {
-  const buyer = (data.buyerLossBps as number) ?? 5000;
-  const seller = (data.sellerLossBps as number) ?? 5000;
-  if (buyer + seller !== 10000) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "sum of buyerLossBps and sellerLossBps must equal 10000", path: ["buyerLossBps"] });
-  }
-});
+      try {
+        const stroops = parseDecimalToStroops(data.amountUsdc, MONEY_DECIMALS);
+        if (stroops <= 0n) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Amount must be positive", path: ["amountUsdc"] });
+        }
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: error instanceof MoneyConversionError ? error.message : "Invalid amount",
+          path: ["amountUsdc"],
+        });
+      }
+    },
+  )
+  .transform((data: { amountUsdc: string; [key: string]: unknown }) => ({
+    ...data,
+    amountUsdc: normalizeDecimalString(data.amountUsdc, MONEY_DECIMALS),
+  }));
 
 export const tradeIdParamSchema = z.object({
   id: z.string().min(1, "Trade ID is required"),

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { StrKey } from "@stellar/stellar-sdk";
+import { formatNaira, formatNumber } from "@/lib/i18n";
 import { useTrade } from "../TradeContext";
 import { validateStep1 } from "../validation";
 
@@ -16,7 +17,11 @@ export default function Step1Details() {
   const price = parseFloat(data.pricePerUnit);
   const totalValue = !isNaN(qty) && !isNaN(price) ? qty * price : NaN;
 
-  const totalNGN = !isNaN(totalValue) ? totalValue.toLocaleString("en-NG") : "—";
+  const totalDisplay = isNaN(totalValue)
+    ? "—"
+    : data.currency === "NGN"
+      ? formatNaira(totalValue)
+      : `${formatNumber(totalValue, { maximumFractionDigits: 2 })} USDC`;
 
   const isQtyValid = data.quantity !== "" && !isNaN(qty) && qty > 0;
   const isPriceValid = data.pricePerUnit !== "" && !isNaN(price) && price > 0;
@@ -65,7 +70,7 @@ export default function Step1Details() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        {errors.commodity && touched.commodity && <p className="text-status-danger text-xs mt-1">{errors.commodity}</p>}
+        {errors.commodity && touched.commodity && <p role="alert" aria-live="polite" className="text-status-danger text-xs mt-1">{errors.commodity}</p>}
       </div>
 
       <div className="flex gap-4">
@@ -81,7 +86,7 @@ export default function Step1Details() {
             onBlur={() => handleBlur("quantity")}
             className="bg-bg-input border border-border-default rounded-md px-4 py-3 text-text-primary focus:outline-none focus:border-border-focus"
           />
-          {errors.quantity && touched.quantity && <p className="text-status-danger text-xs mt-1">{errors.quantity}</p>}
+          {errors.quantity && touched.quantity && <p role="alert" aria-live="polite" className="text-status-danger text-xs mt-1">{errors.quantity}</p>}
         </div>
         <div className="flex flex-col gap-1 w-36">
           <label htmlFor="unit" className="text-sm text-text-secondary">Unit</label>
@@ -111,7 +116,7 @@ export default function Step1Details() {
             onBlur={() => handleBlur("pricePerUnit")}
             className="bg-bg-input border border-border-default rounded-md px-4 py-3 text-text-primary focus:outline-none focus:border-border-focus"
           />
-          {errors.pricePerUnit && touched.pricePerUnit && <p className="text-status-danger text-xs mt-1">{errors.pricePerUnit}</p>}
+          {errors.pricePerUnit && touched.pricePerUnit && <p role="alert" aria-live="polite" className="text-status-danger text-xs mt-1">{errors.pricePerUnit}</p>}
         </div>
         <div className="flex flex-col gap-1 w-28">
           <label htmlFor="currency" className="text-sm text-text-secondary">Currency</label>
@@ -130,9 +135,7 @@ export default function Step1Details() {
       {/* Total preview */}
       <div className="flex items-center justify-between rounded-lg bg-bg-elevated px-4 py-3 border border-border-default">
         <span className="text-sm text-text-secondary">Estimated Total</span>
-        <span className="text-gold font-semibold">
-          {totalNGN !== "—" ? `${data.currency} ${totalNGN}` : "—"}
-        </span>
+        <span className="text-gold font-semibold">{totalDisplay}</span>
       </div>
 
       <div className="flex flex-col gap-1">
@@ -146,7 +149,7 @@ export default function Step1Details() {
           onBlur={() => handleBlur("sellerAddress")}
           className="bg-bg-input border border-border-default rounded-md px-4 py-3 text-text-primary font-mono text-sm focus:outline-none focus:border-border-focus"
         />
-        {errors.sellerAddress && touched.sellerAddress && <p className="text-status-danger text-xs mt-1">{errors.sellerAddress}</p>}
+        {errors.sellerAddress && touched.sellerAddress && <p role="alert" aria-live="polite" className="text-status-danger text-xs mt-1">{errors.sellerAddress}</p>}
       </div>
 
       <button

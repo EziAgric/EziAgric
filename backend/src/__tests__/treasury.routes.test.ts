@@ -126,11 +126,34 @@ describe("Treasury Routes - POST /treasury/withdraw", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 400 when amount exceeds safe range", async () => {
+    // Issue #178: the cap used to be the float-safe range (~9.2e11), enforced
+    // with `parseFloat` — itself lossy. The real bound is what the contract's
+    // i128 argument can carry, so amounts between the two are now accepted.
+    it("accepts an amount beyond the old float-safe cap", async () => {
+      mockTreasuryService.withdraw.mockResolvedValue({ unsignedXdr: "test-xdr" });
+
       const res = await request(app)
         .post("/treasury/withdraw")
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ destination: destinationAddress, amount: "999999999999999999.999" });
+
+      expect(res.status).toBe(200);
+      expect(mockTreasuryService.withdraw).toHaveBeenCalledWith(
+        destinationAddress,
+        "999999999999999999.9990000",
+        adminAddress,
+        undefined,
+      );
+    });
+
+    it("returns 400 when amount exceeds the i128 range", async () => {
+      const res = await request(app)
+        .post("/treasury/withdraw")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          destination: destinationAddress,
+          amount: "170141183460469231731687303715884105728",
+        });
 
       expect(res.status).toBe(400);
     });
@@ -189,13 +212,15 @@ describe("Treasury Routes - POST /treasury/withdraw", () => {
       expect(res.body).toEqual({ unsignedXdr: "test-xdr" });
       expect(mockTreasuryService.withdraw).toHaveBeenCalledWith(
         destinationAddress,
-        "100.5",
+        "100.5000000",
         adminAddress,
         undefined,
       );
     });
 
-    it("processes a valid withdrawal request with numeric amount", async () => {
+    // Issue #178: money is a decimal string end to end. A JSON number cannot
+    // hold a large stroop amount exactly, so it is rejected rather than coerced.
+    it("rejects a withdrawal whose amount is a JSON number", async () => {
       mockTreasuryService.withdraw.mockResolvedValue({ unsignedXdr: "test-xdr" });
 
       const res = await request(app)
@@ -203,10 +228,22 @@ describe("Treasury Routes - POST /treasury/withdraw", () => {
         .set("Authorization", `Bearer ${adminToken}`)
         .send({ destination: destinationAddress, amount: 100.5 });
 
+      expect(res.status).toBe(400);
+      expect(mockTreasuryService.withdraw).not.toHaveBeenCalled();
+    });
+
+    it("carries an amount above 2^53 stroops through without rounding", async () => {
+      mockTreasuryService.withdraw.mockResolvedValue({ unsignedXdr: "test-xdr" });
+
+      const res = await request(app)
+        .post("/treasury/withdraw")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ destination: destinationAddress, amount: "9007199254740993.9999999" });
+
       expect(res.status).toBe(200);
       expect(mockTreasuryService.withdraw).toHaveBeenCalledWith(
         destinationAddress,
-        "100.5",
+        "9007199254740993.9999999",
         adminAddress,
         undefined,
       );
@@ -227,7 +264,7 @@ describe("Treasury Routes - POST /treasury/withdraw", () => {
       expect(res.status).toBe(200);
       expect(mockTreasuryService.withdraw).toHaveBeenCalledWith(
         destinationAddress,
-        "100",
+        "100.0000000",
         adminAddress,
         "Reclaiming expired escrow",
       );
