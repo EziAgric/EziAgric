@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { env } from "../config/env";
 import { appLogger } from "../middleware/logger";
+import { ALERT_REGISTRY, type AlertRouting } from "../config/alertRegistry";
 
 export type AlertType =
   | "db_connection_failure"
@@ -9,11 +10,16 @@ export type AlertType =
   | "reconciliation_drift_warning"
   | "reconciliation_drift_critical"
   | "reconciliation_job_failure"
-  | "admin_soroban_tx_failure";
+  | "admin_soroban_tx_failure"
+  | "synthetic_probe_failure"
+  | "pii_log_leak_detected";
 
 export interface AlertPayload {
   type: AlertType;
   severity: "critical";
+  /** Routing class and runbook link, looked up from ALERT_REGISTRY. */
+  routing: AlertRouting;
+  runbookUrl: string;
   timestamp: string;
   message: string;
   details?: Record<string, unknown>;
@@ -44,9 +50,12 @@ export class AlertService {
       return;
     }
 
+    const registryEntry = ALERT_REGISTRY[type];
+    const dedupeWindowMs = registryEntry.dedupeWindowMs ?? this.cooldownMs;
+
     const now = Date.now();
     const lastSent = this.lastSentAt.get(type);
-    if (lastSent !== undefined && now - lastSent < this.cooldownMs) {
+    if (lastSent !== undefined && now - lastSent < dedupeWindowMs) {
       appLogger.debug({ type }, "Alert suppressed by cooldown");
       return;
     }
@@ -54,6 +63,8 @@ export class AlertService {
     const payload: AlertPayload = {
       type,
       severity: "critical",
+      routing: registryEntry.routing,
+      runbookUrl: registryEntry.runbookUrl,
       timestamp: new Date().toISOString(),
       message,
       details,

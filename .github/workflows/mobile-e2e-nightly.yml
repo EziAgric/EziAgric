@@ -1,0 +1,161 @@
+name: Mobile E2E — Nightly
+
+on:
+  schedule:
+    # 02:00 UTC every night
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+# This workflow runs the Detox smoke suite on a nightly schedule and before
+# production releases. It mirrors the mobile-e2e-ios / mobile-e2e-android
+# jobs in ci.yml but always runs regardless of path filters.
+
+jobs:
+  mobile-e2e-ios-nightly:
+    name: Nightly Smoke — iOS
+    runs-on: macos-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Expo prebuild (iOS)
+        run: pnpm expo prebuild --platform ios --non-interactive
+        env:
+          CI: true
+
+      - name: Build iOS app for simulator
+        run: |
+          xcodebuild \
+            -workspace ios/Amana.xcworkspace \
+            -scheme Amana \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath ios/build \
+            -destination "platform=iOS Simulator,name=iPhone 15,OS=17.5" \
+            build \
+            | xcpretty --color
+        env:
+          CI: true
+
+      - name: Boot iOS simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep "iPhone 15" | grep "17.5" | head -1 | grep -E -o '\([-A-F0-9]+\)' | tr -d '()')
+          xcrun simctl boot "$UDID" || true
+
+      - name: Run Detox smoke tests (iOS)
+        run: pnpm test:e2e:ios
+        env:
+          CI: true
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-detox-ios-${{ github.run_id }}
+          path: mobile/.detox-artifacts/
+          retention-days: 14
+
+  mobile-e2e-android-nightly:
+    name: Nightly Smoke — Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache AVD
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-nightly-Pixel_6_API_34-${{ runner.os }}
+
+      - name: Create AVD
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "no" | avdmanager create avd \
+            --force \
+            --name Pixel_6_API_34 \
+            --abi google_apis/x86_64 \
+            --package "system-images;android-34;google_apis;x86_64" \
+            --device "pixel_6"
+
+      - name: Expo prebuild (Android)
+        run: pnpm expo prebuild --platform android --non-interactive
+        env:
+          CI: true
+
+      - name: Build Android APK (debug)
+        run: |
+          cd android && ./gradlew assembleDebug assembleAndroidTest -DtestBuildType=debug
+        env:
+          CI: true
+
+      - name: Start emulator and run Detox smoke tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          avd-name: Pixel_6_API_34
+          script: cd mobile && pnpm test:e2e:android
+        env:
+          CI: true
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-detox-android-${{ github.run_id }}
+          path: mobile/.detox-artifacts/
+          retention-days: 14

@@ -44,7 +44,7 @@ fn test_clawback_unauthorized_caller() {
 
 /// Amount of zero triggers CLAWBACK_INVALID_AMOUNT.
 #[test]
-#[should_panic(expected = "clawback_amount must be greater than zero")]
+#[should_panic(expected = "CLAWBACK_INVALID_AMOUNT")]
 fn test_clawback_invalid_amount_zero() {
     let h = Harness::new();
     let tid = h.funded_trade(1_000);
@@ -53,7 +53,7 @@ fn test_clawback_invalid_amount_zero() {
 
 /// Negative amount triggers CLAWBACK_INVALID_AMOUNT.
 #[test]
-#[should_panic(expected = "clawback_amount must be greater than zero")]
+#[should_panic(expected = "CLAWBACK_INVALID_AMOUNT")]
 fn test_clawback_invalid_amount_negative() {
     let h = Harness::new();
     let tid = h.funded_trade(1_000);

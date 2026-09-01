@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../lib/db";
+import { paginateWithCursor, normalizeCursorLimit, CursorPageResult } from "../lib/cursorPagination";
 
 export interface AdminActionAuditRecord {
   id: number;
@@ -11,13 +12,16 @@ export interface AdminActionAuditRecord {
 }
 
 export interface AdminAuditListParams {
-  page?: number;
+  /** Opaque cursor from a previous page's pageInfo.nextCursor. Preferred over page/limit. */
+  cursor?: string;
   limit?: number;
+  /** @deprecated offset pagination — kept for backward compatibility, migrate to cursor. */
+  page?: number;
 }
 
-export interface AdminAuditListResult {
-  items: AdminActionAuditRecord[];
-  pagination: {
+export interface AdminAuditListResult extends CursorPageResult<AdminActionAuditRecord> {
+  /** @deprecated present only when callers request offset pagination via `page`. */
+  pagination?: {
     page: number;
     limit: number;
     total: number;
@@ -36,28 +40,39 @@ export class AdminAuditService {
   }
 
   async list(params: AdminAuditListParams = {}): Promise<AdminAuditListResult> {
-    const page = Number.isFinite(params.page) && (params.page as number) > 0 ? Math.floor(params.page as number) : 1;
-    const requestedLimit = Number.isFinite(params.limit) && (params.limit as number) > 0 ? Math.floor(params.limit as number) : DEFAULT_LIMIT;
-    const limit = Math.min(requestedLimit, MAX_LIMIT);
+    const limit = normalizeCursorLimit(params.limit ?? DEFAULT_LIMIT);
 
-    const [items, total] = await Promise.all([
-      this.prisma.adminActionAudit.findMany({
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.adminActionAudit.count(),
-    ]);
+    // Legacy offset mode: only engaged when a caller still sends `page` and
+    // no `cursor`. New/updated clients should never send `page`.
+    if (!params.cursor && params.page !== undefined) {
+      const page = Number.isFinite(params.page) && params.page > 0 ? Math.floor(params.page) : 1;
+      const [items, total] = await Promise.all([
+        this.prisma.adminActionAudit.findMany({
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        this.prisma.adminActionAudit.count(),
+      ]);
 
-    return {
-      items,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
-      },
-    };
+      return {
+        items,
+        pageInfo: { nextCursor: null, hasNextPage: page * limit < total, limit },
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        },
+      };
+    }
+
+    return paginateWithCursor<AdminActionAuditRecord>({
+      findMany: (args) => this.prisma.adminActionAudit.findMany(args as any),
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      cursor: params.cursor,
+      limit,
+    });
   }
 }
 

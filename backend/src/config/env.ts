@@ -1,5 +1,40 @@
 import { z } from 'zod';
 
+// ---------------------------------------------------------------------------
+// Fail-fast, typed environment validation at boot.
+//
+// The schema is loaded once and parsed strictly. On any invalid input the boot
+// fails with an aggregated, actionable report listing ALL invalid variables
+// (zod's safeParse collects every issue, not just the first), with any
+// secret-shaped values redacted from diagnostic output.
+// ---------------------------------------------------------------------------
+
+/** Env keys whose values are secrets and must never appear in logs/errors. */
+export const SECRET_ENV_KEYS: ReadonlySet<string> = new Set([
+  'JWT_SECRET',
+  'ADMIN_SECRET_KEY',
+  'IPFS_URL_SIGNING_SECRET',
+  'WEBHOOK_SECRET',
+  'ALERT_WEBHOOK_SECRET',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'AUDIT_SIGNING_PRIVATE_KEY_PEM',
+  'AUDIT_SIGNING_PUBLIC_KEY_PEM',
+  'PINATA_SECRET',
+  'PINATA_JWT',
+  'PINATA_API_KEY',
+]);
+
+/** Redact a raw env value if it corresponds to a secret key. */
+export function redactEnvValue(key: string, value: unknown): string {
+  if (value === undefined || value === null || value === '') {
+    return String(value ?? '');
+  }
+  if (SECRET_ENV_KEYS.has(key)) {
+    return '***REDACTED***';
+  }
+  return String(value);
+}
+
 function normalizeEnvInput(raw: Record<string, string | undefined>): Record<string, string | undefined> {
   const normalized = { ...raw };
 
@@ -89,6 +124,10 @@ export const envSchema = z.object({
   OTEL_SERVICE_NAME: z.string().optional(),
   OTEL_EXPORTER_JAEGER_AGENT_HOST: z.string().optional(),
   OTEL_EXPORTER_JAEGER_AGENT_PORT: z.coerce.number().optional(),
+  // Tail-based trace sampling (#231)
+  TRACE_BASELINE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+  TRACE_SLOW_THRESHOLD_MS: z.coerce.number().int().positive().default(2000),
+  TRACE_ROUTE_OVERRIDES: z.string().default("{}"),
 
   // Audit signing
   AUDIT_SIGNING_KEY_ID: z.string().min(1).optional(),
@@ -160,9 +199,120 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value: 'true' | 'false') => value === 'true'),
+
+  // PII log-leak scanner (#233)
+  PII_SCANNER_CRON_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value: 'true' | 'false') => value === 'true'),
+  PII_SCANNER_SAMPLE_SIZE: z.coerce.number().int().positive().default(2000),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/**
+ * A single configuration problem discovered at boot. The `value` field is
+ * always redacted (secrets never appear in diagnostics).
+ */
+export interface EnvIssue {
+  /** Env var name (uppercase). */
+  key: string;
+  /** Human-readable problem. */
+  message: string;
+  /** Redacted value — secrets never appear, e.g. `***REDACTED***` or `(empty)`. */
+  value: string;
+}
+
+/**
+ * Raised at boot when the environment is invalid. Carries an aggregated,
+ * ordered report of every problem so operators see the whole picture rather
+ * than the first failure.
+ */
+export class EnvironmentValidationError extends Error {
+  constructor(
+    public readonly issues: EnvIssue[],
+    public readonly envName: string,
+  ) {
+    super(
+      `Environment validation failed for NODE_ENV="${envName}" with ${issues.length} issue(s):\n` +
+        issues
+          .map((i) => `  - ${i.key}: ${i.message} (present value: ${i.value})`)
+          .join('\n'),
+    );
+    this.name = 'EnvironmentValidationError';
+  }
+}
+
+function describeValue(key: string, value: unknown): string {
+  if (value === undefined || value === null || value === '') {
+    return '(empty)';
+  }
+  return redactEnvValue(key, value);
+}
+
+/**
+ * Env-specific requirements beyond the shared schema. Returns additional
+ * issues for the given (already normalized) input and parsed NODE_ENV.
+ */
+export function getEnvSpecificIssues(
+  normalized: Record<string, string | undefined>,
+): EnvIssue[] {
+  const nodeEnv = (normalized.NODE_ENV ?? 'development').toLowerCase();
+  const issues: EnvIssue[] = [];
+
+  if (nodeEnv === 'production') {
+    // Production must export telemetry to a real backend, not default to
+    // localhost. Without this the pod silently drops traces on startup.
+    const hasTraceBackend = Boolean(
+      normalized.JAEGER_ENDPOINT ||
+        normalized.ZIPKIN_ENDPOINT ||
+        normalized.OTEL_EXPORTER_JAEGER_AGENT_HOST ||
+        normalized.OTEL_EXPORTER_OTLP_ENDPOINT,
+    );
+    if (!hasTraceBackend) {
+      issues.push({
+        key: 'JAEGER_ENDPOINT',
+        message:
+          'NODE_ENV=production requires a tracing backend (set JAEGER_ENDPOINT, ZIPKIN_ENDPOINT, or OTEL exporter) to prevent silent observability loss',
+        value: '(empty)',
+      });
+    }
+  }
+
+  return issues;
+}
+
+/** Parse and validate input, returning all issues (schema + env-specific). */
+export function collectEnvIssues(
+  input: Record<string, string | undefined>,
+): EnvIssue[] {
+  const normalized = normalizeEnvInput(input);
+  const issues: EnvIssue[] = [];
+
+  const parsed = envSchema.safeParse(normalized);
+  if (!parsed.success) {
+    for (const err of parsed.error.errors) {
+      const key = String(err.path[0] ?? '');
+      issues.push({
+        key,
+        message: err.message,
+        value: describeValue(key, normalized[key]),
+      });
+    }
+  }
+
+  issues.push(...getEnvSpecificIssues(normalized));
+  return issues;
+}
+
+/** Validate input and throw an aggregated EnvironmentValidationError on failure. */
+export function assertValidEnv(input: Record<string, string | undefined>): void {
+  const issues = collectEnvIssues(input);
+  if (issues.length > 0) {
+    const nodeEnv = (normalizeEnvInput(input).NODE_ENV ?? 'development').toLowerCase();
+    throw new EnvironmentValidationError(issues, nodeEnv);
+  }
+}
 
 function buildProcessEnv(): Record<string, string | undefined> {
   const processEnv = normalizeEnvInput({ ...process.env });
@@ -184,9 +334,55 @@ export function parseEnvConfig(input: Record<string, string | undefined>) {
   return envSchema.safeParse(normalizeEnvInput(input));
 }
 
-export const env = envSchema.parse(buildProcessEnv());
+/** The parsed, validated environment singleton used across the application. */
+export function buildEnv(): Env {
+  const raw = buildProcessEnv();
+  assertValidEnv(raw);
+  return envSchema.parse(raw);
+}
 
-/** Prefer runtime process.env overrides so tests can mutate env without reload. */
+/**
+ * Render the aggregated validation report as a multi-line, redacted string
+ * suitable for the boot log / stderr.
+ */
+export function formatEnvReport(issues: EnvIssue[]): string {
+  const lines = issues.map(
+    (i) => `  - ${i.key}: ${i.message} (present value: ${i.value})`,
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Build and validate the application environment singleton at module load.
+ *
+ * On invalid config this prints a clean, redacted, aggregated report to stderr
+ * and exits with a non-zero code — so a partially-configured process never
+ * reaches `listen()` and never fails lazily on first use.
+ */
+function loadEnvSingleton(): Env {
+  try {
+    const raw = buildProcessEnv();
+    assertValidEnv(raw);
+    return envSchema.parse(raw);
+  } catch (err) {
+    if (err instanceof EnvironmentValidationError) {
+      // NODE_ENV is required before pino; log directly to stderr.
+      console.error(
+        `\n[FATAL] Environment validation failed for NODE_ENV="${err.envName}" with ${err.issues.length} issue(s):\n` +
+          formatEnvReport(err.issues) +
+          '\n\nFix the variables above and restart. Secrets are redacted.\n',
+      );
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+
+export const env = loadEnvSingleton();
+
+/**
+ * Prefer runtime process.env overrides so tests can mutate env without reload.
+ */
 export function runtimeEnvValue<K extends keyof Env>(key: K): Env[K] {
   const runtime = process.env[key as string];
   if (runtime !== undefined) {
@@ -196,4 +392,34 @@ export function runtimeEnvValue<K extends keyof Env>(key: K): Env[K] {
     }
   }
   return env[key];
+}
+
+/**
+ * Produce a sanitized "effective config" fingerprint for the boot log.
+ *
+ * Non-secret values are shown literally; secret-shaped values are redacted to a
+ * fixed `***REDACTED***` marker so the boot log confirms which secrets are
+ * present without ever exposing them. Only keys present in the schema are
+ * emitted.
+ */
+export function formatConfigFingerprint(
+  input: Record<string, string | undefined>,
+): Record<string, string> {
+  const normalized = normalizeEnvInput(input);
+  const fingerprint: Record<string, string> = {};
+  const schemaKeys = new Set(Object.keys(envSchema.shape));
+
+  for (const key of schemaKeys) {
+    const raw = normalized[key];
+    if (raw === undefined || raw === '') {
+      fingerprint[key] = '(empty)';
+      continue;
+    }
+    if (SECRET_ENV_KEYS.has(key)) {
+      fingerprint[key] = redactEnvValue(key, raw);
+      continue;
+    }
+    fingerprint[key] = raw;
+  }
+  return fingerprint;
 }

@@ -2,8 +2,9 @@ import { Worker, Job } from 'bullmq';
 import { appLogger } from '../../middleware/logger';
 import { createQueueConnection, WebhookJobData } from '../queue';
 import { webhookService } from '../../services/webhook.service';
+import { attachDeadLetterQueue } from '../deadLetter';
 export function createWebhookWorker(): Worker<WebhookJobData> {
-  return new Worker<WebhookJobData>(
+  const worker = new Worker<WebhookJobData>(
     'webhooks',
     async (job: Job<WebhookJobData>) => {
       const { tradeId, status, payload } = job.data;
@@ -14,4 +15,6 @@ export function createWebhookWorker(): Worker<WebhookJobData> {
     },
     { connection: createQueueConnection() },
   );
+  attachDeadLetterQueue(worker, 'webhooks');
+  return worker;
 }

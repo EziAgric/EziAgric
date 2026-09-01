@@ -9,7 +9,10 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { AnalyticsProvider } from "@/components/AnalyticsProvider";
 import { ToastContainer } from "@/components/ui/ToastContainer";
 import { ToastProvider } from "@/hooks/useToast";
+import { ThemeProvider } from "@/hooks/useTheme";
 import RegisterSW from "@/components/RegisterSW";
+import { FeatureFlagsProvider } from "@/components/FeatureFlagsProvider";
+import { FlagDebugPanel } from "@/components/admin/FlagDebugPanel";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,25 +47,56 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Inline script that runs before paint to apply the persisted theme class
+ * on <html>, preventing a flash of the wrong theme (FOUC).
+ * Reads from localStorage; falls back to system preference.
+ */
+const themeScript = `
+(function(){
+  try {
+    var stored = localStorage.getItem('amana-theme-preference');
+    var pref = stored || 'system';
+    var dark;
+    if (pref === 'system') {
+      dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } else {
+      dark = pref === 'dark';
+    }
+    document.documentElement.classList.add(dark ? 'dark' : 'light');
+  } catch(e) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} font-sans bg-primary text-text-primary antialiased`}
       >
-        <AnalyticsProvider>
-          <AuthProvider>
-            <ToastProvider>
-              <AppShell>{children}</AppShell>
-              <RegisterSW />
-              <ToastContainer />
-            </ToastProvider>
-          </AuthProvider>
-        </AnalyticsProvider>
+        <ThemeProvider>
+          <AnalyticsProvider>
+            <AuthProvider>
+              <ToastProvider>
+                <FeatureFlagsProvider>
+                  <AppShell>{children}</AppShell>
+                  <RegisterSW />
+                  <ToastContainer />
+                  <FlagDebugPanel />
+                </FeatureFlagsProvider>
+              </ToastProvider>
+            </AuthProvider>
+          </AnalyticsProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

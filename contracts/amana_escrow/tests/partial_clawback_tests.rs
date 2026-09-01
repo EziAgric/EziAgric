@@ -277,7 +277,7 @@ fn over_clawback_is_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "clawback_amount must be greater than zero")]
+#[should_panic(expected = "CLAWBACK_INVALID_AMOUNT")]
 fn zero_clawback_is_rejected() {
     let h = Harness::new();
     let trade_id = h.funded_trade(5_000);
@@ -413,7 +413,7 @@ fn remaining_funds_after_partial_clawback_can_be_released() {
 /// upgraded deployments).
 #[test]
 fn clawback_enabled_by_default() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     assert!(h.client().is_clawback_enabled());
 }
 
@@ -421,7 +421,7 @@ fn clawback_enabled_by_default() {
 #[test]
 #[should_panic(expected = "admin_clawback: clawback feature is currently disabled")]
 fn clawback_rejected_while_disabled() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(10_000);
     let dest = Address::generate(&h.env);
 
@@ -432,7 +432,7 @@ fn clawback_rejected_while_disabled() {
 /// Re-enabling the feature restores normal clawback behavior.
 #[test]
 fn clawback_succeeds_after_re_enabling() {
-    let h = Harness::new(10_000);
+    let h = Harness::new();
     let trade_id = h.funded_trade(10_000);
     let dest = Address::generate(&h.env);
 

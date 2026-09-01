@@ -4,6 +4,8 @@ import { Spinner } from "@/components/ui/Spinner";
 
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import { TradeListItemDemo } from "./TradeListItemDemo";
+import { ErrorBoundaryFixtures } from "./ErrorBoundaryFixtures";
+import { OfflineCacheFixtures } from "./OfflineCacheFixtures";
 const STEPS = [
   { label: "Create Trade", description: "3-step flow" },
   { label: "Verification", description: "4-step flow" },
@@ -212,6 +214,12 @@ export default function IconDevPage() {
           <LoadingState variant="inline" />
         </div>
       </section>
+
+      {/* ── Error Boundary Fixtures ───────────────────────────────── */}
+      <ErrorBoundaryFixtures />
+
+      {/* ── Offline Cache Fixtures ────────────────────────────────── */}
+      <OfflineCacheFixtures />
     </div>
   );
 }

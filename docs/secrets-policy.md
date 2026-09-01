@@ -110,16 +110,20 @@ Install Gitleaks locally to catch secrets before pushing:
 ```bash
 # Install gitleaks (macOS)
 brew install gitleaks
+```
 
-# Run manually
+Then wire the repo's pre-commit hook (checked into [`.githooks/`](../.githooks/)):
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+This points git at `.githooks/pre-commit`, which runs `gitleaks protect --config=.gitleaks.toml --staged` on every commit and blocks it if a match is found. If gitleaks isn't installed locally, the hook warns and lets the commit through — CI (§ below) still blocks the push.
+
+You can also run a full-repo scan manually at any time:
+
+```bash
 gitleaks detect --config=.gitleaks.toml --source=. --verbose
-
-# Or install as a pre-commit hook
-cat > .git/hooks/pre-commit << 'EOF'
-#!/usr/bin/env bash
-gitleaks protect --config=.gitleaks.toml --staged --verbose
-EOF
-chmod +x .git/hooks/pre-commit
 ```
 
 ---

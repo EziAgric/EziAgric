@@ -332,4 +332,126 @@ describe("HealthService", () => {
             expect(mockPrisma.processedEvent.findFirst).not.toHaveBeenCalled();
         });
     });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // performReadinessCheck — Issue #224
+    // Readiness checks ONLY DB + Redis. External deps (Stellar, IPFS, indexer)
+    // must NOT influence readiness so brownouts don't remove pods from rotation.
+    // ─────────────────────────────────────────────────────────────────────────
+    describe("performReadinessCheck", () => {
+        it("returns ready when DB and Redis are both up", async () => {
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockResolvedValue("PONG");
+
+            const result = await healthService.performReadinessCheck();
+
+            expect(result.status).toBe("ready");
+            expect(result.checks.database.status).toBe("up");
+            expect(result.checks.redis.status).toBe("up");
+        });
+
+        it("returns not_ready when DB is down", async () => {
+            mockPrisma.$queryRaw.mockRejectedValue(new Error("ECONNREFUSED"));
+            mockRedis.ping.mockResolvedValue("PONG");
+
+            const result = await healthService.performReadinessCheck();
+
+            expect(result.status).toBe("not_ready");
+            expect(result.checks.database.status).toBe("down");
+        });
+
+        it("returns not_ready when Redis is down", async () => {
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockRejectedValue(new Error("Redis connection refused"));
+
+            const result = await healthService.performReadinessCheck();
+
+            expect(result.status).toBe("not_ready");
+            expect(result.checks.redis.status).toBe("down");
+        });
+
+        it("returns not_ready when both DB and Redis are down", async () => {
+            mockPrisma.$queryRaw.mockRejectedValue(new Error("DB down"));
+            mockRedis.ping.mockRejectedValue(new Error("Redis down"));
+
+            const result = await healthService.performReadinessCheck();
+
+            expect(result.status).toBe("not_ready");
+            expect(result.checks.database.status).toBe("down");
+            expect(result.checks.redis.status).toBe("down");
+        });
+
+        it("response only includes database and redis checks (no stellar/ipfs/indexer)", async () => {
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockResolvedValue("PONG");
+
+            const result = await healthService.performReadinessCheck();
+
+            const checkKeys = Object.keys(result.checks);
+            expect(checkKeys).toContain("database");
+            expect(checkKeys).toContain("redis");
+            // External/tolerable deps must NOT be part of readiness
+            expect(checkKeys).not.toContain("stellar");
+            expect(checkKeys).not.toContain("sorobanRpc");
+            expect(checkKeys).not.toContain("ipfs");
+            expect(checkKeys).not.toContain("indexer");
+        });
+
+        it("does NOT query ProcessedEvent (indexer not part of readiness)", async () => {
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockResolvedValue("PONG");
+
+            await healthService.performReadinessCheck();
+
+            expect(mockPrisma.processedEvent.findFirst).not.toHaveBeenCalled();
+        });
+
+        it("dispatches alert when DB is down during readiness check", async () => {
+            mockPrisma.$queryRaw.mockRejectedValue(new Error("DB error"));
+            mockRedis.ping.mockResolvedValue("PONG");
+
+            await healthService.performReadinessCheck();
+
+            expect(mockAlerts.dispatch).toHaveBeenCalledWith(
+                "db_connection_failure",
+                expect.any(String),
+                expect.objectContaining({ responseTime: expect.any(Number) }),
+            );
+        });
+
+        it("dispatches alert when Redis is down during readiness check", async () => {
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockRejectedValue(new Error("Redis error"));
+
+            await healthService.performReadinessCheck();
+
+            expect(mockAlerts.dispatch).toHaveBeenCalledWith(
+                "redis_connection_failure",
+                expect.any(String),
+                expect.objectContaining({ responseTime: expect.any(Number) }),
+            );
+        });
+
+        it("includes timestamp in response", async () => {
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockResolvedValue("PONG");
+
+            const result = await healthService.performReadinessCheck();
+
+            expect(result.timestamp).toBeDefined();
+            expect(new Date(result.timestamp).getTime()).not.toBeNaN();
+        });
+
+        it("brownout simulation: remains ready when Stellar RPC is injected as failing", async () => {
+            // Stellar RPC failing should NOT affect readiness — readiness only checks DB+Redis.
+            // The mock for stellar is already failing via module mock, yet DB+Redis pass.
+            mockPrisma.$queryRaw.mockResolvedValue([{ health_check: 1 }]);
+            mockRedis.ping.mockResolvedValue("PONG");
+
+            const result = await healthService.performReadinessCheck();
+
+            // Must be ready despite Stellar being "down" in the full health check
+            expect(result.status).toBe("ready");
+        });
+    });
 });

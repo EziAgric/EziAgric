@@ -1,10 +1,10 @@
-﻿import { useEffect } from 'react';
+﻿import { useEffect, useMemo, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import type { LinkingOptions } from '@react-navigation/native';
+import type { LinkingOptions, NavigationContainerRef } from '@react-navigation/native';
+import { Linking } from 'react-native';
 
 import type { RootStackParamList } from '../types/navigation';
-import { useAuthStore } from '../stores/authStore';
 import WalletConnectScreen from '../screens/WalletConnectScreen';
 import TradeListScreen from '../screens/TradeListScreen';
 import TradeDetailScreen from '../screens/TradeDetailScreen';
@@ -18,46 +18,76 @@ import AdminContractScreen from '../screens/AdminContractScreen';
 import AdminFeaturesScreen from '../screens/AdminFeaturesScreen';
 import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
+import {
+  LINK_PREFIXES,
+  LINKING_SCREEN_CONFIG,
+  parseDeepLink,
+  requiresAuth,
+} from '../constants/links';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-// Deep linking configuration
-const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['amanavault://', 'https://amanavault.app'],
-  config: {
-    screens: {
-      TradeDetail: 'trades/:id',
-      DisputeDetail: 'disputes/:id',
-      TradeList: 'trades',
-      CreateTrade: 'create-trade',
-      EvidenceCapture: 'evidence/:tradeId',
-      VaultDashboard: 'vault',
-      WalletConnect: 'connect',
+/**
+ * Deep linking configuration (issue #261). Path <-> screen mapping is the
+ * shared table in constants/links.ts so the web app and hosted
+ * apple-app-site-association / assetlinks.json stay consistent.
+ *
+ * `getStateFromPath` runs our own parser first: an unrecognised link falls
+ * through to react-navigation's default (which no-ops to the initial route
+ * rather than crashing), and a link that needs auth while signed out resolves
+ * to WalletConnect — useDeepLink parks the real target and resumes it on login.
+ */
+function makeLinking(isAuthenticated: boolean): LinkingOptions<RootStackParamList> {
+  return {
+    prefixes: LINK_PREFIXES,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    config: { screens: LINKING_SCREEN_CONFIG as any },
+    getStateFromPath: (path, options) => {
+      const target = parseDeepLink(path);
+      if (target && requiresAuth(target) && !isAuthenticated) {
+        // Land on WalletConnect; useDeepLink parks the real target and
+        // resumes it once a token appears (login-then-continue).
+        return { routes: [{ name: 'WalletConnect' }] };
+      }
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const nav = require('@react-navigation/native');
+      return nav.getStateFromPath(path, options);
     },
-  },
-};
+  };
+}
 
 interface AppNavigatorProps {
   isAuthenticated: boolean;
 }
 
 export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
-  const { handleDeepLink, pendingDeepLink } = useDeepLink();
+  const { handleUrl, resumePendingDeepLink } = useDeepLink();
+  const navRef = useRef<NavigationContainerRef<RootStackParamList> | null>(null);
+  const linking = useMemo(() => makeLinking(isAuthenticated), [isAuthenticated]);
 
+  // Cold start: route (or park) the URL the app was opened with.
   useEffect(() => {
-    if (pendingDeepLink) {
-      handleDeepLink(pendingDeepLink);
+    Linking.getInitialURL().then((url) => handleUrl(url, navRef.current));
+    // Warm start: route links received while the app is running.
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url, navRef.current));
+    return () => sub.remove();
+  }, [handleUrl]);
+
+  // Login-then-continue: replay a parked link once authenticated.
+  useEffect(() => {
+    if (isAuthenticated) {
+      resumePendingDeepLink(navRef.current);
     }
-  }, [pendingDeepLink, handleDeepLink]);
+  }, [isAuthenticated, resumePendingDeepLink]);
 
   return (
     <NavigationContainer
+      ref={navRef}
       linking={linking}
       fallback={null}
       onReady={() => {
-        // Handle any initial deep link
-        if (pendingDeepLink) {
-          handleDeepLink(pendingDeepLink);
+        if (isAuthenticated) {
+          resumePendingDeepLink(navRef.current);
         }
       }}
     >

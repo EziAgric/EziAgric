@@ -6,6 +6,15 @@ This crate contains the Soroban escrow contract used by Amana.
 
 - [Admin Governance Flow](docs/admin-governance.md): Comprehensive documentation on admin clawback operations, compliance requirements, and governance workflows
 
+## Clawback amount bounds
+
+`admin_clawback` / `queue_clawback` accept only strictly positive amounts:
+
+- `amount > 0` — zero and negative values panic with `CLAWBACK_INVALID_AMOUNT`
+- `amount <=` remaining escrowed `trade.amount` — over-clawback is rejected
+
+Backend preview/CLI validation mirrors the same lower bound before submitting a transaction.
+
 ## Test setup
 
 Contract unit and integration tests share a single **admin signer fixture** in
@@ -49,6 +58,22 @@ cargo test
 cargo test --locked
 ```
 
+## Snapshot regeneration
+
+Snapshot files live in `test_snapshots/` and capture expected outputs (serialized
+state, gas baselines, WASM golden binaries). Regenerate them idempotently with:
+
+```bash
+# From the repository root:
+bash scripts/cleanup-test-snapshots.sh   # remove orphaned snapshots
+UPDATE_SNAPSHOTS=1 cargo test --locked   # overwrite snapshots with current output
+```
+
+The regeneration is idempotent: running it twice produces identical files with no
+diff. Commit updated snapshots in the same PR as the code change that caused them.
+
+For details on snapshot hygiene rules, see [Test Determinism & Snapshot Hygiene](docs/test-determinism.md).
+
 ## cNGN migration and upgrade notes
 
 ### Migration behavior
@@ -85,6 +110,23 @@ For production upgrades, these compatibility expectations must remain stable:
    - new cNGN trades,
    - pre-existing trades bound to their original token.
 6. Do not assume rollback can mutate already-initialized on-chain token configuration.
+
+## Test determinism & contributor guide
+
+See [Test Determinism & Snapshot Hygiene](docs/test-determinism.md) for:
+
+- How to inject deterministic clocks instead of using system time
+- Ordering and collection assertion rules
+- Snapshot lifecycle (generate → commit → review → clean up)
+- Parallel-safe test conventions
+- Checklist for adding new tests
+
+To verify determinism locally:
+
+```bash
+bash scripts/verify-test-determinism.sh 50   # 50-repeat determinism check
+bash scripts/cleanup-test-snapshots.sh       # remove orphaned snapshots
+```
 
 ## Migration test checklist
 

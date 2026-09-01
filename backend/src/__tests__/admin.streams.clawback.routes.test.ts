@@ -202,6 +202,27 @@ describe("POST /api/admin/streams/:id/clawback/preview", () => {
       expect(res.body.code).toBe("CLAWBACK_INVALID_AMOUNT");
     });
 
+    it("rejects a negative amount before preview (schema or CLAWBACK_INVALID_AMOUNT)", async () => {
+      const prisma = makePrisma(makeStream({ unclaimed: "7500" }));
+      const app = buildApp(prisma);
+
+      const res = await request(app)
+        .post(`/api/admin/streams/${STREAM_ID}/clawback/preview`)
+        .set("Authorization", `Bearer ${tokenFor(ADMIN_ADDRESS)}`)
+        .send({ amount: "-1" });
+
+      expect(res.status).toBe(400);
+      // Zod `^\d+$` rejects signed amounts at the schema boundary
+      // (VALIDATION_ERROR). If the handler is reached, map to
+      // CLAWBACK_INVALID_AMOUNT.
+      expect(["VALIDATION_ERROR", "CLAWBACK_INVALID_AMOUNT"]).toContain(
+        res.body.code,
+      );
+      if (res.body.code === "VALIDATION_ERROR") {
+        expect(prisma.stream.findUnique).not.toHaveBeenCalled();
+      }
+    });
+
     it("rejects a non-numeric amount at the schema level (400)", async () => {
       const prisma = makePrisma(makeStream());
       const app = buildApp(prisma);

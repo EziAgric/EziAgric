@@ -1,0 +1,63 @@
+name: Staging Synthetic Probes
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Hourly — see docs/synthetic-probes-policy.md for schedule rationale
+    # and the <2% flake tolerance this cadence is tuned against.
+    - cron: '0 * * * *'
+
+concurrency:
+  group: synthetic-probes
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Run Critical Journey Probe
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Run synthetic probe (auth -> create -> deposit -> release)
+        id: probe
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+          STELLAR_RPC_URL: ${{ secrets.SYNTHETIC_PROBE_RPC_URL || 'https://soroban-testnet.stellar.org' }}
+          STELLAR_NETWORK_PASSPHRASE: ${{ secrets.SYNTHETIC_PROBE_NETWORK_PASSPHRASE }}
+          SYNTHETIC_PROBE_BUYER_SECRET: ${{ secrets.SYNTHETIC_PROBE_BUYER_SECRET }}
+          SYNTHETIC_PROBE_SELLER_SECRET: ${{ secrets.SYNTHETIC_PROBE_SELLER_SECRET }}
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: npx tsx scripts/staging-synthetic-probe.ts
+
+      - name: Upload probe results log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-probe-results-${{ github.run_id }}
+          path: backend/synthetic-probe-results.jsonl
+          retention-days: 30
+
+      - name: Notify on probe failure
+        if: failure()
+        run: |
+          echo "::error title=Synthetic Probe Failure::The staging critical-journey probe failed. See docs/synthetic-probes-policy.md#failure-triage."
+          echo "### 🚨 Synthetic Probe Failure" >> $GITHUB_STEP_SUMMARY
+          echo "The hourly staging synthetic probe (auth -> create -> deposit -> release) failed." >> $GITHUB_STEP_SUMMARY
+          echo "Check the uploaded results artifact for which step broke, and see docs/synthetic-probes-policy.md#failure-triage for the runbook." >> $GITHUB_STEP_SUMMARY
