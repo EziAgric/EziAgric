@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "./env";
+import { getApiBaseUrl, getApiVersionPrefix } from "./env";
 import { trackApiFailure } from "@/lib/analytics";
 import { parseBackendError, BackendErrorResponse } from "../errorHandler";
 import { z } from "zod";
@@ -65,7 +65,29 @@ function createHeaders(
     resolvedHeaders.Authorization = `Bearer ${token}`;
   }
 
+  // Idempotency: if caller passes Idempotency-Key header via headers param, preserve it
+  // Otherwise, caller should use withIdempotency wrapper. We do not auto-generate here to avoid
+  // leaking keys for idempotent GETs.
   return resolvedHeaders;
+}
+
+/**
+ * Helper to build headers with idempotency + correlation IDs (unified toast contract).
+ * Use for mutations that require exactly-once semantics and toast correlation.
+ */
+export function withIdempotency(headers?: HeadersInit, opts?: { idempotencyKey?: string; correlationId?: string }): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (headers instanceof Headers) {
+    headers.forEach((v, k) => { out[k] = v; });
+  } else if (Array.isArray(headers)) {
+    for (const [k, v] of headers) out[k] = v;
+  } else if (headers) Object.assign(out, headers as Record<string, string>);
+  if (opts?.idempotencyKey) out["Idempotency-Key"] = opts.idempotencyKey;
+  if (opts?.correlationId) {
+    out["X-Correlation-Id"] = opts.correlationId;
+    out["X-Request-Id"] = opts.correlationId;
+  }
+  return out;
 }
 
 export function createQueryString(
@@ -84,6 +106,26 @@ export function createQueryString(
   return query ? `?${query}` : "";
 }
 
+/**
+ * Consumer-facing endpoints are versioned under `/api/v1` on the backend. The
+ * version prefix is injected here (centrally) so individual API modules don't
+ * each hardcode a version — switching versions is a single env toggle.
+ *
+ * Admin (/admin, /api/admin) and infrastructure (/health*) endpoints are
+ * intentionally excluded: they are unversioned internal/ops routes and must
+ * keep hitting the legacy paths regardless of the version prefix config.
+ */
+export function resolveApiUrl(endpoint: string): string {
+  const isUnversioned =
+    endpoint.startsWith("/admin") ||
+    endpoint.startsWith("/api/admin") ||
+    endpoint.startsWith("/health");
+
+  return isUnversioned
+    ? `${getApiBaseUrl()}${endpoint}`
+    : `${getApiBaseUrl()}${getApiVersionPrefix()}${endpoint}`;
+}
+
 export async function request<T>(
   endpoint: string,
   options: FetchOptions = {},
@@ -93,7 +135,7 @@ export async function request<T>(
   const authToken = token ?? (!skipAuth ? getStoredToken() : null);
 
   try {
-    const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+    const response = await fetch(resolveApiUrl(endpoint), {
       ...fetchOptions,
       headers: createHeaders(headers, authToken),
     });

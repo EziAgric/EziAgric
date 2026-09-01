@@ -33,6 +33,15 @@ backend/infra signals instead.
 | Database saturation | Saturation | `pg_stat_activity_count` / `pg_settings_max_connections` |
 | Job queue depth | Saturation | `redis_key_length_total{key=~"bull:.*:wait"}` |
 | Stellar RPC call duration p95 by method | Latency | `stellar_rpc_duration_ms` |
+| **SLO error budget consumed (28d)** | SLO | `slo:<id>:error_budget_consumed:ratio28d` |
+| **SLO good ratio (28d)** | SLO | `slo:<id>:good_ratio:*28d` |
+| **SLO burn rate (current 6h)** | SLO | `slo:<id>:error_budget_consumed:ratio6h` |
+
+The last three panels derive from the SLO recording rules in
+[`infra/prometheus/slo-recording-rules.yml`](../infra/prometheus/slo-recording-rules.yml),
+so they need the Prometheus server to have the SLO rule groups loaded (the
+same requirement as the burn alerts — see `docs/slo.md`). Budget-consumed
+panels carry thresholds at 60%/90%/100% to match the freeze/incident policy.
 
 ## Prerequisites
 

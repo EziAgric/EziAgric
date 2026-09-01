@@ -18,7 +18,7 @@ describe("disputesApi.list", () => {
     await disputesApi.list("test-token", { status: "OPEN", page: 2, limit: 10 });
 
     const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(url).toBe("http://localhost:4000/disputes?status=OPEN&page=2&limit=10");
+    expect(url).toBe("http://localhost:4000/api/v1/disputes?status=OPEN&page=2&limit=10");
     expect(options.headers.Authorization).toBe("Bearer test-token");
   });
 
@@ -26,7 +26,7 @@ describe("disputesApi.list", () => {
     await disputesApi.list("test-token");
 
     const [url] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(url).toBe("http://localhost:4000/disputes");
+    expect(url).toBe("http://localhost:4000/api/v1/disputes");
   });
 
   it("always forwards the caller's token for authentication", async () => {

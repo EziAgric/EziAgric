@@ -24,6 +24,8 @@ soroban-sdk = { version = "25.3.0", features = ["testutils"] }
 quickcheck = "1.0"
 quickcheck_macros = "1.0"
 rand = { version = "0.8", features = ["std", "std_rng"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [[test]]
 name = "dispute_flow"
@@ -105,3 +107,8 @@ path = "tests/admin_event_replay_tests.rs"
 [[test]]
 name = "admin_signer_fixture_tests"
 path = "tests/admin_signer_fixture_tests.rs"
+
+# Issue #239 — shared money-math fixture corpus parity test
+[[test]]
+name = "parity_money_math"
+path = "tests/parity_money_math.rs"

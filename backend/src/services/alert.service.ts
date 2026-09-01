@@ -11,7 +11,8 @@ export type AlertType =
   | "reconciliation_drift_critical"
   | "reconciliation_job_failure"
   | "admin_soroban_tx_failure"
-  | "synthetic_probe_failure";
+  | "synthetic_probe_failure"
+  | "pii_log_leak_detected";
 
 export interface AlertPayload {
   type: AlertType;
