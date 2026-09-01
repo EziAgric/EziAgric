@@ -16,6 +16,31 @@ Uses the same P0-P3 severity convention as
 When in doubt, classify one level higher and downgrade after triage - it's
 cheaper to stand down a P0 than to escalate a mishandled P1.
 
+## Incident roles
+
+For a P0/P1, name these roles explicitly at acknowledgement time (one
+person can hold more than one role on a small team, but say so out loud so
+everyone knows who is doing what):
+
+| Role | Responsibility | Notes |
+|---|---|---|
+| **Incident Commander (IC)** | Owns the incident end to end: classifies severity, decides on mitigation vs. further diagnosis, calls the stand-down, and assigns the other roles. Does not necessarily write the fix themselves. | Whoever acknowledges first is IC by default until they explicitly hand it off |
+| **Comms** | Posts and updates the status communication (see cadence below), keeps the timeline, and is the single point of contact for "what's the status" questions so the IC and Ops aren't interrupted mid-mitigation | On a one-or-two-person response, the IC also holds this role — but still write the updates |
+| **Ops / Mitigator** | Executes the actual mitigation and diagnosis steps (rollback, feature-flag flip, key rotation, query the DB) under the IC's direction | Multiple people can hold this role in parallel on a larger incident |
+
+## Incident channel & ticket conventions
+
+- **Channel:** open (or reuse) `#incident-<yyyy-mm-dd>-<short-slug>` for
+  anything P0/P1 (e.g. `#incident-2026-08-29-trade-release-500s`). Keep P2/P3
+  coordination in the normal team channel unless it drags on.
+- **Tracking issue:** open a GitHub issue labeled `incident` in this repo as
+  soon as severity is classified, titled the same as the channel slug. This
+  is the canonical timeline anchor and is where the postmortem (see below)
+  gets linked once written.
+- **Naming:** keep the slug short and specific to the symptom, not the
+  suspected cause (`trade-release-500s`, not `contract-bug`) — causes change
+  as investigation proceeds, symptoms don't.
+
 ## Immediate response steps
 
 1. **Acknowledge.** Whoever notices first (alert, user report, or manual
@@ -82,8 +107,15 @@ An incident is resolved (not just mitigated) when:
 ## Postmortem
 
 For P0/P1 incidents, write a blameless postmortem within 2 business days
-covering: timeline, root cause, what mitigated it, what will prevent
-recurrence (with owners and rough timing - not necessarily a hard deadline).
-Link the postmortem from the incident's tracking issue. P2/P3 incidents get
-a postmortem at the reporter's discretion - always write one if the same
+using the [postmortem template](./postmortem-template.md), covering:
+timeline, root cause, what mitigated it, what will prevent recurrence (with
+owners and rough timing - not necessarily a hard deadline). Link the
+postmortem from the incident's tracking issue, and publish the finished
+document under [`docs/postmortems/`](../postmortems/README.md) - see that
+directory's README for the archive/read-reminder process. P2/P3 incidents
+get a postmortem at the reporter's discretion - always write one if the same
 class of issue has recurred.
+
+For a dry run of this whole process end to end - roles, channel/ticket
+conventions, mitigation, and a completed postmortem - see the worked
+[escrow-drain tabletop exercise](./tabletop-exercise-escrow-drain.md).

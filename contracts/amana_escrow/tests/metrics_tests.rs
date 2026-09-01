@@ -1,6 +1,6 @@
 extern crate std;
 
-use amana_escrow::{EscrowContract, EscrowContractClient};
+use amana_escrow::{EscrowContract, EscrowContractClient, test_fixture::admin_address};
 use soroban_sdk::{
     Address, Env, String as SorobanString,
     testutils::{Address as _, Ledger as _},
@@ -12,7 +12,7 @@ use soroban_sdk::{
 // ---------------------------------------------------------------------------
 
 fn setup_env(env: &Env, fee_bps: u32) -> (Address, Address, Address, Address, Address, Address) {
-    let admin = Address::generate(env);
+    let admin = admin_address(env);
     let buyer = Address::generate(env);
     let seller = Address::generate(env);
     let treasury = Address::generate(env);

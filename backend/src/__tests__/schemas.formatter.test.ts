@@ -30,11 +30,13 @@ describe("Trade Schemas - Formatters & Validators", () => {
         });
         expect(result.success).toBe(true);
         if (result.success) {
-          expect(result.data.amountUsdc).toBe("1000.50");
+          expect(result.data.amountUsdc).toBe("1000.5000000");
         }
       });
 
-      it("should accept valid USDC amounts as numbers", () => {
+      // Issue #178: a JSON number cannot hold a large stroop amount exactly, so
+      // numeric money is now rejected outright instead of being coerced.
+      it("should reject USDC amounts sent as JSON numbers", () => {
         const result = createTradeSchema.safeParse({
           sellerAddress:
             "GDQLTM4CD55FGYLT4DQX2UR7F2EPXW37T4ABIARI4XKOWLSUBK4FSVN",
@@ -42,9 +44,9 @@ describe("Trade Schemas - Formatters & Validators", () => {
           buyerLossBps: 5000,
           sellerLossBps: 5000,
         });
-        expect(result.success).toBe(true);
-        if (result.success) {
-          expect(result.data.amountUsdc).toBe("1000.50");
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].message).toMatch(/decimal string/);
         }
       });
 
@@ -52,7 +54,7 @@ describe("Trade Schemas - Formatters & Validators", () => {
         const result = createTradeSchema.safeParse({
           sellerAddress:
             "GDQLTM4CD55FGYLT4DQX2UR7F2EPXW37T4ABIARI4XKOWLSUBK4FSVN",
-          amountUsdc: -1000,
+          amountUsdc: "-1000",
           buyerLossBps: 5000,
           sellerLossBps: 5000,
         });
@@ -63,7 +65,7 @@ describe("Trade Schemas - Formatters & Validators", () => {
         const result = createTradeSchema.safeParse({
           sellerAddress:
             "GDQLTM4CD55FGYLT4DQX2UR7F2EPXW37T4ABIARI4XKOWLSUBK4FSVN",
-          amountUsdc: 0,
+          amountUsdc: "0",
           buyerLossBps: 5000,
           sellerLossBps: 5000,
         });

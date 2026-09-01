@@ -6,6 +6,7 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod gas_footprint_tests {
+    use crate::test_fixture::admin_address;
     use crate::{EscrowContract, EscrowContractClient};
     use soroban_sdk::{Address, Env, String, testutils::Address as _, token};
 
@@ -19,6 +20,9 @@ mod gas_footprint_tests {
     const BASELINE_RESOLVE_MEM: u64 = 4_000_000;
     const BASELINE_ADMIN_CLAWBACK_CPU: u64 = 6_000_000;
     const BASELINE_ADMIN_CLAWBACK_MEM: u64 = 3_500_000;
+    // Issue #110 — 5 repeated partial `admin_clawback` calls on the same trade.
+    const BASELINE_REPEATED_CLAWBACK_CPU: u64 = 25_000_000;
+    const BASELINE_REPEATED_CLAWBACK_MEM: u64 = 15_000_000;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct CostEstimate {
@@ -58,7 +62,7 @@ mod gas_footprint_tests {
             env.mock_all_auths();
             env.cost_estimate().budget().reset_unlimited();
 
-            let admin = Address::generate(&env);
+            let admin = admin_address(&env);
             let buyer = Address::generate(&env);
             let seller = Address::generate(&env);
             let treasury = Address::generate(&env);
@@ -260,6 +264,38 @@ mod gas_footprint_tests {
             "admin_clawback",
             BASELINE_ADMIN_CLAWBACK_CPU,
             BASELINE_ADMIN_CLAWBACK_MEM,
+        );
+    }
+
+    /// Issue #110 — repeated partial `admin_clawback` calls on the same trade
+    /// must not accumulate unexpected gas cost per call (e.g. via unbounded
+    /// history/list growth). See `docs/gas-estimation.md` for the recorded
+    /// baseline and methodology.
+    #[test]
+    fn test_gas_repeated_partial_clawback() {
+        let ctx = Ctx::new(50_000);
+        let client = ctx.client();
+        let trade_id = client.create_trade(
+            &ctx.buyer,
+            &ctx.seller,
+            &50_000_i128,
+            &5000_u32,
+            &5000_u32,
+            &None,
+        );
+        client.deposit(&trade_id);
+        let destination = Address::generate(&ctx.env);
+
+        let cost = ctx.measure(|| {
+            for _ in 0..5 {
+                client.admin_clawback(&trade_id, &5_000_i128, &destination);
+            }
+        });
+
+        cost.assert_under(
+            "repeated_partial_clawback (5x)",
+            BASELINE_REPEATED_CLAWBACK_CPU,
+            BASELINE_REPEATED_CLAWBACK_MEM,
         );
     }
 }

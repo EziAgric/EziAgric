@@ -171,7 +171,7 @@ describe("Payment Provider Integration – Trade lifecycle", () => {
     const stats = await tradeService.getUserStats(BUYER);
 
     expect(stats.totalTrades).toBe(3);
-    expect(stats.totalVolume).toBeCloseTo(400);
+    expect(stats.totalVolume).toBe("400.0000000");
     expect(stats.openTrades).toBe(2); // FUNDED + DELIVERED are open
   });
 

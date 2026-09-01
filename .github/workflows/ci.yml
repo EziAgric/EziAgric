@@ -7,15 +7,15 @@ on:
       - main
       - develop
     paths:
-      - '.github/workflows/ci.yml'
-      - 'backend/**'
-      - 'frontend/**'
-      - 'mobile/**'
-      - 'contracts/**'
-      - 'scripts/**'
-      - 'infra/**'
-      - 'package-lock.json'
-      - 'pnpm-lock.yaml'
+      - ".github/workflows/ci.yml"
+      - "backend/**"
+      - "frontend/**"
+      - "mobile/**"
+      - "contracts/**"
+      - "scripts/**"
+      - "infra/**"
+      - "package-lock.json"
+      - "pnpm-lock.yaml"
   pull_request:
     branches:
       - main
@@ -40,6 +40,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       mobile: ${{ steps.filter.outputs.mobile }}
       contracts: ${{ steps.filter.outputs.contracts }}
+      events: ${{ steps.filter.outputs.events }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,11 +63,32 @@ jobs:
               - 'contracts/**'
               - 'scripts/check-contract-deployment-safety.sh'
               - 'scripts/check-storage-layout-gate.sh'
+            events:
+              - 'schemas/events/**'
+              - 'scripts/codegen-events.mjs'
+              - 'contracts/amana_escrow/src/lib.rs'
+              - 'contracts/amana_escrow/src/generated/**'
+              - 'backend/src/types/generated/**'
+
+  validate-quarantine:
+    name: Validate flaky-tests quarantine registry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate quarantine registry (no expired entries)
+        run: node scripts/validate-flaky-quarantine.mjs
 
   frontend:
     name: Frontend Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: frontend
@@ -97,7 +119,32 @@ jobs:
 
       - name: Test
         if: needs.changes.outputs.frontend == 'true'
-        run: pnpm test
+        # --json writes a machine-readable result file used by the flake reporter
+        run: pnpm test -- --json --outputFile=jest-results.json || true
+
+      - name: Detect flake candidates (frontend)
+        if: needs.changes.outputs.frontend == 'true'
+        run: |
+          node ../scripts/flake-reporter.mjs \
+            --results jest-results.json \
+            --registry ../.github/flaky-tests-quarantine.json \
+            --output ../reports/flake/frontend-${{ github.run_number }}.json \
+            --scope frontend | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Fail if tests failed (deferred from --json run)
+        if: needs.changes.outputs.frontend == 'true'
+        run: |
+          node -e "
+            const r = require('./jest-results.json');
+            if (r.success === false || r.numFailedTests > 0) {
+              console.error('Tests failed: ' + r.numFailedTests + ' failure(s)');
+              process.exit(1);
+            }
+          "
+
+      - name: A11y axe audit (blocking)
+        if: needs.changes.outputs.frontend == 'true'
+        run: pnpm test -- src/__tests__/accessibility --verbose
 
       - name: Upload coverage report
         if: needs.changes.outputs.frontend == 'true'
@@ -107,14 +154,129 @@ jobs:
           path: frontend/coverage/
           retention-days: 7
 
+      - name: Upload flake report (frontend)
+        if: needs.changes.outputs.frontend == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-report-frontend-${{ github.run_number }}
+          path: reports/flake/frontend-${{ github.run_number }}.json
+          retention-days: 30
+
       - name: Skip note (no frontend changes)
         if: needs.changes.outputs.frontend != 'true'
         run: echo "No frontend file changes detected, required gate passed."
 
+  # Event parsing used to live twice — once in Rust, once in TypeScript — with
+  # nothing tying them together, so a topic rename broke settlement silently.
+  # This gate fails the build if the generated clients drift from the canonical
+  # schema, or if the schema drifts from what the contract actually emits.
+  event-schema:
+    name: Event Schema Drift Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.events == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check generated event clients are up to date
+        run: node scripts/codegen-events.mjs --check
+
+      - name: Fail on uncommitted generated output
+        run: |
+          node scripts/codegen-events.mjs
+          if ! git diff --quiet -- contracts/amana_escrow/src/generated backend/src/types/generated; then
+            echo "Generated event clients are not committed. Run:"
+            echo "  node scripts/codegen-events.mjs"
+            git diff -- contracts/amana_escrow/src/generated backend/src/types/generated
+            exit 1
+          fi
+
+  visual-regression:
+    name: Visual Regression (Playwright)
+    runs-on: ubuntu-latest
+    needs: [changes, frontend]
+    if: needs.changes.outputs.frontend == 'true'
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fetch baselines committed to the repo (snapshot PNGs live in the tree).
+          lfs: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (Chromium only)
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Build Next.js app
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+
+      - name: Run visual regression suite
+        run: pnpm exec playwright test --project=chromium-desktop --project=chromium-mobile tests/visual
+        env:
+          CI: true
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+
+      - name: Upload visual regression report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 14
+
+  flag-catalog-drift:
+    name: Feature Flag Catalog Drift Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install ts-node
+        run: npm install -g ts-node typescript --prefer-offline
+
+      - name: Run catalog drift check
+        run: ts-node --skip-project scripts/check-flag-catalog-drift.ts
+
   backend:
     name: Backend Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: backend
@@ -144,13 +306,48 @@ jobs:
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
-        run: pnpm test
+        # --json writes a machine-readable result file used by the flake reporter
+        run: pnpm test -- --json --outputFile=jest-results.json || true
+
+      - name: Detect flake candidates (backend)
+        if: needs.changes.outputs.backend == 'true'
+        run: |
+          node ../scripts/flake-reporter.mjs \
+            --results jest-results.json \
+            --registry ../.github/flaky-tests-quarantine.json \
+            --output ../reports/flake/backend-${{ github.run_number }}.json \
+            --scope backend | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: Fail if tests failed (deferred from --json run)
+        if: needs.changes.outputs.backend == 'true'
+        run: |
+          node -e "
+            const r = require('./jest-results.json');
+            if (r.success === false || r.numFailedTests > 0) {
+              console.error('Tests failed: ' + r.numFailedTests + ' failure(s)');
+              process.exit(1);
+            }
+          "
+
+      - name: Upload flake report (backend)
+        if: needs.changes.outputs.backend == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-report-backend-${{ github.run_number }}
+          path: reports/flake/backend-${{ github.run_number }}.json
+          retention-days: 30
 
       - name: Enforce Admin Regression Test Policy
         if: needs.changes.outputs.backend == 'true'
         run: |
           chmod +x ../scripts/check-admin-test-coverage.sh
           ../scripts/check-admin-test-coverage.sh
+
+      - name: Validate example env files against the schema
+        if: needs.changes.outputs.backend == 'true'
+        env:
+          NODE_ENV: test
+        run: pnpm tsx scripts/validate-env-examples.ts
 
       - name: Admin auth regression suite
         if: needs.changes.outputs.backend == 'true'
@@ -159,6 +356,12 @@ jobs:
           JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
         run: pnpm jest --config jest.config.js --forceExit --detectOpenHandles --testPathPatterns='admin\.auth\.ci-regression' --verbose
 
+      - name: Validate admin OpenAPI docs
+        if: needs.changes.outputs.backend == 'true'
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
+        run: pnpm jest --config jest.config.js --forceExit --detectOpenHandles --testPathPatterns='openapi\.(drift|docs)\.test' --verbose
 
       - name: Upload coverage report
         if: needs.changes.outputs.backend == 'true'
@@ -175,7 +378,7 @@ jobs:
   mobile:
     name: Mobile Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: mobile
@@ -203,14 +406,186 @@ jobs:
         if: needs.changes.outputs.mobile == 'true'
         run: pnpm lint
 
+      - name: Jest unit tests
+        if: needs.changes.outputs.mobile == 'true'
+        run: pnpm test
+
       - name: Skip note (no mobile changes)
         if: needs.changes.outputs.mobile != 'true'
         run: echo "No mobile file changes detected, required gate passed."
 
+  mobile-e2e-ios:
+    name: Mobile E2E Smoke — iOS
+    runs-on: macos-latest
+    needs: [changes, mobile]
+    if: needs.changes.outputs.mobile == 'true'
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Cache Expo prebuild
+        uses: actions/cache@v4
+        with:
+          path: mobile/ios
+          key: mobile-expo-prebuild-ios-${{ hashFiles('mobile/app.json', 'mobile/package.json') }}
+          restore-keys: mobile-expo-prebuild-ios-
+
+      - name: Expo prebuild (iOS)
+        run: pnpm expo prebuild --platform ios --non-interactive
+        env:
+          CI: true
+
+      - name: Build iOS app for simulator
+        run: |
+          xcodebuild \
+            -workspace ios/Amana.xcworkspace \
+            -scheme Amana \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath ios/build \
+            -destination "platform=iOS Simulator,name=iPhone 15,OS=17.5" \
+            build \
+            | xcpretty --color
+        env:
+          CI: true
+
+      - name: Boot iOS simulator
+        run: |
+          UDID=$(xcrun simctl list devices available | grep "iPhone 15" | grep "17.5" | head -1 | grep -E -o '\([-A-F0-9]+\)' | tr -d '()')
+          xcrun simctl boot "$UDID" || true
+          echo "SIMULATOR_UDID=$UDID" >> $GITHUB_ENV
+
+      - name: Run Detox smoke tests (iOS)
+        run: pnpm test:e2e:ios
+        env:
+          CI: true
+
+      - name: Upload Detox artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detox-ios-artifacts
+          path: mobile/.detox-artifacts/
+          retention-days: 7
+
+  mobile-e2e-android:
+    name: Mobile E2E Smoke — Android
+    runs-on: ubuntu-latest
+    needs: [changes, mobile]
+    if: needs.changes.outputs.mobile == 'true'
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: mobile/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache AVD
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-Pixel_6_API_34-${{ runner.os }}
+
+      - name: Create AVD (if not cached)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "no" | avdmanager create avd \
+            --force \
+            --name Pixel_6_API_34 \
+            --abi google_apis/x86_64 \
+            --package "system-images;android-34;google_apis;x86_64" \
+            --device "pixel_6"
+
+      - name: Cache Expo prebuild
+        uses: actions/cache@v4
+        with:
+          path: mobile/android
+          key: mobile-expo-prebuild-android-${{ hashFiles('mobile/app.json', 'mobile/package.json') }}
+          restore-keys: mobile-expo-prebuild-android-
+
+      - name: Expo prebuild (Android)
+        run: pnpm expo prebuild --platform android --non-interactive
+        env:
+          CI: true
+
+      - name: Build Android APK (debug)
+        run: |
+          cd android && ./gradlew assembleDebug assembleAndroidTest -DtestBuildType=debug
+        env:
+          CI: true
+
+      - name: Start Android emulator and run Detox smoke tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          avd-name: Pixel_6_API_34
+          script: cd mobile && pnpm test:e2e:android
+        env:
+          CI: true
+
+      - name: Upload Detox artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detox-android-artifacts
+          path: mobile/.detox-artifacts/
+          retention-days: 7
+
   contracts:
     name: Contracts Required Gate
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, validate-quarantine]
     defaults:
       run:
         working-directory: contracts/amana_escrow

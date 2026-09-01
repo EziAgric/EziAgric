@@ -1,0 +1,69 @@
+name: Money-Math Parity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "shared-test-fixtures/**"
+      - "contracts/amana_escrow/src/lib.rs"
+      - "contracts/amana_escrow/src/tests/bps_fuzz_tests.rs"
+      - ".github/workflows/money-math-parity.yml"
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "shared-test-fixtures/**"
+      - "contracts/amana_escrow/src/lib.rs"
+      - "contracts/amana_escrow/src/tests/bps_fuzz_tests.rs"
+      - ".github/workflows/money-math-parity.yml"
+
+jobs:
+  parity:
+    name: Cross-Language Money-Math Parity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate corpus
+        run: node shared-test-fixtures/generate-corpus.js --seed 42 --cases 1000
+
+      - name: Verify corpus exists
+        run: |
+          if [ ! -f shared-test-fixtures/money_math_corpus.json ]; then
+            echo "ERROR: Corpus not generated"
+            exit 1
+          fi
+          echo "Corpus size: $(wc -c < shared-test-fixtures/money_math_corpus.json) bytes"
+
+      - name: Rust parity tests
+        working-directory: contracts/amana_escrow
+        run: cargo test parity_money_math -- --nocapture
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript parity tests
+        working-directory: frontend
+        run: pnpm jest --config jest.config.ts --testPathPattern='shared-test-fixtures.*money_math_parity' --verbose
+
+      - name: Parity check summary
+        run: |
+          echo "✅ Cross-language money-math parity verified"
+          echo "   - Corpus seed: 42"
+          echo "   - Generated cases: 1000"
+          echo "   - Rust: PASSED"
+          echo "   - TypeScript: PASSED"

@@ -126,7 +126,7 @@ describe('Pact Provider Verification - Trades API', () => {
 
     (TradeService.prototype.getUserStats as jest.Mock).mockResolvedValue({
       totalTrades: 10,
-      totalVolume: 250000,
+      totalVolume: "250000.0000000",
       openTrades: 3,
     });
 

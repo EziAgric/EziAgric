@@ -1,0 +1,81 @@
+name: Mutation Testing — Money Math Pilot
+
+on:
+  # Weekly run every Monday at 03:00 UTC (off-peak, low CI noise)
+  schedule:
+    - cron: "0 3 * * 1"
+
+  # Manual trigger for on-demand runs (e.g. after closing a surviving mutant)
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual run"
+        required: false
+        default: "on-demand mutation check"
+
+jobs:
+  mutation-money-math:
+    name: StrykerJS — feeComputation + lossAllocation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Run StrykerJS mutation pilot
+        env:
+          NODE_ENV: test
+          JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
+        run: pnpm mutation:ci
+
+      - name: Upload mutation HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-money-math-${{ github.run_number }}
+          path: backend/reports/mutation/money-math/
+          retention-days: 30
+
+      - name: Upload mutation JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-json-money-math-${{ github.run_number }}
+          path: backend/reports/mutation/money-math/mutation-report.json
+          retention-days: 30
+
+      - name: Summarise mutation score in job summary
+        if: always()
+        run: |
+          REPORT="reports/mutation/money-math/mutation-report.json"
+          if [ -f "$REPORT" ]; then
+            SCORE=$(node -e "
+              const r = require('./$REPORT');
+              const t = r.mutationScore ?? r.metrics?.mutationScore ?? 'unknown';
+              console.log(t);
+            " 2>/dev/null || echo "unknown")
+            echo "## Mutation score: ${SCORE}%" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Pilot modules: \`feeComputation.ts\` + \`lossAllocation.ts\`" >> $GITHUB_STEP_SUMMARY
+            echo "Report artifact: mutation-report-money-math-${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "See \`docs/mutation-testing-baseline.md\` for triage instructions." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Mutation report not found." >> $GITHUB_STEP_SUMMARY
+          fi

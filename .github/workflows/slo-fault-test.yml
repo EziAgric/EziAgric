@@ -1,0 +1,53 @@
+name: SLO Fault Test
+
+on:
+  pull_request:
+    paths:
+      - "infra/prometheus/slo-recording-rules.yml"
+      - "infra/prometheus/slo-alerting-rules.yml"
+      - "scripts/slo-fault-test.sh"
+      - "docs/slo.md"
+      - "docs/slo-review-log.md"
+  push:
+    branches: [main]
+    paths:
+      - "infra/prometheus/slo-recording-rules.yml"
+      - "infra/prometheus/slo-alerting-rules.yml"
+      - "scripts/slo-fault-test.sh"
+  workflow_dispatch:
+
+jobs:
+  fault-test:
+    name: SLO burn-alert staged fault test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install promtool so the config-as-code guard gets a real schema lint
+      # (YAML validity + that the alerting rules reference defined series).
+      - name: Install promtool
+        run: |
+          PROM_VERSION="2.47.1"
+          wget -q "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
+          tar -xzf "prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
+          sudo mv "prometheus-${PROM_VERSION}.linux-amd64/promtool" /usr/local/bin/
+          promtool --version
+
+      - name: Present recording+alerting rules to promtool
+        run: |
+          mkdir -p /tmp/slo-rules
+          cp infra/prometheus/slo-recording-rules.yml infra/prometheus/slo-alerting-rules.yml infra/prometheus/alertmanager-slo.yml /tmp/slo-rules/
+
+      - name: Lint SLO recording rules
+        run: promtool check rules infra/prometheus/slo-recording-rules.yml
+
+      - name: Lint SLO alerting rules
+        run: promtool check rules infra/prometheus/slo-alerting-rules.yml
+
+      - name: Run SLO fault test (rule-only mode)
+        run: ./scripts/slo-fault-test.sh
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error title=SLO Fault Test Failure::SLO burn-alert staged fault test failed. Fix infra/prometheus rules or scripts/slo-fault-test.sh."

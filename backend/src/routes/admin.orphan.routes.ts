@@ -75,7 +75,8 @@ export function createAdminOrphanRouter(): Router {
     validateRequest({ body: attachBodySchema }),
     async (req: AuthRequest, res: Response) => {
       try {
-        const orphanId = parseInt(req.params.id, 10);
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const orphanId = parseInt(id, 10);
         if (isNaN(orphanId) || orphanId <= 0) {
           return res.status(400).json({ error: 'Invalid orphan deposit id' });
         }

@@ -44,7 +44,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "u32": 1061
+                  "u32": 7542
                 },
                 {
                   "address": "CACMVW2KK4H5FZDFF2AUCAKQTEJMZZWJUIZF23XMRVYQBSXYLHZ6BKWN"
@@ -69,7 +69,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "i128": "17862"
+                  "i128": "44202"
                 }
               ]
             }
@@ -94,13 +94,13 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "i128": "17862"
+                  "i128": "44202"
                 },
                 {
-                  "u32": 6637
+                  "u32": 307
                 },
                 {
-                  "u32": 3363
+                  "u32": 9693
                 },
                 "void"
               ]
@@ -139,7 +139,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                     },
                     {
-                      "i128": "17862"
+                      "i128": "44202"
                     }
                   ]
                 }
@@ -377,7 +377,7 @@
                           "symbol": "amount"
                         },
                         "val": {
-                          "i128": "17862"
+                          "i128": "44202"
                         }
                       },
                       {
@@ -393,7 +393,7 @@
                           "symbol": "buyer_loss_bps"
                         },
                         "val": {
-                          "u32": 6637
+                          "u32": 307
                         }
                       },
                       {
@@ -437,7 +437,7 @@
                           "symbol": "seller_loss_bps"
                         },
                         "val": {
-                          "u32": 3363
+                          "u32": 9693
                         }
                       },
                       {
@@ -678,7 +678,7 @@
                         ]
                       },
                       "val": {
-                        "u32": 1061
+                        "u32": 7542
                       }
                     },
                     {
@@ -691,6 +691,18 @@
                       },
                       "val": {
                         "bool": true
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "NextTimelockId"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -715,6 +727,35 @@
                       },
                       "val": {
                         "address": "CACMVW2KK4H5FZDFF2AUCAKQTEJMZZWJUIZF23XMRVYQBSXYLHZ6BKWN"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "TimelockConfig"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "map": [
+                          {
+                            "key": {
+                              "symbol": "clawback_delay_seconds"
+                            },
+                            "val": {
+                              "u64": "86400"
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "upgrade_delay_seconds"
+                            },
+                            "val": {
+                              "u64": "604800"
+                            }
+                          }
+                        ]
                       }
                     },
                     {
@@ -947,7 +988,7 @@
                       "symbol": "amount"
                     },
                     "val": {
-                      "i128": "17862"
+                      "i128": "44202"
                     }
                   },
                   {

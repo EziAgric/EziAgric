@@ -251,7 +251,7 @@ mod tests {
     extern crate std;
     use std::collections::BTreeSet;
     use super::*;
-    use soroban_sdk::{Env, testutils::Address as _};
+    use soroban_sdk::{Env, TryIntoVal, testutils::Address as _};
 
     // -----------------------------------------------------------------------
     // AdminClawbackPayload
@@ -278,12 +278,8 @@ mod tests {
         let payload = AdminClawbackPayload::new(42_u64, 1_000_i128, destination);
         let args = payload.to_args(&env);
         // First arg is trade_id (u64)
-        let expected: Val = 42_u64.into_val(&env);
-        assert_eq!(
-            args.get(0).unwrap(),
-            expected,
-            "first argument must be the trade_id"
-        );
+        let got: u64 = args.get(0).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(got, 42_u64, "first argument must be the trade_id");
     }
 
     #[test]
@@ -293,12 +289,8 @@ mod tests {
         let payload = AdminClawbackPayload::new(1_u64, 7_500_i128, destination);
         let args = payload.to_args(&env);
         // Second arg is clawback_amount (i128)
-        let expected: Val = 7_500_i128.into_val(&env);
-        assert_eq!(
-            args.get(1).unwrap(),
-            expected,
-            "second argument must be clawback_amount"
-        );
+        let got: i128 = args.get(1).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(got, 7_500_i128, "second argument must be clawback_amount");
     }
 
     #[test]
@@ -308,12 +300,8 @@ mod tests {
         let payload = AdminClawbackPayload::new(1_u64, 1_000_i128, destination.clone());
         let args = payload.to_args(&env);
         // Third arg is destination (Address)
-        let expected: Val = destination.into_val(&env);
-        assert_eq!(
-            args.get(2).unwrap(),
-            expected,
-            "third argument must be the destination address"
-        );
+        let got: Address = args.get(2).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(got, destination, "third argument must be the destination address");
     }
 
     #[test]
@@ -358,10 +346,10 @@ mod tests {
         let payload = AdminCancelTradePayload::new(trade_id, admin.clone());
         let args = payload.to_args(&env);
 
-        let expected_tid: Val = trade_id.into_val(&env);
-        let expected_admin: Val = admin.into_val(&env);
-        assert_eq!(args.get(0).unwrap(), expected_tid);
-        assert_eq!(args.get(1).unwrap(), expected_admin);
+        let got_tid: u64 = args.get(0).unwrap().try_into_val(&env).unwrap();
+        let got_admin: Address = args.get(1).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(got_tid, trade_id);
+        assert_eq!(got_admin, admin);
     }
 
     // -----------------------------------------------------------------------
@@ -386,8 +374,8 @@ mod tests {
         let env = Env::default();
         let payload = AdminUpdateFeePayload::new(150_u32);
         let args = payload.to_args(&env);
-        let expected: Val = 150_u32.into_val(&env);
-        assert_eq!(args.get(0).unwrap(), expected);
+        let got: u32 = args.get(0).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(got, 150_u32);
     }
 
     #[test]
@@ -438,10 +426,10 @@ mod tests {
         let payload = AdminWithdrawFeesPayload::new(amount, destination.clone());
         let args = payload.to_args(&env);
 
-        let expected_amount: Val = amount.into_val(&env);
-        let expected_dest: Val = destination.into_val(&env);
-        assert_eq!(args.get(0).unwrap(), expected_amount);
-        assert_eq!(args.get(1).unwrap(), expected_dest);
+        let got_amount: i128 = args.get(0).unwrap().try_into_val(&env).unwrap();
+        let got_dest: Address = args.get(1).unwrap().try_into_val(&env).unwrap();
+        assert_eq!(got_amount, amount);
+        assert_eq!(got_dest, destination);
     }
 
     #[test]

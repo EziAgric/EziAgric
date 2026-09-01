@@ -86,15 +86,45 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          # Startup probe: gives the container time to initialise before
+          # liveness/readiness take over. Uses /health/startup which checks
+          # critical deps + config + admin signing key.
+          startupProbe:
+            httpGet:
+              path: /health/startup
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          # Liveness probe: process-only truth. Restarts the pod on failure.
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
             initialDelaySeconds: 30
             periodSeconds: 15
+          # Readiness probe: critical deps (DB + Redis). During graceful
+          # shutdown the endpoint returns 503 so traffic stops routing to
+          # this pod before it drains in-flight requests.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: http
             initialDelaySeconds: 15
-            periodSeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            # Give the pod a grace window (before SIGTERM) to let the
+            # readiness probe flip to 503 and de-list from the load
+            # balancer, preventing 5xx during the drain window.
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 10
+      # Tune termination grace to accommodate: preStop sleep (10s) + interval
+      # between preStop and SIGTERM + bounded drain (<30s). Explicit value
+      # guarantees the orchestrator's force-exit timer fires before the
+      # kubelet kills the container.
+      terminationGracePeriodSeconds: 45

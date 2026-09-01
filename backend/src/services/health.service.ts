@@ -7,7 +7,7 @@ import { horizonServer, sorobanRpcClient } from "../config/stellar";
 import { getPinataClient } from "../config/ipfs";
 import { AlertService, alertService as defaultAlertService } from "./alert.service";
 import { getCircuitBreakerStates } from "../lib/circuitBreaker";
-import { recordSorobanRpcHealth } from "../lib/metrics";
+import { recordSorobanRpcHealth, recordEventListenerLag } from "../lib/metrics";
 
 interface HealthIndicatorResult {
   status: "up" | "down";
@@ -467,6 +467,10 @@ export class HealthService {
       ? (Date.now() - latestLedger.processedAt.getTime()) / 1000
       : -1;
 
+    // SLO SLI: event-processing lag is sampled whenever a health check runs.
+    // Negative/unknown (no processed event yet) is coerced to 0 by the metric.
+    recordEventListenerLag(indexerLagSeconds);
+
     const missingEnvVars =
       configCheck.status === "down"
         ? configCheck.message
@@ -499,6 +503,55 @@ export class HealthService {
         ipfsGateway: env.IPFS_GATEWAY_URL,
         missingEnvVars,
         circuitBreakers,
+      },
+    };
+  }
+
+  /**
+   * Perform readiness check for Kubernetes readiness probe.
+   *
+   * Only checks the critical internal dependencies that directly affect
+   * the ability to serve traffic: database and Redis.
+   *
+   * Deliberately EXCLUDES degraded-but-tolerable external services
+   * (Stellar RPC, IPFS/Pinata, on-chain indexer) so that a brownout on
+   * those services does NOT remove the pod from the load-balancer
+   * rotation and cause a self-inflicted outage.
+   *
+   * k8s usage:
+   *   readinessProbe:
+   *     httpGet: { path: /health/ready, port: 4000 }
+   *     failureThreshold: 3
+   *     periodSeconds: 10
+   */
+  async performReadinessCheck(): Promise<{
+    status: "ready" | "not_ready";
+    timestamp: string;
+    checks: {
+      database: HealthIndicatorResult;
+      redis: HealthIndicatorResult;
+    };
+  }> {
+    const timestamp = new Date().toISOString();
+
+    const [databaseCheck, redisCheck] = await Promise.all([
+      this.checkDatabase(),
+      this.checkRedis(),
+    ]);
+
+    await this.dispatchAlerts(databaseCheck, redisCheck);
+
+    const status =
+      databaseCheck.status === "up" && redisCheck.status === "up"
+        ? "ready"
+        : "not_ready";
+
+    return {
+      status,
+      timestamp,
+      checks: {
+        database: databaseCheck,
+        redis: redisCheck,
       },
     };
   }

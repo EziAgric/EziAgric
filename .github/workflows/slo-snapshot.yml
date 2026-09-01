@@ -1,0 +1,38 @@
+name: slo-snapshot
+
+on:
+  schedule:
+    # Mondays 09:00 UTC — feeds the weekly SLO review (docs/slo.md).
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install tsx
+        run: npx --yes tsx --version
+
+      - name: Run SLO snapshot
+        env:
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+          SLO_SNAPSHOT_FILE: ${{ github.workspace }}/slo-snapshots/slo-snapshot.jsonl
+        run: npx tsx scripts/slo-snapshot.ts
+
+      - name: Commit snapshot
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: weekly SLO snapshot"
+          file_pattern: slo-snapshots/slo-snapshot.jsonl

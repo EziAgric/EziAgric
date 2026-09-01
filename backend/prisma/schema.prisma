@@ -46,6 +46,23 @@ enum StreamStatus {
   COMPLETED
 }
 
+/// Lifecycle of a payout intent. The order matters: an intent only ever moves
+/// forward, and CONFIRMED is terminal for the purposes of deduplication.
+enum PayoutIntentStatus {
+  PENDING
+  SUBMITTED
+  CONFIRMED
+  FAILED
+}
+
+/// Which fund-moving contract call an intent covers.
+enum PayoutKind {
+  RELEASE
+  MILESTONE_RELEASE
+  REFUND
+  CLAWBACK
+}
+
 enum ChainEventSyncStatus {
   PENDING
   RETRYING
@@ -127,6 +144,8 @@ model Trade {
   @@index([buyerAddress])
   @@index([sellerAddress])
   @@index([status])
+  @@index([buyerAddress, status, createdAt])
+  @@index([sellerAddress, status, createdAt])
 }
 
 /// TradeTemplate stores a user's reusable trade terms. The buyer is always the
@@ -250,6 +269,7 @@ model TradeEvidence {
   trade Trade @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
 
   @@index([tradeId])
+  @@index([tradeId, createdAt])
   @@index([cid])
 }
 
@@ -492,9 +512,14 @@ model AdminActionAudit {
   targetReference String?  @db.VarChar(255)
   note            String?  @db.Text
   createdAt       DateTime @default(now())
+  /// SHA-256 hash of the previous entry's `hash` (empty string for the first entry).
+  prevHash        String   @default("") @db.VarChar(64)
+  /// SHA-256 hash of this entry's fields chained to prevHash — see auditChain.ts.
+  hash            String   @default("") @db.VarChar(64)
 
   @@index([action, createdAt])
   @@index([actorAddress])
+  @@index([createdAt])
 }
 
 /// EscrowReleaseMilestone represents one pre-defined partial release point.
@@ -515,6 +540,41 @@ model EscrowReleaseMilestone {
   @@unique([tradeId, milestoneIndex])
   @@index([tradeId, dueAt])
   @@index([tradeId, releasedAt])
+}
+
+/// PayoutIntent records the intent to move escrowed funds *before* the
+/// transaction is built, so a retry can be recognised as the same payout.
+///
+/// Release and refund submissions can succeed on-chain and then fail before the
+/// DB commit; without a durable intent, the retry looks like a fresh request and
+/// pays out twice. The `idempotencyKey` unique constraint is the enforcement
+/// point — a duplicate insert fails at the database, not in application logic
+/// that a crash could skip.
+///
+/// - idempotencyKey: caller-supplied, or derived from (kind, tradeId, milestone)
+/// - txHash: Soroban transaction hash, recorded on first successful submission
+/// - duplicateAttempts: how many retries were short-circuited, for the metric
+model PayoutIntent {
+  id                Int                @id @default(autoincrement())
+  idempotencyKey    String             @unique @db.VarChar(255)
+  kind              PayoutKind
+  tradeId           String             @db.VarChar(255)
+  milestoneIndex    Int?
+  amountUsdc        String             @db.VarChar(100)
+  destination       String             @db.VarChar(255)
+  requestedBy       String             @db.VarChar(255)
+  status            PayoutIntentStatus @default(PENDING)
+  txHash            String?            @db.VarChar(255)
+  duplicateAttempts Int                @default(0)
+  lastError         String?            @db.Text
+  submittedAt       DateTime?
+  confirmedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([tradeId, kind])
+  @@index([status, updatedAt])
+  @@index([txHash])
 }
 
 /// Stream model representing a vested token stream
@@ -606,4 +666,53 @@ model ContractPauseLog {
 
   @@index([paused, createdAt])
   @@index([guardianAddress])
+}
+
+/// JobHeartbeat tracks the last successful execution time for scheduled jobs.
+/// Used to detect missed heartbeats and trigger alerts when jobs silently fail.
+model JobHeartbeat {
+  id              Int      @id @default(autoincrement())
+  /// Unique job identifier (e.g., "reconciliation", "trade-expiry", "webhook")
+  jobType         String   @unique @db.VarChar(100)
+  /// Timestamp of the last successful job execution
+  lastHeartbeat   DateTime @default(now())
+  /// Current job status: running|idle|failed
+  status          String   @default("idle") @db.VarChar(50)
+  /// Expected interval between job runs (milliseconds)
+  intervalMs      Int      @default(86400000) // 24 hours default
+  /// Next expected heartbeat time (lastHeartbeat + intervalMs)
+  nextExpectedAt  DateTime
+  /// Optional error message from last failed run
+  lastError       String?  @db.Text
+  /// Number of consecutive failures
+  failureCount    Int      @default(0)
+  /// Timestamp of the last check by the health watchdog
+  lastCheckedAt   DateTime @default(now())
+  /// User-provided notes/context about the job
+  notes           String?  @db.VarChar(500)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([jobType])
+  @@index([status, nextExpectedAt])
+  @@index([lastCheckedAt])
+}
+
+/// EscrowAudit logs every escrow state transition for compliance and outbox completeness verification.
+/// Records both the previous and new status so gap-detection can verify events were emitted.
+model EscrowAudit {
+  id              Int      @id @default(autoincrement())
+  tradeId         String   @db.VarChar(255)
+  eventType       String   @db.VarChar(100)
+  fromStatus      String?  @db.VarChar(50)
+  toStatus        String   @db.VarChar(50)
+  actor           String?  @db.VarChar(255)
+  contractId      String?  @db.VarChar(255)
+  ledgerSequence  Int?
+  extra           Json?
+  createdAt       DateTime @default(now())
+
+  @@index([tradeId])
+  @@index([tradeId, createdAt])
+  @@index([eventType])
 }

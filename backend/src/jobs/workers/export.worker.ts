@@ -3,6 +3,7 @@ import { appLogger } from '../../middleware/logger';
 import { createQueueConnection, ExportJobData } from '../queue';
 import { prisma } from '../../lib/db';
 import { Parser as CsvParser } from 'json2csv';
+import { attachDeadLetterQueue } from '../deadLetter';
 
 export interface ExportResult {
   format: 'csv' | 'json';
@@ -22,7 +23,7 @@ async function uploadToS3(data: string, key: string): Promise<string | undefined
 }
 
 export function createExportWorker(): Worker<ExportJobData> {
-  return new Worker<ExportJobData>(
+  const worker = new Worker<ExportJobData>(
     'exports',
     async (job: Job<ExportJobData>): Promise<ExportResult> => {
       const { requestedBy, format, tradeIds, filters } = job.data;
@@ -55,4 +56,6 @@ export function createExportWorker(): Worker<ExportJobData> {
     },
     { connection: createQueueConnection() },
   );
+  attachDeadLetterQueue(worker, 'exports');
+  return worker;
 }
