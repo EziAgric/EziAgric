@@ -10,6 +10,7 @@ import { prisma } from '../lib/db';
 
 const CHALLENGE_PREFIX = 'challenge:';
 const REVOKED_PREFIX = 'revoked_jti:';
+const TOKEN_VERSION_PREFIX = 'token_version:';
 const CHALLENGE_TTL = 300; // 5 min
 const AUTH_FAILURE_PREFIX = 'auth:challenge-failures:';
 const AUTH_LOCKOUT_THRESHOLD = 5;
@@ -25,6 +26,8 @@ export interface JWTPayload {
   sub: string;
   walletAddress: string;
   jti: string;
+  /** Token generation this JWT was issued against — see AuthService.bumpTokenVersion. */
+  tv: number;
   iat?: number;
   exp?: number;
   iss?: string;
@@ -125,7 +128,7 @@ export class AuthService {
       // Ensure user exists
       await findOrCreateUser(walletAddress);
 
-      return this.issueToken(walletAddress);
+      return await this.issueToken(walletAddress);
     } catch (error: unknown) {
       if (isAppError(error)) throw error;
       throw new AppError(ErrorCode.INFRA_ERROR, 'Authentication service dependency failure', 503);
@@ -150,6 +153,14 @@ export class AuthService {
       }
 
       if (await this.isTokenRevoked(decoded.jti)) {
+        throw new AppError(ErrorCode.AUTH_ERROR, 'Unauthorized: token has been revoked', 401);
+      }
+
+      // Tokens issued before a role/status change (or an incident-driven bulk
+      // revoke) carry a stale generation number and must be rejected even
+      // though the JWT signature and jti are still individually valid.
+      const currentVersion = await this.getTokenVersion(decoded.walletAddress);
+      if ((decoded.tv ?? 0) < currentVersion) {
         throw new AppError(ErrorCode.AUTH_ERROR, 'Unauthorized: token has been revoked', 401);
       }
 
@@ -220,7 +231,7 @@ export class AuthService {
         Math.max(decoded.exp, now) + REFRESH_EXPIRY_GRACE_SECONDS,
       );
 
-      return this.issueToken(decoded.walletAddress);
+      return await this.issueToken(decoded.walletAddress);
     } catch (error: unknown) {
       if (isAppError(error)) throw error;
       throw new AppError(ErrorCode.AUTH_ERROR, 'Token refresh failed', 401);
@@ -252,8 +263,31 @@ export class AuthService {
     }
   }
 
+  /** Current token generation for a wallet. Tokens issued at an older generation are rejected. */
+  static async getTokenVersion(walletAddress: string): Promise<number> {
+    try {
+      const raw = await redis.get(`${TOKEN_VERSION_PREFIX}${walletAddress.toLowerCase()}`);
+      const parsed = raw ? parseInt(raw, 10) : 0;
+      return Number.isFinite(parsed) ? parsed : 0;
+    } catch (error: unknown) {
+      throw new AppError(ErrorCode.INFRA_ERROR, 'Token version check failed', 503);
+    }
+  }
 
-  private static issueToken(walletAddress: string): string {
+  /**
+   * Bumps a wallet's token generation, immediately invalidating every JWT
+   * issued before this call regardless of individual expiry — call this on
+   * role/status/lock changes, or for incident-driven bulk revocation.
+   */
+  static async bumpTokenVersion(walletAddress: string): Promise<number> {
+    try {
+      return await (redis as any).incr(`${TOKEN_VERSION_PREFIX}${walletAddress.toLowerCase()}`);
+    } catch (error: unknown) {
+      throw new AppError(ErrorCode.INFRA_ERROR, 'Token version bump failed', 503);
+    }
+  }
+
+  private static async issueToken(walletAddress: string): Promise<string> {
     const secret = process.env.JWT_SECRET ?? env.JWT_SECRET;
     if (!secret) {
       throw new Error('JWT_SECRET not set');
@@ -262,11 +296,13 @@ export class AuthService {
     const ttl = parseInt(process.env.JWT_EXPIRES_IN ?? env.JWT_EXPIRES_IN, 10) || 86400;
     const now = Math.floor(Date.now() / 1000);
     const jti = crypto.randomUUID();
+    const tv = await this.getTokenVersion(walletAddress);
 
     const payload: JWTPayload = {
       sub: walletAddress.toLowerCase(),
       walletAddress: walletAddress.toLowerCase(),
       jti,
+      tv,
       iss: process.env.JWT_ISSUER ?? env.JWT_ISSUER,
       aud: process.env.JWT_AUDIENCE ?? env.JWT_AUDIENCE,
       iat: now,

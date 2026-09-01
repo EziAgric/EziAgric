@@ -1,9 +1,11 @@
 import { Response, Router } from "express";
+import { StrKey } from "@stellar/stellar-sdk";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { AuthRequest, AuthService } from "../services/auth.service";
 import { createWalletRateLimiter } from "../lib/rateLimit";
 import { RATE_LIMIT_CONFIG } from "../config/rateLimit";
+import { prisma } from "../lib/db";
 import { csrfToken } from "../middleware/csrf.middleware";
 
 function toIso(seconds: number | undefined): string | null {
@@ -67,6 +69,48 @@ export function createAdminAuthRouter(): Router {
       } catch (error) {
         console.error("REVOKE HANDLER ERROR:", error);
         res.status(500).json({ error: "Failed to revoke admin session" });
+      }
+    },
+  );
+
+  /**
+   * Bulk-revoke every outstanding JWT for a wallet by bumping its token
+   * generation (Issue #213). Unlike /api/admin/sessions/revoke (single jti),
+   * this invalidates all sessions immediately regardless of individual
+   * expiry — for use on role/status/lock changes or incident response.
+   */
+  router.post(
+    "/api/admin/sessions/revoke-all",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    async (req: AuthRequest, res: Response): Promise<void> => {
+      try {
+        const walletAddress = req.body?.walletAddress;
+        if (typeof walletAddress !== "string" || !StrKey.isValidEd25519PublicKey(walletAddress)) {
+          res.status(400).json({ error: "Bad Request: walletAddress must be a valid Stellar public key" });
+          return;
+        }
+
+        const tokenVersion = await AuthService.bumpTokenVersion(walletAddress);
+        await prisma.adminActionAudit.create({
+          data: {
+            action: "REVOKE_ALL_SESSIONS",
+            actorAddress: req.user!.walletAddress,
+            targetReference: walletAddress.toLowerCase(),
+            note: req.body?.reason && typeof req.body.reason === "string" ? req.body.reason : null,
+          },
+        });
+
+        res.status(200).json({
+          message: "All sessions revoked successfully",
+          walletAddress: walletAddress.toLowerCase(),
+          tokenVersion,
+          revokedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("REVOKE ALL HANDLER ERROR:", error);
+        res.status(500).json({ error: "Failed to revoke sessions" });
       }
     },
   );

@@ -51,5 +51,20 @@ export function createAdminAuditRouter(): Router {
     },
   );
 
+  router.get(
+    "/api/admin/audit/verify",
+    authMiddleware,
+    adminMiddleware,
+    adminRateLimit,
+    async (_req: AuthRequest, res: Response, next) => {
+      try {
+        const result = await adminAuditService.verifyChain();
+        res.status(200).json(result);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   return router;
 }
