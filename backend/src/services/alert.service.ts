@@ -11,6 +11,11 @@ export type AlertType =
   | "reconciliation_drift_critical"
   | "reconciliation_job_failure"
   | "admin_soroban_tx_failure"
+  | "job_missed_heartbeat"
+  | "job_repeated_failures"
+  | "job_failure_rate_high"
+  | "outbox_critical_gaps"
+  | "outbox_scan_failed"
   | "synthetic_probe_failure"
   | "pii_log_leak_detected";
 

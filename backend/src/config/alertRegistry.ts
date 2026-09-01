@@ -65,6 +65,31 @@ export const ALERT_REGISTRY: Record<AlertType, AlertRegistryEntry> = {
     runbookUrl: "docs/admin-tx-failure-alerting.md",
     description: "Admin Soroban submissions are failing repeatedly (bad key, RPC outage, invalid XDR).",
   },
+  job_missed_heartbeat: {
+    routing: "ticket",
+    runbookUrl: "docs/runbooks/incident-response.md#severity-levels",
+    description: "A monitored background job has not reported a heartbeat within its expected interval.",
+  },
+  job_repeated_failures: {
+    routing: "page",
+    runbookUrl: "docs/runbooks/incident-response.md#severity-levels",
+    description: "A background job has failed repeatedly across consecutive runs.",
+  },
+  job_failure_rate_high: {
+    routing: "page",
+    runbookUrl: "docs/runbooks/incident-response.md#severity-levels",
+    description: "A background job's failure rate crossed the alerting threshold.",
+  },
+  outbox_critical_gaps: {
+    routing: "page",
+    runbookUrl: "docs/runbooks/incident-response.md#severity-levels",
+    description: "The outbox scanner found unpublished events past the critical-gap threshold — possible missed settlement actions.",
+  },
+  outbox_scan_failed: {
+    routing: "ticket",
+    runbookUrl: "docs/runbooks/incident-response.md#severity-levels",
+    description: "The outbox completeness scan itself failed to run or complete.",
+  },
   synthetic_probe_failure: {
     routing: "page",
     runbookUrl: "docs/synthetic-probes-policy.md#failure-triage",

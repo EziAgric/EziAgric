@@ -23,6 +23,8 @@ import { createAdminDlqRouter } from "./routes/admin.dlq.routes";
 import { adminFeatureGate } from "./middleware/adminFeatureGate.middleware";
 import { env } from "./config/env";
 import { csrfProtection } from "./middleware/csrf.middleware";
+import { createOutboxRoutes } from "./routes/outbox.routes";
+import { createJobHealthRoutes } from "./routes/job-health.routes";
 import { createPublicApiRouter } from "./routes/publicApi.router";
 import {
   apiVersionMiddleware,
@@ -156,6 +158,12 @@ export function createApp(isShuttingDown?: () => boolean): express.Application {
   app.use("/webhooks/inbound", inboundWebhooksRoutes);
   // Webhooks: CRUD /webhooks
   app.use("/webhooks", webhooksRoutes);
+
+  // Admin outbox consistency monitoring: GET /admin/outbox/health, GET /admin/outbox/gaps
+  app.use(adminFeatureGate, csrfProtection, createOutboxRoutes());
+
+  // Job heartbeat health dashboard: GET /health/jobs, GET /health/jobs/:jobType
+  app.use("/health", createJobHealthRoutes());
 
   // Admin dead-letter queue inspection/replay: GET /api/admin/dlq/:queue, POST /api/admin/dlq/:queue/:jobId/replay
   app.use(adminFeatureGate, csrfProtection, createAdminDlqRouter());
