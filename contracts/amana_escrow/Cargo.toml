@@ -11,16 +11,16 @@ crate-type = ["cdylib", "rlib"]
 wasm = []
 
 [dependencies]
-soroban-sdk = "25.3.0"
+soroban-sdk = "27.0.6"
 
 # Enable testutils on host builds so integration tests can import `test_fixture`
 # without changing `cargo test` flags. WASM builds (target wasm32) keep the
 # lean dependency without testutils.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-soroban-sdk = { version = "25.3.0", features = ["testutils"] }
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
 
 [dev-dependencies]
-soroban-sdk = { version = "25.3.0", features = ["testutils"] }
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
 quickcheck = "1.0"
 quickcheck_macros = "1.0"
 rand = { version = "0.8", features = ["std", "std_rng"] }
