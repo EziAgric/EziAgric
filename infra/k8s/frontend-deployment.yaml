@@ -30,6 +30,7 @@ spec:
                 secretKeyRef:
                   name: amana-secrets
                   key: PINATA_JWT
+          # Requests ~= p50 usage, limits = p99 + headroom; evidence in docs/k8s-capacity.md.
           resources:
             requests:
               cpu: 100m
