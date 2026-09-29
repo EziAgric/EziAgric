@@ -10,6 +10,22 @@ This is the main repository containing the smart contracts and orchestration log
 
 ---
 
+## 📁 Repository Layout
+
+The root of this repository is intentionally small. Each top-level entry has a single, clear purpose:
+
+- `frontend/` → Next.js app (UI + wallet + Supabase/Pinata client integration)
+- `backend/` → Node.js/TypeScript API (Supabase + Pinata + integration endpoints)
+- `mobile/` → React Native Expo app (mobile wallet, notification, and trade UX)
+- `contracts/` → Rust/Soroban smart contracts
+- `docs/` → Current project documentation (ADRs, threat model, policies, guides)
+- `docs/archive/` → **Historical** completion summaries and hardening PR notes, kept for reference only. See [`docs/archive/README.md`](./docs/archive/README.md).
+- `.github/` → CI workflows and repository automation
+
+> The former top-level `archive/` directory has been folded into `docs/` and `docs/archive/`. Nothing at the repository root is historical — if you are looking for old completion summaries or hardening notes, they now live under `docs/archive/`.
+
+---
+
 ## 🚀 The Mission
 
 To provide a programmable safety net for regional commodity trading. Amana ensures that the risk of "sending first" is eliminated, replaced by a secure, neutral vault that only releases funds when delivery is verified.
@@ -76,11 +92,6 @@ The backend writes `backend/src/docs/openapi.json` from the YAML spec in non-pro
 
 ## 🔒 Required PR CI Gates
 
-Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
-
-- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
-- **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
-- **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobil
 Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
 
 - **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
@@ -175,34 +186,3 @@ Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr):
 
 - [Threat Model](./docs/threat-model.md) — reviewed quarterly and on trigger events; see §8 for cadence/ownership and `docs/threat-model-review-checklist.md` for the reviewer checklist.
 - [Secrets Policy & Rotation](./docs/secrets-policy.md) — secrets inventory (owner, location, max-age), rotation automation, and verification. Rotation reminders are opened automatically by [`.github/workflows/secrets-rotation-reminder.yml`](./.github/workflows/secrets-rotation-reminder.yml).
-- [PII Encryption at Rest](./docs/pii-encryption.md) — classified PII column inventory, app-layer envelope encryption design, blind-index search, key rotation procedure, and decrypt access logging.
-- [Software Bill of Materials (SBOM)](./docs/sbom.md) — CycloneDX SBOM generated for every release artifact via [`.github/workflows/sbom.yml`](./.github/workflows/sbom.yml), attached to GitHub Releases, with a weekly vulnerability diff scan.
-- [Golden Signals Dashboard](./docs/dashboards.md) — Grafana dashboard stored as code ([`infra/grafana/`](./infra/grafana)) covering API latency/traffic/errors and DB/queue saturation, with deploy annotations wired into staging deploys.
-- [Alert Routing Policy](./docs/alert-routing-policy.md) — page-vs-ticket severity rubric, runbook linkage enforced in CI, per-alert dedup windows, and the [monthly alert review log](./docs/alert-review-log.md).
-- [Synthetic Probes Policy](./docs/synthetic-probes-policy.md) — hourly staging probe of the core escrow journey (auth → create → deposit → release), with failure alerting and a results dashboard log.
-- [Preview Environments](./docs/preview-environments.md) — per-PR ephemeral backend stack (compose `preview` profile) spun up by the `preview` label workflow, smoke-tested and torn down under TTL/concurrency budget caps.
-- [Backup Freshness & Restore Drills](./docs/runbooks/backup-restore-drill.md) — weekly freshness gate that pages `backup_stale` on a missing/stale daily backup, plus a quarterly automated restore drill (integrity assertions, app smoke on the restored copy, RTO history under `backup-drills/`).
-- [Incident Response](./docs/runbooks/incident-response.md) — severity levels, incident roles, and channel/ticket conventions; see the [postmortem template](./docs/runbooks/postmortem-template.md), the [postmortem archive](./docs/postmortems/README.md), and a worked [tabletop exercise](./docs/runbooks/tabletop-exercise-escrow-drain.md).
-
-## 🤝 Contributing
-
-EziAgric is an open-source project aimed at improving food security and trade efficiency. We welcome developers, designers, and agricultural experts!
-
-1. Fork the Project.
-2. Create your Feature Branch (`git checkout -b feature/NewFeature`).
-3. Commit your Changes (`git commit -m 'Add NewFeature'`).
-4. Push to the Branch (`git push origin feature/NewFeature`).
-5. Open a Pull Request.
-
-### Admin route development
-
-If you are adding or modifying admin routes, see the
-[Admin Route Contribution Guide](./docs/admin-route-contribution-guide.md)
-for architecture details, middleware requirements, testing expectations, and a
-step-by-step example.
-
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
-// setting up and starting out
