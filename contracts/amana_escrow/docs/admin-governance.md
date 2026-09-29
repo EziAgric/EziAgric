@@ -146,7 +146,7 @@ The backend should:
 1. The admin address is always read from instance storage (`DataKey::Admin`), never accepted as a caller-supplied argument, so it cannot be spoofed by passing a different address.
 2. `require_auth()` is called on that stored address before any storage read/write or token transfer — no state mutation is reachable by an unauthorized caller, including under a mocked-auth test harness.
 3. There is no implicit admin fallback: if the contract was never initialized, `expect("Not initialized")` panics rather than treating the operation as open-access.
-4. The pattern is inlined at each admin-only entry point (see the `// ACCESS CONTROL:` comments in `src/lib.rs`) rather than behind a single shared helper, so each function's invariant is directly inspectable from its own body during review.
+4. The pattern is inlined at each admin-only entry point (see the `// ACCESS CONTROL:` comments in `src/admin.rs`) rather than behind a single shared helper, so each function's invariant is directly inspectable from its own body during review.
 
 ## Feature Flag Gating (Issue #113)
 

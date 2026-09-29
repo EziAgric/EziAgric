@@ -57,7 +57,7 @@ The corresponding `ErrorCode` enum values (in `backend/src/errors/errorCodes.ts`
 
 | Artifact                                                   | Purpose                                 |
 |------------------------------------------------------------|-----------------------------------------|
-| `contracts/amana_escrow/src/lib.rs` → `pub mod clawback_errors` | Canonical string constants on-chain |
+| `contracts/amana_escrow/src/errors.rs` → `pub mod clawback_errors` | Canonical string constants on-chain |
 | `backend/src/errors/errorCodes.ts` → `enum ErrorCode`     | Backend enum values                     |
 | `backend/src/services/contractClawbackError.service.ts`   | Mapping logic + user-facing messages    |
 | `contracts/amana_escrow/tests/clawback_error_tests.rs`    | On-chain test assertions                |

@@ -27,7 +27,7 @@ npm run codegen:events:check    # verify without writing (what CI runs)
 `scripts/codegen-events.mjs` refuses to run if any of these hold:
 
 1. The schema declares an event the contract no longer emits, or misses one it
-   does — it parses `#[contractevent]` out of `contracts/amana_escrow/src/lib.rs`
+   does — it parses `#[contractevent]` out of `contracts/amana_escrow/src/*.rs` (events live in `events.rs`)
    and compares.
 2. An event's topics or field list differ between the schema and the contract.
 3. `schemaVersion` disagrees with the contract's `EVENT_SCHEMA_VERSION`.
@@ -59,7 +59,7 @@ policy in `contracts/amana_escrow/docs/event-schema-migration-plan.md`:
 
 ### Adding an event
 
-1. Add the `#[contractevent]` struct in `contracts/amana_escrow/src/lib.rs`.
+1. Add the `#[contractevent]` struct in `contracts/amana_escrow/src/events.rs`.
 2. Add the matching entry to `schemas/events/amana_escrow.events.json`, with
    `rustStruct` set to the struct name and `topics` to the exact strings from the
    attribute. Add `tradeStatus` only if the event moves a trade's status.

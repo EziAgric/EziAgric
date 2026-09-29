@@ -14,6 +14,7 @@
 ## PR Checklist
 - [ ] Code builds and passes all unit & integration tests locally (`pnpm test` / `cargo test`)
 - [ ] Documentation has been updated to reflect code changes
+- [ ] **Architecture Diagrams**: If this PR changes system boundaries, containers, the trade lifecycle, the dispute flow or the contract module layout, the matching diagram in [`docs/architecture/`](../docs/architecture/README.md) has been updated.
 - [ ] **Admin Regression Tests**: If this PR modifies admin routes, controllers, middleware, or services, corresponding regression tests under `backend/src/__tests__/` have been added or updated (enforced by CI policy).
 - [ ] **Secret Management**: No secrets, private keys, or credentials are hardcoded.
 - [ ] **Network Isolation & Security**: Infrastructure changes preserve network isolation for admin endpoints.

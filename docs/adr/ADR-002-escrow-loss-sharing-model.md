@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (implemented in `contracts/amana_escrow/src/lib.rs`,
+Accepted (implemented in `contracts/amana_escrow/src/dispute.rs`,
 `resolve_dispute`; surfaced to API consumers as `buyerLossBps`/
 `sellerLossBps` on trade creation - see
 [docs/api/trades.md](../api/trades.md#create-a-trade)).
@@ -150,3 +150,8 @@ split calculations in both the Rust contract and TypeScript backend:
 - **Positive:** Eliminates dust-stranding edge cases for odd stroop amounts.
 - **Positive:** Backend and contract can be tested against identical fixture suites.
 - **Negative:** Requires a contract upgrade to adopt the new rounding in on-chain calculations.
+
+## Diagrams
+
+- [Dispute flow](../architecture/dispute-flow.md): where the loss split is applied on resolution
+- [Trade lifecycle](../architecture/trade-lifecycle.md): partial-delivery settlement, which applies the same `Loss_Ratio` to the undelivered remainder

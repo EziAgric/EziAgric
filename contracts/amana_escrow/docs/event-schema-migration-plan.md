@@ -62,7 +62,7 @@ The following ordered checklist applies to any new event or field addition:
 
 ### Step 1: Contract side (this repository)
 
-1. Define the new event struct in `src/lib.rs` using `#[contractevent(topics = ["SYMBOL"])]`.
+1. Define the new event struct in `src/events.rs` using `#[contractevent(topics = ["SYMBOL"])]`.
    - Include `schema_version: u32` and populate it with `EVENT_SCHEMA_VERSION`.
    - Choose a topic symbol that is ≤ 9 characters and does not conflict with existing topics.
    - Add a new `DataKey` variant if the event requires new persistent storage.
@@ -216,7 +216,7 @@ All tests are located in:
 
 ## 8. References
 
-- `contracts/amana_escrow/src/lib.rs` — event struct definitions
+- `contracts/amana_escrow/src/events.rs` — event struct definitions
 - `contracts/amana_escrow/SECURITY.md` — upgrade and storage migration guide
 - `docs/event-flow.md` — end-to-end event architecture
 - `backend/src/types/events.ts` — backend event type registry
