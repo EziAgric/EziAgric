@@ -9,6 +9,7 @@
     "test": "jest --config jest.config.js --forceExit --detectOpenHandles",
     "lint": "eslint src/",
     "postinstall": "npx prisma generate",
+    "events:backfill": "tsx src/scripts/backfillEvents.ts",
     "mutation": "stryker run stryker.money-math.config.json",
     "mutation:ci": "stryker run stryker.money-math.config.json --reporters html,json,progress"
   },
