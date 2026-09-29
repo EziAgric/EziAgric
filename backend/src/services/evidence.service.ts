@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createHash } from "crypto";
 import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../lib/db";
 import { IPFSService, ServiceUnavailableError } from "./ipfs.service";
@@ -27,6 +28,14 @@ export class EvidenceValidationError extends Error {
     constructor(message = "Invalid evidence file") {
         super(message);
         this.name = "EvidenceValidationError";
+    }
+}
+
+export class EvidenceHashMismatchError extends Error {
+    status = 400;
+    constructor(message = "Evidence content hash does not match the uploaded payload") {
+        super(message);
+        this.name = "EvidenceHashMismatchError";
     }
 }
 
@@ -60,6 +69,16 @@ function getEvidenceMetadataRetentionDays(): number {
 function isEvidenceMetadataExpired(createdAt: Date): boolean {
     const retentionMs = getEvidenceMetadataRetentionDays() * 24 * 60 * 60 * 1000;
     return Date.now() - createdAt.getTime() > retentionMs;
+}
+
+/** Normalize a client-supplied SHA-256 hex digest (trim + lowercase). */
+export function normalizeSha256(value: string): string {
+    return value.trim().toLowerCase();
+}
+
+/** Compute the SHA-256 hex digest of a buffer. */
+export function computeSha256(buffer: Buffer): string {
+    return createHash("sha256").update(buffer).digest("hex");
 }
 
 type EvidenceDatabase = {
@@ -113,6 +132,7 @@ export class EvidenceService {
                 thumbnailCid?: string | null;
                 lowResCid?: string | null;
                 transcodeStatus?: string | null;
+                contentHash?: string | null;
             };
             return {
                 id: r.id,
@@ -121,6 +141,7 @@ export class EvidenceService {
                 mimeType: r.mimeType,
                 uploadedBy: retentionExpired && !isAdmin ? "redacted" : r.uploadedBy,
                 url: retentionExpired ? null : this.resolveGatewayUrl(r.cid),
+                contentHash: derived.contentHash ?? null,
                 thumbnailCid: retentionExpired ? null : derived.thumbnailCid ?? null,
                 thumbnailUrl:
                     retentionExpired || !derived.thumbnailCid
@@ -141,11 +162,15 @@ export class EvidenceService {
     /**
      * Upload a video file to IPFS and persist the evidence record.
      * Caller must be buyer or seller of the referenced trade.
+     *
+     * The client must supply the SHA-256 of the payload; it is recomputed
+     * server-side and the upload is rejected on mismatch before pinning.
      */
     async uploadVideoEvidence(
         tradeId: string,
         callerAddress: string,
         file: Express.Multer.File,
+        clientHash?: string,
     ) {
         const trade = await this.prisma.trade.findUnique({ where: { tradeId } });
         if (!trade) throw new EvidenceTradeNotFoundError();
@@ -177,6 +202,20 @@ export class EvidenceService {
             throw new EvidenceValidationError("File too large");
         }
 
+        // Require a client-supplied SHA-256 and verify it against the payload
+        // before any pinning happens.
+        if (!clientHash || typeof clientHash !== "string") {
+            throw new EvidenceValidationError("Missing required content hash (sha256)");
+        }
+        const declaredHash = normalizeSha256(clientHash);
+        if (!/^[a-f0-9]{64}$/.test(declaredHash)) {
+            throw new EvidenceValidationError("Invalid content hash: expected 64-char hex SHA-256");
+        }
+        const computedHash = computeSha256(file.buffer);
+        if (computedHash !== declaredHash) {
+            throw new EvidenceHashMismatchError();
+        }
+
         const scan = await this.runEvidenceScan(file);
         if (!scan.clean) {
             throw new EvidenceValidationError(scan.reason || "Evidence blocked by malware scanner");
@@ -191,7 +230,8 @@ export class EvidenceService {
                 filename: file.originalname,
                 mimeType: file.mimetype,
                 uploadedBy: caller,
-            },
+                contentHash: computedHash,
+            } as any,
         });
 
         // Kick off background transcoding + thumbnail generation. The original
@@ -212,6 +252,7 @@ export class EvidenceService {
         return {
             evidenceId: record.id,
             cid,
+            contentHash: computedHash,
             ipfsUrl: this.resolveGatewayUrl(cid),
         };
     }
@@ -222,102 +263,6 @@ export class EvidenceService {
      */
     async streamFromIPFS(cid: string, range?: string) {
         // Build list of gateway base URLs to try. Prefer explicit env var list.
-        const urls = this.resolveGatewayUrls(cid);
+        const urls = this.resolveGatewayU
 
-        const headers: Record<string, string> = {};
-        if (range) headers["Range"] = range;
-
-        const timeoutMs = env.IPFS_STREAM_TIMEOUT_MS;
-
-        let lastError: any = null;
-        for (const url of urls) {
-            if (this.isGatewayCircuitOpen(url)) {
-                continue;
-            }
-
-            try {
-                const response = await axios.get(url, {
-                    responseType: "stream",
-                    headers,
-                    timeout: timeoutMs,
-                    validateStatus: (s) => s < 500,
-                });
-                this.onGatewaySuccess(url);
-                return response;
-            } catch (err) {
-                lastError = err;
-                this.onGatewayFailure(url);
-            }
-        }
-
-        if (lastError) {
-            throw new ServiceUnavailableError();
-        }
-        throw new ServiceUnavailableError();
-    }
-
-    /** Resolve and cache the public gateway URL for a CID. */
-    private resolveGatewayUrl(cid: string): string {
-        if (this.urlCache.has(cid)) {
-            return this.urlCache.get(cid)!;
-        }
-        const url = this.ipfs.getFileUrl(cid);
-        this.urlCache.set(cid, url);
-        return url;
-    }
-
-    private sniffMimeType(buffer: Buffer): "video/mp4" | "video/webm" | null {
-        // MP4: bytes 4-7 should contain 'ftyp' marker in ISO BMFF containers.
-        if (buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp") {
-            return "video/mp4";
-        }
-        // WebM/Matroska: EBML magic bytes 0x1A45DFA3.
-        if (
-            buffer.length >= 4 &&
-            buffer[0] === 0x1a &&
-            buffer[1] === 0x45 &&
-            buffer[2] === 0xdf &&
-            buffer[3] === 0xa3
-        ) {
-            return "video/webm";
-        }
-        return null;
-    }
-
-    private async runEvidenceScan(file: Express.Multer.File): Promise<EvidenceScanResult> {
-        try {
-            return await this.scanner.scan(file);
-        } catch (err) {
-            throw new EvidenceScanError();
-        }
-    }
-
-    private resolveGatewayUrls(cid: string): string[] {
-        const explicit = env.IPFS_GATEWAY_URLS;
-        if (explicit && explicit.length > 0) {
-            return explicit.map((base) => `${base.replace(/\/$/, "")}/ipfs/${cid}`);
-        }
-        return [this.resolveGatewayUrl(cid)];
-    }
-
-    private isGatewayCircuitOpen(url: string): boolean {
-        const state = this.gatewayCircuit.get(url);
-        if (!state) return false;
-        if (state.openUntil > Date.now()) return true;
-        this.gatewayCircuit.delete(url);
-        return false;
-    }
-
-    private onGatewaySuccess(url: string): void {
-        this.gatewayCircuit.delete(url);
-    }
-
-    private onGatewayFailure(url: string): void {
-        const state = this.gatewayCircuit.get(url) ?? { failures: 0, openUntil: 0 };
-        state.failures += 1;
-        if (state.failures >= env.IPFS_GATEWAY_FAILURE_THRESHOLD) {
-            state.openUntil = Date.now() + env.IPFS_GATEWAY_CIRCUIT_OPEN_MS;
-        }
-        this.gatewayCircuit.set(url, state);
-    }
-}
+/* … truncated 3129 chars — edit only what you need near the top … */
