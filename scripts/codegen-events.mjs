@@ -17,13 +17,15 @@
  *   node scripts/codegen-events.mjs --check    # exit 1 on any drift
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA_PATH = resolve(ROOT, "schemas/events/amana_escrow.events.json");
-const CONTRACT_SRC = resolve(ROOT, "contracts/amana_escrow/src/lib.rs");
+// The contract is split into modules (#347): events live in `events.rs` and
+// EVENT_SCHEMA_VERSION in `lib.rs`, so every top-level source file is scanned.
+const CONTRACT_SRC_DIR = resolve(ROOT, "contracts/amana_escrow/src");
 const RUST_OUT = resolve(ROOT, "contracts/amana_escrow/src/generated/event_schema.rs");
 const TS_OUT = resolve(ROOT, "backend/src/types/generated/events.generated.ts");
 
@@ -332,7 +334,11 @@ function writeOrCheck(path, contents) {
 }
 
 const schema = loadSchema();
-const contractSource = readFileSync(CONTRACT_SRC, "utf8");
+const contractSource = readdirSync(CONTRACT_SRC_DIR)
+  .filter((name) => name.endsWith(".rs") && name !== "test.rs")
+  .sort()
+  .map((name) => readFileSync(resolve(CONTRACT_SRC_DIR, name), "utf8"))
+  .join("\n");
 
 const problems = verifyAgainstContract(schema, contractSource);
 if (problems.length > 0) {

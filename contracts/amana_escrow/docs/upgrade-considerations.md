@@ -38,6 +38,8 @@ env.storage().instance().set(&DataKey::SchemaVersion, &2u32);
 
 The `DataKey` enum uses named variants. **Always append new variants** — never
 reorder or rename existing ones, as the XDR encoding is keyed by position.
+`DataKey` lives in `src/storage.rs`; `PartialDelivery(u64)` (#349) is the
+most recently appended variant.
 
 ---
 
@@ -78,6 +80,8 @@ topic.
 | `DisputeResolvedEvent` | `DISRES`     |
 | `AdminClawbackEvent`   | `ADMCLW`     |
 | `ContractUpgradedEvent` | `UPGRAD`    |
+| `PartialDeliveryProposedEvent` | `PDPROP` |
+| `PartialDeliverySettledEvent` | `PARTDL` |
 
 To add a new event, pick a unique 6-character symbol and document it here.
 

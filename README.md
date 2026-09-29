@@ -87,6 +87,7 @@ Amana enforces stack-level CI gates on pull requests through `.github/workflows/
 - **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
 - **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobile/`
 - **Contracts Required Gate**: `cargo test` in `contracts/amana_escrow/`
+- **Architecture Diagrams Gate** (`.github/workflows/architecture-diagrams.yml`): renders the Mermaid diagrams in `docs/architecture/` and link-checks them on docs changes
 
 Path-aware execution is enabled to avoid unnecessary runtime. If a stack has no changed files, the gate reports a skip-note and passes.
 
@@ -160,6 +161,30 @@ Amana includes comprehensive distributed tracing with OpenTelemetry for end-to-e
 See [DISTRIBUTED_TRACING_GUIDE.md](./DISTRIBUTED_TRACING_GUIDE.md) for detailed setup and usage instructions.
 
 ---
+
+## 🧭 Architecture
+
+Architecture diagrams live as code (Mermaid) in [`docs/architecture/`](./docs/architecture/README.md)
+and render directly on GitHub:
+
+- [System context](./docs/architecture/system-context.md): users and external systems
+- [Containers](./docs/architecture/containers.md): web, mobile, API, workers, contract, data stores
+- [Trade lifecycle](./docs/architecture/trade-lifecycle.md): on-chain state machine, including partial delivery
+- [Dispute flow](./docs/architecture/dispute-flow.md): single mediator, quorum and fallback resolution
+- [Contract modules](./docs/architecture/contract-modules.md): layout of `contracts/amana_escrow/src`
+
+```mermaid
+flowchart LR
+    users["Buyer · Seller · Mediator · Admin"] --> clients["Web / Mobile apps"]
+    clients --> api["API + event listener<br/>PostgreSQL · Redis"]
+    clients -- "signed tx" --> contract["Soroban escrow contract"]
+    api -- "simulate / build tx" --> contract
+    contract -. "events" .-> api
+    api --> ipfs[("IPFS evidence")]
+```
+
+PRs that change any of these flows must update the matching diagram. CI
+(`Architecture Diagrams Gate`) renders every diagram and link-checks the pages.
 
 ## 📐 Architecture Decision Records
 

@@ -6,7 +6,7 @@
  * what the decoder dispatches on, using the generated schema as the reference.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
@@ -23,7 +23,8 @@ import {
 
 const REPO_ROOT = resolve(__dirname, "../../..");
 const SCHEMA_PATH = resolve(REPO_ROOT, "schemas/events/amana_escrow.events.json");
-const CONTRACT_SRC = resolve(REPO_ROOT, "contracts/amana_escrow/src/lib.rs");
+// The contract is split into modules (#347); scan every top-level source file.
+const CONTRACT_SRC_DIR = resolve(REPO_ROOT, "contracts/amana_escrow/src");
 
 interface SchemaFile {
   schemaVersion: number;
@@ -37,7 +38,11 @@ interface SchemaFile {
 }
 
 const schema: SchemaFile = JSON.parse(readFileSync(SCHEMA_PATH, "utf8"));
-const contractSource = readFileSync(CONTRACT_SRC, "utf8");
+const contractSource = readdirSync(CONTRACT_SRC_DIR)
+  .filter((name) => name.endsWith(".rs") && name !== "test.rs")
+  .sort()
+  .map((name) => readFileSync(resolve(CONTRACT_SRC_DIR, name), "utf8"))
+  .join("\n");
 
 /** Builds the RPC-shaped event a contract emission would produce. */
 function emittedEvent(topics: string[], data: Record<string, unknown>) {

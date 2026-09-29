@@ -78,3 +78,8 @@ of the API.
   and `stellar.tx.status.ts` currently handle Horizon failures with a bare
   `try/catch` -> `502`, not this pattern, and might benefit from it as they
   see more traffic.
+
+## Diagrams
+
+- [Containers](../architecture/containers.md): where the path-payment quote service and contract sit
+- [Trade lifecycle](../architecture/trade-lifecycle.md): `deposit` / `finalize_path_payment` funding step

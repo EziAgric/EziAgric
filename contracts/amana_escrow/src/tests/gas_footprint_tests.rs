@@ -7,8 +7,8 @@
 #[allow(clippy::module_inception)]
 mod gas_footprint_tests {
     use crate::test_fixture::admin_address;
-    use crate::{EscrowContract, EscrowContractClient};
-    use soroban_sdk::{Address, Env, String, testutils::Address as _, token};
+    use crate::{EscrowContract, EscrowContractClient, MAX_TRADE_BATCH};
+    use soroban_sdk::{Address, Env, String, Vec, testutils::Address as _, token};
 
     const BASELINE_CREATE_TRADE_CPU: u64 = 3_000_000;
     const BASELINE_CREATE_TRADE_MEM: u64 = 2_000_000;
@@ -23,6 +23,9 @@ mod gas_footprint_tests {
     // Issue #110 — 5 repeated partial `admin_clawback` calls on the same trade.
     const BASELINE_REPEATED_CLAWBACK_CPU: u64 = 25_000_000;
     const BASELINE_REPEATED_CLAWBACK_MEM: u64 = 15_000_000;
+    // Issue #351 — one `get_trades` call reading a full batch of MAX_TRADE_BATCH ids.
+    const BASELINE_GET_TRADES_BATCH_CPU: u64 = 30_000_000;
+    const BASELINE_GET_TRADES_BATCH_MEM: u64 = 15_000_000;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct CostEstimate {
@@ -296,6 +299,39 @@ mod gas_footprint_tests {
             "repeated_partial_clawback (5x)",
             BASELINE_REPEATED_CLAWBACK_CPU,
             BASELINE_REPEATED_CLAWBACK_MEM,
+        );
+    }
+
+    /// Issue #351 — footprint of a full `get_trades` batch. The call performs
+    /// one persistent read per id and no writes, so its cost must stay flat
+    /// per id; see `docs/gas-estimation.md` for the recorded footprint.
+    #[test]
+    fn test_gas_get_trades_full_batch() {
+        let ctx = Ctx::new(10_000);
+        let client = ctx.client();
+
+        let mut ids: Vec<u64> = Vec::new(&ctx.env);
+        for _ in 0..MAX_TRADE_BATCH {
+            let trade_id = client.create_trade(
+                &ctx.buyer,
+                &ctx.seller,
+                &100_i128,
+                &5000_u32,
+                &5000_u32,
+                &None,
+            );
+            ids.push_back(trade_id);
+        }
+
+        let cost = ctx.measure(|| {
+            let trades = client.get_trades(&ids);
+            assert_eq!(trades.len(), MAX_TRADE_BATCH);
+        });
+
+        cost.assert_under(
+            "get_trades (50 ids)",
+            BASELINE_GET_TRADES_BATCH_CPU,
+            BASELINE_GET_TRADES_BATCH_MEM,
         );
     }
 }

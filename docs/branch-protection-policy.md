@@ -19,6 +19,7 @@ None of these checks use `continue-on-error`; a failure blocks the merge.
 | `Frontend Required Gate`    | `.github/workflows/ci.yml` | `frontend/` | `npm ci`, `npm run lint`, `npm run build`          |
 | `Backend Required Gate`     | `.github/workflows/ci.yml` | `backend/`  | `npm ci`, `npm run build`, representative smoke suite (auth, trade, events, validation) |
 | `Contracts Required Gate`   | `.github/workflows/ci.yml` | `contracts/` | `cargo test`                                      |
+| `Architecture Diagrams Gate` | `.github/workflows/architecture-diagrams.yml` | `docs/`, `README.md` | Mermaid render + link check for `docs/architecture/` (skips when no docs changed) |
 
 Path-aware skipping is enabled via `dorny/paths-filter`. When a stack has no changed files the
 gate emits a skip note and exits 0, so branch protection is satisfied without running unnecessary
@@ -38,6 +39,7 @@ both `main` and `develop`:
     - `Frontend Required Gate`
     - `Backend Required Gate`
     - `Contracts Required Gate`
+    - `Architecture Diagrams Gate`
 - [x] **Do not allow bypassing the above settings** (applies to admins too)
 
 ## What Is Explicitly Prohibited

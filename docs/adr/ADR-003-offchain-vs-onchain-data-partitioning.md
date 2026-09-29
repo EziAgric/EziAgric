@@ -105,3 +105,8 @@ about disputes).
   [docs/data-model-relationships.md](../data-model-relationships.md) for
   the current mapping. A status added to one side without the other is a
   real failure mode the event pipeline can't protect against by itself.
+
+## Diagrams
+
+- [System context](../architecture/system-context.md): on-chain vs off-chain trust boundaries
+- [Containers](../architecture/containers.md): contract events projected into PostgreSQL by the event listener

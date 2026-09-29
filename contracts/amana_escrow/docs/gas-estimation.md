@@ -12,6 +12,7 @@ The gas suite measures the Amana escrow hot paths that are most likely to affect
 - `resolve_dispute`
 - `admin_clawback` (unilateral admin `cancel_trade` on funded escrow)
 - repeated partial `admin_clawback` calls on the same trade (Issue #110)
+- a full `get_trades` batch of `MAX_TRADE_BATCH` (50) ids (Issue #351)
 - the combined dispute lifecycle
 
 ## Baseline Gas & Footprint Thresholds
@@ -24,10 +25,30 @@ The gas suite measures the Amana escrow hot paths that are most likely to affect
 | `resolve_dispute` | 8,000,000 | 4,000,000 | Mediator authorization, payout BPS calculation, token transfer(s), dispute record update |
 | `admin_clawback` | 6,000,000 | 3,500,000 | Admin auth check, Stellar asset token refund transfer to buyer, status update to `Cancelled`, release sequence update, event emission |
 | `repeated_partial_clawback` (5x) | 25,000,000 | 15,000,000 | 5 sequential partial `admin_clawback` calls: admin auth + feature-flag check, token transfer, `ClawbackTotal` read/write, and trade-record write per call |
+| `get_trades` (50 ids) | 30,000,000 | 15,000,000 | One persistent `Trade(id)` read + `TradeData` decode per id, result `Vec<Option<Trade>>` encode; no writes, no auth, no TTL bump |
 
 ### Repeated clawback benchmarking (Issue #110)
 
 `test_gas_repeated_partial_clawback` calls `admin_clawback` 5 times in a row against the same trade to confirm cost scales linearly (no unbounded storage growth per call — `ClawbackTotal` is a single scalar overwrite, not an appended list). The baseline above is set with headroom over `5 * BASELINE_ADMIN_CLAWBACK` rather than a full 1:1 multiple, since repeated calls skip the one-time trade-creation/deposit setup cost. No further gas optimization was identified as necessary at this call volume; if future changes make per-trade clawback history append-only, re-baseline using the policy below and re-evaluate whether the per-call cost still stays flat.
+
+### Batch getter footprint (Issue #351)
+
+`get_trades(ids)` replaces N `get_trade` simulations with one. Its ledger
+footprint is exactly one read-only persistent entry per requested id
+(`DataKey::Trade(id)`, whether present or not) plus the contract instance; it
+writes nothing and does not bump the instance TTL, so it stays a pure
+simulation for dashboards and the event listener.
+
+| Batch size | Read-only footprint entries | Writes |
+| --- | --- | --- |
+| 1 | 1 trade entry + instance | 0 |
+| 50 (`MAX_TRADE_BATCH`) | 50 trade entries + instance | 0 |
+| > 50 | rejected with `EscrowError::BatchTooLarge` (`Error(Contract, #1)`) before any read | 0 |
+
+The cap keeps a single call well inside Soroban's per-transaction read-entry
+and read-byte limits (a `TradeV0` entry is a few hundred bytes). Callers with
+more ids page through them in chunks of 50. `test_gas_get_trades_full_batch`
+guards the CPU/memory baseline above.
 
 ## Methodology
 

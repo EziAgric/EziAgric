@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 contract_dir="$repo_root/contracts/amana_escrow"
 manifest="$contract_dir/Cargo.toml"
 contract_src="$contract_dir/src/lib.rs"
+# lib.rs declares the crate; entrypoints live in sibling modules (#347).
+contract_sources=("$contract_dir"/src/*.rs)
 
 fail() {
   echo "contract deployment safety check failed: $*" >&2
@@ -31,16 +33,16 @@ grep -Eq 'crate-type = \[.*rlib' "$manifest" \
 grep -q '#!\[no_std\]' "$contract_src" \
   || fail "contract must remain no_std-compatible for Soroban deployment"
 
-grep -q 'DataKey::Initialized' "$contract_src" \
+grep -q 'DataKey::Initialized' "${contract_sources[@]}" \
   || fail "initialize must preserve the single-initialize storage guard"
 
-grep -q 'AlreadyInitialized' "$contract_src" \
+grep -q 'AlreadyInitialized' "${contract_sources[@]}" \
   || fail "initialize must reject repeat deployment initialization"
 
-grep -q 'admin.require_auth()' "$contract_src" \
+grep -q 'admin.require_auth()' "${contract_sources[@]}" \
   || fail "admin-controlled deployment setup must require admin authorization"
 
-grep -qE 'DataKey::(CngnContract|SourceToken)' "$contract_src" \
+grep -qE 'DataKey::(CngnContract|SourceToken)' "${contract_sources[@]}" \
   || fail "token contract storage key must remain explicit and migration-safe (CngnContract or SourceToken)"
 
 if grep -RInE '(SECRET_KEY|PRIVATE_KEY|MNEMONIC|SEED_PHRASE|S[A-Z0-9]{55})' "$contract_dir" \

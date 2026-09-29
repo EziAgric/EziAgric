@@ -130,7 +130,7 @@ bash scripts/cleanup-test-snapshots.sh       # remove orphaned snapshots
 
 ## Migration test checklist
 
-Existing tests in `src/lib.rs` and `tests/dispute_flow.rs` cover migration-sensitive behavior:
+Existing tests in `src/test.rs` and `tests/dispute_flow.rs` cover migration-sensitive behavior:
 
 - lifecycle continuity, invalid transitions, and conservation checks
 - legacy + registry mediator interoperability and revocation semantics
