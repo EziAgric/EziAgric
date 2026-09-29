@@ -211,3 +211,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- handsoff-issue-354 -->
 - #354: [Contract] Milestone-based release for multi-drop deliveries
+
+<!-- handsoff-issue-356 -->
+- #356: [Contract] Per-token minimum trade amount to prevent dust trades
