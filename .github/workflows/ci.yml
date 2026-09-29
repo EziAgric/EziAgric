@@ -624,20 +624,84 @@ jobs:
 
       - name: Build WASM artifact
         if: needs.changes.outputs.contracts == 'true'
-        run: cargo build --target wasm32-unknown-unknown --features wasm --release
+        run: cargo build --locked --target wasm32-unknown-unknown --features wasm --release
 
-      - name: Verify WASM ABI hash
+      - name: Install wasm-opt (binaryen)
         if: needs.changes.outputs.contracts == 'true'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binaryen
+
+      - name: Optimize WASM, enforce size budget and record sha256
+        if: needs.changes.outputs.contracts == 'true'
+        env:
+          # Soroban network limit for contract code is 64 KiB. Lower this to catch size creep earlier.
+          WASM_SIZE_BUDGET_BYTES: "65536"
         run: |
-          WASM_FILE="target/wasm32-unknown-unknown/release/amana_escrow.wasm"
-          if [ -f "$WASM_FILE" ]; then
-            WASM_HASH=$(sha256sum "$WASM_FILE" | cut -d' ' -f1)
-            echo "WASM ABI hash: $WASM_HASH"
-            echo "WASM_ABI_HASH=$WASM_HASH" >> $GITHUB_ENV
-          else
+          TARGET_DIR=$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
+          WASM_FILE="$TARGET_DIR/wasm32-unknown-unknown/release/amana_escrow.wasm"
+          if [ ! -f "$WASM_FILE" ]; then
             echo "ERROR: WASM artifact not found at $WASM_FILE"
             exit 1
           fi
+
+          mkdir -p "$GITHUB_WORKSPACE/wasm-dist"
+          OPT_FILE="$GITHUB_WORKSPACE/wasm-dist/amana_escrow.optimized.wasm"
+          wasm-opt -Oz --strip-debug --strip-producers "$WASM_FILE" -o "$OPT_FILE"
+
+          RAW_SIZE=$(stat -c%s "$WASM_FILE")
+          OPT_SIZE=$(stat -c%s "$OPT_FILE")
+          RAW_HASH=$(sha256sum "$WASM_FILE" | cut -d' ' -f1)
+          OPT_HASH=$(sha256sum "$OPT_FILE" | cut -d' ' -f1)
+          (cd "$GITHUB_WORKSPACE/wasm-dist" && sha256sum amana_escrow.optimized.wasm > amana_escrow.optimized.wasm.sha256)
+
+          echo "WASM ABI hash: $RAW_HASH"
+          echo "WASM_ABI_HASH=$RAW_HASH" >> "$GITHUB_ENV"
+          echo "WASM_OPT_HASH=$OPT_HASH" >> "$GITHUB_ENV"
+
+          STATUS="✅ within budget"
+          if [ "$OPT_SIZE" -gt "$WASM_SIZE_BUDGET_BYTES" ]; then
+            STATUS="❌ over budget"
+          fi
+
+          {
+            echo "## Contract WASM size"
+            echo ""
+            echo "| Artifact | Size (bytes) | sha256 |"
+            echo "|---|---:|---|"
+            echo "| amana_escrow.wasm (release) | $RAW_SIZE | \`$RAW_HASH\` |"
+            echo "| amana_escrow.optimized.wasm | $OPT_SIZE | \`$OPT_HASH\` |"
+            echo ""
+            echo "Budget: $WASM_SIZE_BUDGET_BYTES bytes — $STATUS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$OPT_SIZE" -gt "$WASM_SIZE_BUDGET_BYTES" ]; then
+            echo "ERROR: optimized WASM is $OPT_SIZE bytes, over the $WASM_SIZE_BUDGET_BYTES byte budget"
+            exit 1
+          fi
+
+      - name: Verify reproducible WASM build
+        if: needs.changes.outputs.contracts == 'true'
+        run: |
+          TARGET_DIR=$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
+          WASM_FILE="$TARGET_DIR/wasm32-unknown-unknown/release/amana_escrow.wasm"
+          cargo clean --release --target wasm32-unknown-unknown -p amana_escrow
+          cargo build --locked --target wasm32-unknown-unknown --features wasm --release
+          REBUILD_HASH=$(sha256sum "$WASM_FILE" | cut -d' ' -f1)
+          if [ "$REBUILD_HASH" != "$WASM_ABI_HASH" ]; then
+            echo "ERROR: WASM build is not reproducible ($WASM_ABI_HASH != $REBUILD_HASH)"
+            echo "Reproducible build: ❌ rebuild hash \`$REBUILD_HASH\` differs" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Reproducible build: ✅ clean rebuild produced identical sha256" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload WASM release artifact
+        if: needs.changes.outputs.contracts == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: amana-escrow-wasm
+          path: |
+            wasm-dist/amana_escrow.optimized.wasm
+            wasm-dist/amana_escrow.optimized.wasm.sha256
+          retention-days: 30
 
       - name: Skip note (no contract changes)
         if: needs.changes.outputs.contracts != 'true'
