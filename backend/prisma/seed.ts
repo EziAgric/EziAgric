@@ -2,6 +2,42 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Common Nigerian commodity reference data (types, units, grades).
+// Kept in sync with the GET /commodities endpoint.
+const COMMODITIES: Array<{
+  name: string;
+  slug: string;
+  units: string[];
+  grades: string[];
+}> = [
+  { name: 'Maize', slug: 'maize', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B', 'Grade C'] },
+  { name: 'Rice', slug: 'rice', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B', 'Grade C'] },
+  { name: 'Cassava', slug: 'cassava', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B'] },
+  { name: 'Yam', slug: 'yam', units: ['crate', 'tonne'], grades: ['Grade A', 'Grade B'] },
+  { name: 'Sorghum', slug: 'sorghum', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B', 'Grade C'] },
+  { name: 'Millet', slug: 'millet', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B'] },
+  { name: 'Cowpea', slug: 'cowpea', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B'] },
+  { name: 'Groundnut', slug: 'groundnut', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B'] },
+  { name: 'Soybean', slug: 'soybean', units: ['bag 50kg', 'tonne'], grades: ['Grade A', 'Grade B'] },
+  { name: 'Palm Oil', slug: 'palm-oil', units: ['crate', 'tonne'], grades: ['Grade A', 'Grade B'] },
+];
+
+async function seedCommodities() {
+  for (const commodity of COMMODITIES) {
+    await prisma.commodity.upsert({
+      where: { slug: commodity.slug },
+      update: {
+        name: commodity.name,
+        units: commodity.units,
+        grades: commodity.grades,
+      },
+      create: commodity,
+    });
+  }
+
+  console.log(`✓ Seeded ${COMMODITIES.length} commodities`);
+}
+
 async function main() {
   console.log('Starting database seed...');
 
@@ -69,6 +105,9 @@ async function main() {
   });
 
   console.log('✓ Created 1 sample dispute');
+
+  // Seed commodity reference data (idempotent via upsert on slug)
+  await seedCommodities();
 
   console.log('\n✅ Database seed completed successfully!');
   console.log('Demo Users:', { user1, user2, user3 });
