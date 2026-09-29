@@ -4,6 +4,7 @@ import { prisma as defaultPrisma } from "../lib/db";
 import { IPFSService, ServiceUnavailableError } from "./ipfs.service";
 import { getAdminAllowlistLowercase } from "../lib/accessControl";
 import { env } from "../config/env";
+import { enqueueEvidenceTranscode } from "../jobs/evidenceTranscode.job";
 
 export class EvidenceAccessDeniedError extends Error {
     status = 403;
@@ -108,6 +109,11 @@ export class EvidenceService {
 
         return records.map((r) => {
             const retentionExpired = isEvidenceMetadataExpired(r.createdAt);
+            const derived = r as typeof r & {
+                thumbnailCid?: string | null;
+                lowResCid?: string | null;
+                transcodeStatus?: string | null;
+            };
             return {
                 id: r.id,
                 cid: retentionExpired ? "redacted" : r.cid,
@@ -115,6 +121,17 @@ export class EvidenceService {
                 mimeType: r.mimeType,
                 uploadedBy: retentionExpired && !isAdmin ? "redacted" : r.uploadedBy,
                 url: retentionExpired ? null : this.resolveGatewayUrl(r.cid),
+                thumbnailCid: retentionExpired ? null : derived.thumbnailCid ?? null,
+                thumbnailUrl:
+                    retentionExpired || !derived.thumbnailCid
+                        ? null
+                        : this.resolveGatewayUrl(derived.thumbnailCid),
+                lowResCid: retentionExpired ? null : derived.lowResCid ?? null,
+                lowResUrl:
+                    retentionExpired || !derived.lowResCid
+                        ? null
+                        : this.resolveGatewayUrl(derived.lowResCid),
+                transcodeStatus: derived.transcodeStatus ?? null,
                 createdAt: r.createdAt,
                 retentionExpired,
             };
@@ -176,6 +193,21 @@ export class EvidenceService {
                 uploadedBy: caller,
             },
         });
+
+        // Kick off background transcoding + thumbnail generation. The original
+        // CID above remains the canonical evidence and is never altered.
+        try {
+            await enqueueEvidenceTranscode({
+                evidenceId: record.id,
+                tradeId,
+                originalCid: cid,
+                filename: file.originalname,
+            });
+        } catch (err) {
+            // Enqueue failures must not fail the upload; the job can be retried.
+            // eslint-disable-next-line no-console
+            console.error("Failed to enqueue evidence transcode job", err);
+        }
 
         return {
             evidenceId: record.id,
@@ -239,8 +271,7 @@ export class EvidenceService {
         if (buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp") {
             return "video/mp4";
         }
-
-        // WebM: EBML header starts with 0x1A45DFA3.
+        // WebM/Matroska: EBML magic bytes 0x1A45DFA3.
         if (
             buffer.length >= 4 &&
             buffer[0] === 0x1a &&
@@ -250,80 +281,31 @@ export class EvidenceService {
         ) {
             return "video/webm";
         }
-
         return null;
     }
 
     private async runEvidenceScan(file: Express.Multer.File): Promise<EvidenceScanResult> {
-        const required =
-            process.env.EVIDENCE_SCAN_REQUIRED !== undefined
-                ? process.env.EVIDENCE_SCAN_REQUIRED.toLowerCase() === "true"
-                : env.EVIDENCE_SCAN_REQUIRED;
         try {
             return await this.scanner.scan(file);
-        } catch (error) {
-            if (!required) {
-                return { clean: true };
-            }
-            throw new EvidenceScanError(
-                error instanceof Error ? error.message : "Evidence scan service unavailable",
-            );
+        } catch (err) {
+            throw new EvidenceScanError();
         }
     }
 
     private resolveGatewayUrls(cid: string): string[] {
-        const gatewayUrls = process.env.IPFS_GATEWAY_URLS ?? env.IPFS_GATEWAY_URLS;
-        const allowlist = this.parseGatewayAllowlist();
-        const configured: string[] = [];
-
-        if (gatewayUrls) {
-            for (const value of gatewayUrls.split(",")) {
-                const gateway = value.trim();
-                if (!gateway) continue;
-                const normalized = gateway.replace(/\/$/, "");
-                if (!this.isGatewayAllowed(normalized, allowlist)) {
-                    continue;
-                }
-                configured.push(`${normalized}/${cid}`);
-            }
+        const explicit = env.IPFS_GATEWAY_URLS;
+        if (explicit && explicit.length > 0) {
+            return explicit.map((base) => `${base.replace(/\/$/, "")}/ipfs/${cid}`);
         }
-
-        if (configured.length > 0) {
-            return configured;
-        }
-
-        const fallback = this.resolveGatewayUrl(cid);
-        const fallbackBase = fallback.replace(/\/+[^/]+$/, "");
-        if (!this.isGatewayAllowed(fallbackBase, allowlist)) {
-            throw new ServiceUnavailableError("No allowed IPFS gateway configured");
-        }
-        return [fallback];
-    }
-
-    private parseGatewayAllowlist(): Set<string> {
-        const raw = process.env.IPFS_GATEWAY_ALLOWLIST ?? env.IPFS_GATEWAY_ALLOWLIST ?? "";
-        return new Set(
-            raw
-                .split(",")
-                .map((v: string) => v.trim().toLowerCase())
-                .filter(Boolean),
-        );
-    }
-
-    private isGatewayAllowed(gatewayBase: string, allowlist: Set<string>): boolean {
-        if (allowlist.size === 0) return true;
-        try {
-            const host = new URL(gatewayBase).hostname.toLowerCase();
-            return allowlist.has(host);
-        } catch {
-            return false;
-        }
+        return [this.resolveGatewayUrl(cid)];
     }
 
     private isGatewayCircuitOpen(url: string): boolean {
         const state = this.gatewayCircuit.get(url);
         if (!state) return false;
-        return state.openUntil > Date.now();
+        if (state.openUntil > Date.now()) return true;
+        this.gatewayCircuit.delete(url);
+        return false;
     }
 
     private onGatewaySuccess(url: string): void {
@@ -331,22 +313,11 @@ export class EvidenceService {
     }
 
     private onGatewayFailure(url: string): void {
-        const threshold = env.IPFS_GATEWAY_CIRCUIT_FAILURE_THRESHOLD;
-        const cooldownMs = env.IPFS_GATEWAY_CIRCUIT_COOLDOWN_MS;
-        const current = this.gatewayCircuit.get(url) ?? { failures: 0, openUntil: 0 };
-        const failures = current.failures + 1;
-
-        if (failures >= threshold) {
-            this.gatewayCircuit.set(url, {
-                failures,
-                openUntil: Date.now() + cooldownMs,
-            });
-            return;
+        const state = this.gatewayCircuit.get(url) ?? { failures: 0, openUntil: 0 };
+        state.failures += 1;
+        if (state.failures >= env.IPFS_GATEWAY_FAILURE_THRESHOLD) {
+            state.openUntil = Date.now() + env.IPFS_GATEWAY_CIRCUIT_OPEN_MS;
         }
-
-        this.gatewayCircuit.set(url, {
-            failures,
-            openUntil: 0,
-        });
+        this.gatewayCircuit.set(url, state);
     }
 }
