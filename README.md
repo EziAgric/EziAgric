@@ -217,3 +217,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- handsoff-issue-357 -->
 - #357: [Contract] Mediator fee share on resolved disputes
+
+<!-- handsoff-issue-358 -->
+- #358: [Contract] Dispute evidence submission deadline
