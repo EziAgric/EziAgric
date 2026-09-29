@@ -206,3 +206,8 @@ step-by-step example.
 Distributed under the MIT License. See `LICENSE` for more information.
 
 // setting up and starting out
+
+## Handsoff notes
+
+<!-- handsoff-issue-373 -->
+- #373: [Backend] SMS notification provider abstraction (Termii / Africa's Talking)
