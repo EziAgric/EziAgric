@@ -211,3 +211,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- handsoff-issue-359 -->
 - #359: [Contract] Default-resolution fallback when no mediator acts
+
+<!-- handsoff-issue-360 -->
+- #360: [Contract] Rustdoc for every public contract entrypoint
