@@ -105,3 +105,9 @@ export function getCircuitBreaker(): CircuitBreaker {
 export function __resetCircuitBreakerForTests(): void {
   defaultBreaker.reset();
 }
+
+// Backwards-compatible aliases for callers that imported the camelCase module
+// (`circuitBreaker.ts`). These re-exports keep the single canonical
+// implementation in this file while preserving the previous public surface.
+export { CircuitBreaker as default };
+export type { CircuitBreakerOptions as CircuitBreakerConfig };
