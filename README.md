@@ -214,3 +214,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- handsoff-issue-356 -->
 - #356: [Contract] Per-token minimum trade amount to prevent dust trades
+
+<!-- handsoff-issue-357 -->
+- #357: [Contract] Mediator fee share on resolved disputes
