@@ -18,4 +18,12 @@ export type RootStackParamList = {
     streamId: string;
     timestamp: string;
   };
+  /** #437 — mediator-only dispute queue and review screens. */
+  MediatorDisputeList: undefined;
+  MediatorDisputeReview: { disputeId: string };
+  /** #440 — profile and trust score screens. */
+  Profile: { address: string; isSelf?: boolean };
+  TrustScore: { address: string };
+  /** #441 — post-trade review screen. */
+  LeaveReview: { tradeId: string; counterpartyAddress: string };
 };
