@@ -180,3 +180,141 @@ export async function getPublicProfile(address: string) {
     throw new AppError(ErrorCode.INFRA_ERROR, 'User service dependency failure', 503);
   }
 }
+
+/**
+ * Deactivate (soft-delete) a user account.
+ *
+ * Guards:
+ *   - Blocked while the user has open trades or open disputes so that
+ *     in-flight escrow/audit obligations are not orphaned.
+ *
+ * Effects on success:
+ *   - Anonymizes PII on the profile (display_name, avatar_url) while
+ *     retaining the user row and all trade records for audit purposes.
+ *   - Revokes all active sessions for the user.
+ *
+ * Retry strategy:
+ *   - Pre-flight reads are idempotent → retried.
+ *   - The anonymizing UPDATE and session revocation are stateful writes →
+ *     not auto-retried (maxRetries: 0).
+ */
+export async function deactivateUser(address: string) {
+  if (!StrKey.isValidEd25519PublicKey(address)) {
+    throw new AppError(ErrorCode.VALIDATION_ERROR, 'Invalid Stellar public key', 400);
+  }
+
+  const supabase = getSupabaseClient();
+  const normalizedAddress = address.toLowerCase();
+
+  try {
+    // Idempotent read — safe to retry
+    const { data: user, error: userError } = await retryAsync(
+      () => Promise.resolve(
+        supabase
+          .from("users")
+          .select("*")
+          .eq("address", normalizedAddress)
+          .single()
+      ),
+      { operationName: "find_user_for_deactivation" },
+    );
+
+    if (userError) {
+      if (userError.code === "PGRST116") {
+        throw new AppError(ErrorCode.NOT_FOUND, 'User not found', 404);
+      }
+      throw new AppError(ErrorCode.INFRA_ERROR, 'Fetch failed', 500);
+    }
+
+    // Block deactivation while open trades exist.
+    const { count: openTrades, error: tradesError } = await retryAsync(
+      () => Promise.resolve(
+        supabase
+          .from("trades")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .in("status", ["open", "active", "pending"])
+      ),
+      { operationName: "count_open_trades" },
+    );
+
+    if (tradesError) {
+      throw new AppError(ErrorCode.INFRA_ERROR, 'Failed to check open trades', 500);
+    }
+
+    if (openTrades && openTrades > 0) {
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'Cannot deactivate account while trades are open',
+        409,
+      );
+    }
+
+    // Block deactivation while open disputes exist.
+    const { count: openDisputes, error: disputesError } = await retryAsync(
+      () => Promise.resolve(
+        supabase
+          .from("disputes")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .in("status", ["open", "pending"])
+      ),
+      { operationName: "count_open_disputes" },
+    );
+
+    if (disputesError) {
+      throw new AppError(ErrorCode.INFRA_ERROR, 'Failed to check open disputes', 500);
+    }
+
+    if (openDisputes && openDisputes > 0) {
+      throw new AppError(
+        ErrorCode.VALIDATION_ERROR,
+        'Cannot deactivate account while disputes are open',
+        409,
+      );
+    }
+
+    // Anonymize PII while retaining the row and trade records for audit.
+    // Stateful write — not auto-retried.
+    const { data: updated, error: updateError } = await retryAsync(
+      () => Promise.resolve(
+        supabase
+          .from("users")
+          .update({
+            display_name: null,
+            avatar_url: null,
+            deactivated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", user.id)
+          .select()
+          .single()
+      ),
+      { operationName: "anonymize_user", maxRetries: 0 },
+    );
+
+    if (updateError) {
+      throw new AppError(ErrorCode.INFRA_ERROR, 'Failed to deactivate account', 500);
+    }
+
+    // Revoke all active sessions. Stateful write — not auto-retried.
+    const { error: sessionError } = await retryAsync(
+      () => Promise.resolve(
+        supabase
+          .from("sessions")
+          .delete()
+          .eq("user_id", user.id)
+      ),
+      { operationName: "revoke_user_sessions", maxRetries: 0 },
+    );
+
+    if (sessionError) {
+      throw new AppError(ErrorCode.INFRA_ERROR, 'Failed to revoke sessions', 500);
+    }
+
+    return updated;
+  } catch (error: any) {
+    if (error.name === 'AppError') throw error;
+    throw new AppError(ErrorCode.INFRA_ERROR, 'User deactivation failed', 503);
+  }
+}
