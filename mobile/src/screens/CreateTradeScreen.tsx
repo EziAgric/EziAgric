@@ -192,31 +192,81 @@ function Step2Negotiation({
       <Text style={styles.sectionTitle}>Step 2: Negotiation</Text>
 
       <View style={stepStyles.field}>
-        <Text style={stepStyles.label}>Loss Ratio: Buyer {data.buyerRatio}% / Seller {data.sellerRatio}%</Text>
+        <Text style={stepStyles.label}>Loss Ratio</Text>
+        <Text style={stepStyles.ratioSubtitle}>
+          How much each party bears if a dispute is resolved against them.
+        </Text>
+
+        {/* Preset chips */}
+        <View style={stepStyles.presetRow}>
+          {([
+            { label: 'Equal\n50/50', buyer: 50 },
+            { label: 'Buyer-lean\n70/30', buyer: 70 },
+            { label: 'Seller-lean\n30/70', buyer: 30 },
+            { label: 'Full buyer\n100/0', buyer: 100 },
+            { label: 'Full seller\n0/100', buyer: 0 },
+          ] as { label: string; buyer: number }[]).map(({ label, buyer }) => (
+            <TouchableOpacity
+              key={buyer}
+              style={[stepStyles.presetChip, data.buyerRatio === buyer && stepStyles.presetChipActive]}
+              onPress={() => update({ buyerRatio: buyer, sellerRatio: 100 - buyer })}
+              accessibilityLabel={`Preset ${label.replace('\n', ' ')}`}
+            >
+              <Text style={[stepStyles.presetChipText, data.buyerRatio === buyer && stepStyles.presetChipTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Fine-grained row */}
         <View style={stepStyles.ratioRow}>
           <TouchableOpacity
             style={stepStyles.ratioBtn}
             onPress={() => {
-              if (data.buyerRatio > 0) {
-                const newBuyer = Math.max(0, data.buyerRatio - 10);
-                update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
-              }
+              const newBuyer = Math.max(0, data.buyerRatio - 1);
+              update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
             }}
+            accessibilityLabel="Decrease buyer loss ratio by 1%"
           >
-            <Text style={stepStyles.ratioBtnText}>−10%</Text>
+            <Text style={stepStyles.ratioBtnText}>−1%</Text>
           </TouchableOpacity>
-          <Text style={stepStyles.ratioValue}>{data.buyerRatio} / {data.sellerRatio}</Text>
+          <View style={stepStyles.ratioDisplay}>
+            <Text style={stepStyles.ratioValue}>{data.buyerRatio}</Text>
+            <Text style={stepStyles.ratioSlash}>/</Text>
+            <Text style={stepStyles.ratioValue}>{data.sellerRatio}</Text>
+          </View>
           <TouchableOpacity
             style={stepStyles.ratioBtn}
             onPress={() => {
-              if (data.buyerRatio < 100) {
-                const newBuyer = Math.min(100, data.buyerRatio + 10);
-                update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
-              }
+              const newBuyer = Math.min(100, data.buyerRatio + 1);
+              update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
             }}
+            accessibilityLabel="Increase buyer loss ratio by 1%"
           >
-            <Text style={stepStyles.ratioBtnText}>+10%</Text>
+            <Text style={stepStyles.ratioBtnText}>+1%</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Visual bar */}
+        <View style={stepStyles.ratioBar}>
+          <View style={[stepStyles.ratioBarBuyer, { flex: data.buyerRatio || 0.01 }]} />
+          <View style={[stepStyles.ratioBarSeller, { flex: data.sellerRatio || 0.01 }]} />
+        </View>
+        <View style={stepStyles.ratioBarLabels}>
+          <Text style={stepStyles.ratioBarLabel}>Buyer {data.buyerRatio}%</Text>
+          <Text style={stepStyles.ratioBarLabel}>Seller {data.sellerRatio}%</Text>
+        </View>
+
+        {/* Example text */}
+        <View style={stepStyles.lossExampleCard}>
+          <Text style={stepStyles.lossExampleTitle}>Example</Text>
+          <Text style={stepStyles.lossExampleText}>
+            On a 1,000 cNGN trade, if a dispute is ruled against the buyer, they bear{' '}
+            <Text style={stepStyles.lossExampleBold}>{data.buyerRatio * 10} cNGN</Text>. If ruled
+            against the seller, they bear{' '}
+            <Text style={stepStyles.lossExampleBold}>{data.sellerRatio * 10} cNGN</Text>.
+          </Text>
         </View>
       </View>
 
@@ -462,6 +512,29 @@ const stepStyles = StyleSheet.create({
   },
   ratioBtnText: { fontSize: 14, fontWeight: '600', color: '#333' },
   ratioValue: { fontSize: 20, fontWeight: '700', color: '#1a3a1a' },
+  ratioSlash: { fontSize: 20, color: '#aaa', marginHorizontal: 4 },
+  ratioDisplay: { flexDirection: 'row', alignItems: 'center' },
+  ratioSubtitle: { fontSize: 12, color: '#888', marginBottom: 8, lineHeight: 17 },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  presetChip: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: '#d0e8d0', backgroundColor: '#f8faf8',
+  },
+  presetChipActive: { borderColor: '#2d6a2d', backgroundColor: '#e8f5e8' },
+  presetChipText: { fontSize: 11, color: '#666', textAlign: 'center' },
+  presetChipTextActive: { color: '#1a3a1a', fontWeight: '700' },
+  ratioBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 10 },
+  ratioBarBuyer: { backgroundColor: '#2563EB' },
+  ratioBarSeller: { backgroundColor: '#16A34A' },
+  ratioBarLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  ratioBarLabel: { fontSize: 11, color: '#888' },
+  lossExampleCard: {
+    marginTop: 10, backgroundColor: '#FFF7ED', borderRadius: 8,
+    padding: 12, borderWidth: 1, borderColor: '#FED7AA', gap: 4,
+  },
+  lossExampleTitle: { fontSize: 12, fontWeight: '700', color: '#C2410C' },
+  lossExampleText: { fontSize: 12, color: '#7C2D12', lineHeight: 18 },
+  lossExampleBold: { fontWeight: '700' },
   noteCard: {
     backgroundColor: '#f0f8f0',
     padding: 14,
