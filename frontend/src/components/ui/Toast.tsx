@@ -15,6 +15,7 @@ export function Toast({
   title,
   message,
   duration = 5000,
+  link,
   onClose,
 }: ToastProps) {
   const [isClosing, setIsClosing] = useState(false);
@@ -82,6 +83,17 @@ export function Toast({
       <div className="flex-1 pt-0.5">
         {title && <h3 className="text-sm font-semibold mb-1">{title}</h3>}
         <p className="text-sm text-text-secondary">{message}</p>
+        {link && (
+          <a
+            href={link.href}
+            target={link.external === false ? undefined : "_blank"}
+            rel="noopener noreferrer"
+            className="mt-2 inline-block text-sm font-medium text-status-info underline underline-offset-2 hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-border-focus rounded"
+          >
+            {link.label}
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        )}
       </div>
       <button
         onClick={handleClose}
