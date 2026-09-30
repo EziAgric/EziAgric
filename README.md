@@ -211,3 +211,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- handsoff-issue-416 -->
 - #416: [Frontend] Landing page copy: explain EziAgric flow for farmers and buyers
+
+<!-- handsoff-issue-418 -->
+- #418: [Frontend] Low-bandwidth mode: disable autoplay media and compress images
