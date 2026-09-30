@@ -206,3 +206,8 @@ step-by-step example.
 Distributed under the MIT License. See `LICENSE` for more information.
 
 // setting up and starting out
+
+## Handsoff notes
+
+<!-- handsoff-issue-426 -->
+- #426: [Frontend] Price reference widget on listing form
