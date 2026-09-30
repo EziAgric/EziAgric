@@ -4,6 +4,7 @@ import Step1Details from "./steps/Step1Details";
 import Step2Negotiation from "./steps/Step2Negotiation";
 import Step3Review from "./steps/Step3Review";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 const STEPS = [
   { index: 1, label: "Details" },
@@ -77,9 +78,38 @@ function CreateTradeInner() {
   );
 }
 
+/**
+ * Reads listing pre-fill params from the URL so the marketplace listing
+ * detail page's "Start trade" action can seed the wizard.
+ *
+ * Supported params:
+ *  - listingId: the marketplace listing id
+ *  - commodity: commodity name (e.g. "Maize")
+ *  - quantity: requested quantity, bounded by the listing availability
+ *  - unit: unit of measure (e.g. "tonne")
+ *  - price: unit price in NGN
+ *  - seller: seller display name
+ */
+export function parseTradePrefill(
+  params: URLSearchParams | { get(key: string): string | null }
+): Record<string, string> {
+  const keys = ["listingId", "commodity", "quantity", "unit", "price", "seller"];
+  const prefill: Record<string, string> = {};
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value !== null && value !== "") {
+      prefill[key] = value;
+    }
+  }
+  return prefill;
+}
+
 export default function CreateTradePage() {
+  const searchParams = useSearchParams();
+  const prefill = parseTradePrefill(searchParams);
+
   return (
-    <TradeProvider>
+    <TradeProvider initialValues={prefill}>
       <CreateTradeInner />
     </TradeProvider>
   );
