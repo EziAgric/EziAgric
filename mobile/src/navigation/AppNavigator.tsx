@@ -17,6 +17,7 @@ import AdminTradesBatchScreen from '../screens/AdminTradesBatchScreen';
 import AdminContractScreen from '../screens/AdminContractScreen';
 import AdminFeaturesScreen from '../screens/AdminFeaturesScreen';
 import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
+import CoopHomeScreen from '../screens/CoopHomeScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
 import {
   LINK_PREFIXES,
@@ -107,6 +108,7 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="AdminContract" component={AdminContractScreen} />
         <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
         <Stack.Screen name="AdminActionSuccess" component={AdminActionSuccessScreen} />
+        <Stack.Screen name="CoopHome" component={CoopHomeScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

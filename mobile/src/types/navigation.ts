@@ -3,6 +3,7 @@
 export type RootStackParamList = {
   WalletConnect: undefined;
   TradeList: undefined;
+  CoopHome: { coopId: string };
   TradeDetail: { tradeId: string };
   DisputeDetail: { id: string };
   CreateTrade: undefined;
