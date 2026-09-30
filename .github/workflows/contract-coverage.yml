@@ -97,14 +97,14 @@ jobs:
 
       - name: Upload HTML report
         id: html
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-coverage-html
           path: coverage-html/
           retention-days: 30
 
       - name: Upload summary (+ lcov)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # The main-branch copy of this artifact is the ratchet baseline.
           name: contract-coverage-summary
