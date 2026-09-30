@@ -100,10 +100,15 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Upload Evidence</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">Upload Evidence</Text>
         <View style={{ width: 60 }} />
       </View>
 
@@ -121,6 +126,8 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
             <TouchableOpacity
               style={styles.doneBtn}
               onPress={() => navigation.navigate('TradeDetail', { tradeId })}
+              accessibilityRole="button"
+              accessibilityLabel="Back to trade detail"
             >
               <Text style={styles.doneBtnText}>Back to Trade</Text>
             </TouchableOpacity>
@@ -136,6 +143,9 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
                     key={t}
                     style={[styles.typeBtn, selectedType === t && styles.typeBtnActive]}
                     onPress={() => { setSelectedType(t); handleReset(); }}
+                    accessibilityRole="radio"
+                    accessibilityLabel={t === 'video' ? 'Video evidence' : 'Photo evidence'}
+                    accessibilityState={{ selected: selectedType === t }}
                   >
                     <Text style={styles.typeIcon}>{t === 'video' ? '🎥' : '📷'}</Text>
                     <Text style={[styles.typeLabel, selectedType === t && styles.typeLabelActive]}>
@@ -162,6 +172,9 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
                 style={[styles.captureArea, captured && styles.captureAreaDone]}
                 onPress={uploadState === 'idle' || uploadState === 'error' ? handleCapture : undefined}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={captured ? `${selectedType === 'video' ? 'Video' : 'Photo'} captured, tap to recapture` : `Tap to ${selectedType === 'video' ? 'record video' : 'capture photo'}`}
+                accessibilityState={{ disabled: uploadState === 'uploading' }}
               >
                 {captured ? (
                   <View style={styles.capturedPreview}>
@@ -180,7 +193,12 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
               </TouchableOpacity>
 
               {captured && uploadState !== 'uploading' && (
-                <TouchableOpacity style={styles.retakeBtn} onPress={handleReset}>
+                <TouchableOpacity
+                  style={styles.retakeBtn}
+                  onPress={handleReset}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Retake ${selectedType}`}
+                >
                   <Text style={styles.retakeBtnText}>↩ Retake</Text>
                 </TouchableOpacity>
               )}
@@ -199,10 +217,13 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
                 style={[styles.uploadBtn, uploadState === 'uploading' && styles.btnDisabled]}
                 onPress={handleUpload}
                 disabled={uploadState === 'uploading'}
+                accessibilityRole="button"
+                accessibilityLabel={`Upload ${selectedType === 'video' ? 'video' : 'photo'}`}
+                accessibilityState={{ disabled: uploadState === 'uploading', busy: uploadState === 'uploading' }}
               >
                 {uploadState === 'uploading' ? (
                   <View style={styles.uploadingRow}>
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color="#fff" accessibilityLabel="Uploading evidence" />
                     <Text style={styles.uploadBtnText}>Uploading…</Text>
                   </View>
                 ) : (
@@ -231,6 +252,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e8e0',
   },
+  backBtn: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
   backText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500', width: 60 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
   content: { padding: 16, gap: 16 },

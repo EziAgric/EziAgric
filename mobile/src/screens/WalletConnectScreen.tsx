@@ -71,9 +71,13 @@ export default function WalletConnectScreen({ navigation }: Props) {
           style={[styles.button, connecting && styles.buttonDisabled]}
           onPress={handleConnect}
           disabled={connecting}
+          accessibilityRole="button"
+          accessibilityLabel="Connect Wallet"
+          accessibilityState={{ disabled: connecting, busy: connecting }}
+          accessible
         >
           {connecting ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#fff" accessibilityLabel="Connecting to wallet" />
           ) : (
             <Text style={styles.buttonText}>Connect Wallet</Text>
           )}
