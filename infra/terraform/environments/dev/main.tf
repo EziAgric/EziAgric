@@ -1,9 +1,25 @@
 terraform {
+  required_version = ">= 1.6.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  # Remote state with locking (Issue #267). The bucket, lock table and KMS key
+  # are created by infra/terraform/bootstrap — see docs/terraform-remote-state.md.
+  #   * encrypt + kms_key_id : SSE-KMS with a customer-managed, rotated key
+  #   * dynamodb_table       : concurrent applies block on the state lock
+  # Never run `terraform force-unlock` outside the break-glass runbook
+  # (docs/runbooks/terraform-state-recovery.md).
   backend "s3" {
     bucket         = "amana-terraform-state-dev"
     key            = "infra/terraform/dev/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
+    kms_key_id     = "alias/amana-terraform-state-dev"
     dynamodb_table = "amana-terraform-locks-dev"
   }
 }

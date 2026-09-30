@@ -435,6 +435,97 @@ pub struct AdminClawbackEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Clawback business rules (Issue #107)
+// ---------------------------------------------------------------------------
+//
+// This block is the single source of truth for WHEN a clawback is allowed,
+// HOW MUCH may be clawed back, and WHO may trigger it. Every rule enforced by
+// `admin_clawback`, `queue_clawback` and `execute_clawback` is listed here;
+// if a rule is not written below, the contract does not enforce it.
+//
+// Entry points
+// ------------
+//   * `admin_clawback(trade_id, amount, destination)` — immediate clawback.
+//   * `queue_clawback(trade_id, amount, destination)` — schedules a clawback
+//     behind the timelock and returns an `operation_id`.
+//   * `execute_clawback(operation_id)` — performs a queued clawback once its
+//     delay has elapsed.
+//   * `cancel_queued_operation(operation_id)` — aborts a queued clawback.
+//
+// R1. Who may call (authorization)
+//   * Only the contract admin stored at `DataKey::Admin`. The admin is always
+//     read from storage, never taken as an argument, and `require_auth()` is
+//     invoked on it before any other state is read or mutated.
+//   * Buyers, sellers, mediators and arbitrary accounts can never clawback.
+//   * If the contract was never initialized there is no admin; the call
+//     panics with "Not initialized" rather than falling back to open access.
+//   * Failure surfaces to the backend as `CLAWBACK_UNAUTHORIZED`.
+//
+// R2. Feature switch
+//   * `admin_clawback` additionally requires `is_clawback_enabled() == true`.
+//     The flag defaults to `true` when unset (upgrade-compatible) and is
+//     toggled by the admin via `set_clawback_enabled`.
+//   * The switch does NOT gate the timelocked path: `queue_clawback` and
+//     `execute_clawback` are governed by the timelock delay instead.
+//
+// R3. When a clawback is allowed (trade status eligibility)
+//   * The trade must exist; a missing trade panics in `load_trade`
+//     (`CLAWBACK_STREAM_NOT_FOUND` on the backend).
+//   * The trade must be in `Funded` or `Disputed` status at the moment the
+//     transfer executes. `Created` (nothing escrowed yet), `Delivered`,
+//     `Completed`, `Cancelled` and every other terminal state are rejected
+//     (`CLAWBACK_INVALID_STATUS`).
+//   * For the timelocked path the status is checked at EXECUTION time, not
+//     at queue time: a trade that settles during the delay window cannot be
+//     clawed back afterwards.
+//   * A queued operation must satisfy `now >= execute_after`, must not be
+//     already executed, and must not be cancelled. The default delay is
+//     `TimelockConfig::clawback_delay_seconds` = 86_400s (24h).
+//
+// R4. How amounts are bounded
+//   * `amount > 0` — zero or negative amounts are rejected before any trade
+//     lookup (`CLAWBACK_INVALID_AMOUNT`). For queued operations this is
+//     checked both at queue time and again at execution time.
+//   * `amount <= trade.amount`, where `trade.amount` is the balance STILL
+//     escrowed (it already reflects earlier partial clawbacks). Over-clawback
+//     is impossible (`CLAWBACK_INSUFFICIENT_VESTED` on the backend).
+//   * Partial clawbacks are allowed and may be repeated; each call reduces
+//     `trade.amount` by `amount`. The sum of all clawbacks can therefore
+//     never exceed the originally funded amount.
+//   * The cumulative total is recorded at `DataKey::ClawbackTotal(trade_id)`
+//     using checked addition (overflow panics) and exposed via
+//     `get_clawback_total` for audit.
+//   * Clawback does not deduct or accrue platform fees; the exact `amount`
+//     is transferred to `destination` in the trade's own token.
+//
+// R5. Effects
+//   * Funds move from the contract address to `destination` (chosen by the
+//     admin; typically the buyer or a treasury account).
+//   * If the remaining balance reaches 0 the trade transitions to
+//     `Cancelled` (terminal); otherwise it keeps its current status and the
+//     remainder can still be released or refunded through normal flows.
+//   * `admin_clawback` records a `clawback_partial` / `clawback_full` history
+//     entry and emits `ClawbackExecutedEvent` (topic `CLWBCK`) carrying
+//     `schema_version`. `execute_clawback` emits `TimelockOperationExecuted`.
+//
+// R6. Backend validation expectations
+//   The contract is the final authority, but the backend MUST pre-validate
+//   so users get structured errors instead of failed transactions:
+//   * Reject requests from non-admin sessions and enforce the per-admin
+//     clawback quota (`ADMIN_QUOTA_CLAWBACK_*`, see `config/adminQuota.ts`).
+//   * Require a positive integer amount (stroops) and verify it is
+//     `<=` the remaining escrowed / unclaimed amount before building the tx.
+//   * Verify the trade status is `Funded` or `Disputed` from indexed state.
+//   * Record an admin reason code (e.g. `CLAWBACK_DISBURSED_FUNDS`, see
+//     `lib/adminReason.ts`) for the audit trail.
+//   * Serialize concurrent clawbacks on the same trade with the
+//     `clawback-distributed-lock` Redis policy (`lib/redisPolicy.ts`); on
+//     lock failure, deny with 503 rather than risk a double submission.
+//   * Map on-chain panic strings to `ErrorCode.CLAWBACK_*`
+//     (`errors/errorCodes.ts`) using the constants in `clawback_errors`.
+//   Any rule changed here must be mirrored in those backend checks.
+//
+// ---------------------------------------------------------------------------
 // Contract error codes for admin clawback failures (Issue #97)
 // ---------------------------------------------------------------------------
 
@@ -450,7 +541,7 @@ pub mod clawback_errors {
     pub const INVALID_AMOUNT: &str = "CLAWBACK_INVALID_AMOUNT";
     /// No trade record was found for the given trade ID (stream not found).
     pub const STREAM_NOT_FOUND: &str = "CLAWBACK_STREAM_NOT_FOUND";
-    /// The trade is not in a clawback-eligible status (must be Funded).
+    /// The trade is not in a clawback-eligible status (must be Funded or Disputed).
     pub const INVALID_STATUS: &str = "CLAWBACK_INVALID_STATUS";
 }
 
@@ -1271,6 +1362,9 @@ impl EscrowContract {
     // Timelock operations (Issue #189)
     // -----------------------------------------------------------------------
 
+    /// Queue a clawback behind the timelock. Admin-only; `clawback_amount`
+    /// must be `> 0`. Status and balance are re-checked at execution time.
+    /// See "Clawback business rules (Issue #107)" at the top of this file.
     pub fn queue_clawback(
         env: Env,
         trade_id: u64,
@@ -1342,6 +1436,9 @@ impl EscrowContract {
         operation_id
     }
 
+    /// Execute a queued clawback once `execute_after` has passed. Admin-only.
+    /// Enforces the same status and amount bounds as `admin_clawback` (rules
+    /// R3/R4 in "Clawback business rules (Issue #107)").
     pub fn execute_clawback(env: Env, operation_id: u64) {
         let admin: Address = env
             .storage()
