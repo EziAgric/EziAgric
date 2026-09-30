@@ -9,6 +9,7 @@ import { api, apiConfig, ApiError } from "@/lib/api";
 import { createTradeInputSchema, fieldErrors } from "@/lib/domain-schemas/trade";
 import Link from "next/link";
 import { LegalDisclaimerModal } from "@/components/ui/LegalDisclaimerModal";
+import { FeeBreakdown } from "@/components/trade/FeeBreakdown";
 import { useOffline } from "@/hooks/useOffline";
 import { useOfflineQueueStore } from "@/stores/offlineQueueStore";
 import { useToast, TOAST_CONTRACT } from "@/hooks/useToast";
@@ -266,6 +267,9 @@ export default function Step3Review() {
         <ReviewRow label="Delivery Window" value={`${data.deliveryDays} days`} />
         {data.notes && <ReviewRow label="Notes" value={data.notes} />}
       </div>
+
+      {/* Always surface the 1% platform fee and the seller's net (#423) */}
+      <FeeBreakdown gross={amountUsdc} />
 
       <div className="rounded-lg bg-gold-muted border border-gold/20 px-4 py-3 text-sm text-gold">
         By submitting, you authorize a Stellar transaction to create an escrow trade,
