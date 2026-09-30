@@ -1,0 +1,71 @@
+name: Feature request
+description: Propose a new feature or an improvement to existing behaviour.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [CONTRIBUTING.md](https://github.com/EziAgric/EziAgric/blob/main/CONTRIBUTING.md) first.
+        Wave issues must state an **area**, a **complexity** level and **acceptance criteria**.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the stack does this touch?
+      options:
+        - Backend
+        - Frontend
+        - Mobile
+        - Contracts
+        - DevOps
+        - Docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexity
+      description: Drips Wave complexity level. Maintainers may adjust it before the issue is resolved.
+      options:
+        - Trivial (100 points) — Typos, minor copy changes, or very small, well-contained fixes.
+        - Medium (150 points) — Standard features or fixes touching a few files.
+        - High (200 points) — Complex features, cross-cutting changes or deep investigation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What problem does this solve and why is it needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant files
+      placeholder: "- `frontend/src/...`"
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      value: |
+        - [ ] 
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] 
+        - [ ] All relevant CI gates pass (see README → *Required PR CI Gates*)
+    validations:
+      required: true
