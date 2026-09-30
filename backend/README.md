@@ -78,6 +78,20 @@ npm run start
 npm test
 ```
 
+### Listing Photo Uploads (IPFS)
+
+Listing photos are uploaded through `src/services/ipfs.service.ts`. The service accepts
+`image/jpeg`, `image/png`, and `image/webp` files up to **10MB**, detects the MIME type by
+sniffing magic bytes (never by file extension), strips EXIF metadata (including GPS
+location), and pins two resized variants — a **1200px** display image and a **300px**
+thumbnail — returning their CIDs.
+
+```ts
+import { uploadListingPhoto } from './services/ipfs.service';
+
+const { original, display, thumbnail } = await uploadListingPhoto(buffer);
+```
+
 ### Demo Seed Data
 
 For pilot walkthroughs and demos, a dedicated seed script populates a coherent story:

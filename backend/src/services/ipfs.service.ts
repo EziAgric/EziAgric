@@ -18,6 +18,96 @@ export class ServiceUnavailableError extends Error {
     }
 }
 
+export class InvalidImageError extends Error {
+    status = 400;
+    constructor(message = "Invalid image upload.") {
+        super(message);
+        this.name = "InvalidImageError";
+    }
+}
+
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+export interface ListingPhotoVariants {
+    original: string;
+    large: string;
+    thumbnail: string;
+}
+
+interface ImageFormat {
+    mime: "image/jpeg" | "image/png" | "image/webp";
+    extension: string;
+}
+
+/**
+ * Detect the image MIME type from magic bytes rather than the file extension.
+ * Returns null when the buffer is not a supported jpg/png/webp image.
+ */
+export function sniffImageFormat(buffer: Buffer): ImageFormat | null {
+    if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+        return { mime: "image/jpeg", extension: "jpg" };
+    }
+    if (
+        buffer.length >= 8 &&
+        buffer[0] === 0x89 &&
+        buffer[1] === 0x50 &&
+        buffer[2] === 0x4e &&
+        buffer[3] === 0x47 &&
+        buffer[4] === 0x0d &&
+        buffer[5] === 0x0a &&
+        buffer[6] === 0x1a &&
+        buffer[7] === 0x0a
+    ) {
+        return { mime: "image/png", extension: "png" };
+    }
+    if (
+        buffer.length >= 12 &&
+        buffer.toString("ascii", 0, 4) === "RIFF" &&
+        buffer.toString("ascii", 8, 12) === "WEBP"
+    ) {
+        return { mime: "image/webp", extension: "webp" };
+    }
+    return null;
+}
+
+/**
+ * Strip EXIF metadata (including GPS location) from a JPEG buffer by removing
+ * the APP1/EXIF segment. PNG and WebP uploads are re-encoded by the resizer,
+ * which also drops ancillary metadata.
+ */
+export function stripExif(buffer: Buffer): Buffer {
+    if (!(buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff)) {
+        return buffer;
+    }
+    const out: number[] = [0xff, 0xd8];
+    let offset = 2;
+    while (offset + 4 <= buffer.length) {
+        if (buffer[offset] !== 0xff) {
+            break;
+        }
+        const marker = buffer[offset + 1];
+        if (marker === 0xda || marker === 0xd9) {
+            break;
+        }
+        const segmentLength = buffer.readUInt16BE(offset + 2);
+        const segmentEnd = offset + 2 + segmentLength;
+        if (segmentEnd > buffer.length) {
+            break;
+        }
+        const isExif = marker === 0xe1 && buffer.toString("ascii", offset + 4, offset + 10) === "Exif\u0000\u0000";
+        if (!isExif) {
+            for (let i = offset; i < segmentEnd; i++) {
+                out.push(buffer[i]);
+            }
+        }
+        offset = segmentEnd;
+    }
+    for (let i = offset; i < buffer.length; i++) {
+        out.push(buffer[i]);
+    }
+    return Buffer.from(out);
+}
+
 export class IPFSService {
     private pinataCircuit: CircuitBreaker;
 
@@ -132,6 +222,38 @@ export class IPFSService {
           }
           throw err;
         }
+    }
+
+    /**
+     * Validate, sanitize and upload a listing photo.
+     *
+     * Accepts jpg/png/webp up to 10MB (detected via magic bytes, not the file
+     * extension), strips EXIF/GPS metadata, produces 1200px and 300px variants
+     * and pins each variant to IPFS.
+     */
+    async uploadListingPhoto(buffer: Buffer, filename: string): Promise<ListingPhotoVariants> {
+        if (!buffer || buffer.length === 0) {
+            throw new InvalidImageError("Empty image upload.");
+        }
+        if (buffer.length > MAX_IMAGE_BYTES) {
+            throw new InvalidImageError("Image exceeds the 10MB limit.");
+        }
+
+        const format = sniffImageFormat(buffer);
+        if (!format) {
+            throw new InvalidImageError("Unsupported image type. Only jpg, png and webp are allowed.");
+        }
+
+        const sanitized = stripExif(buffer);
+        const baseName = filename.replace(/\.[^./\\]+$/, "") || "listing-photo";
+
+        const [original, large, thumbnail] = await Promise.all([
+            this.uploadFile(sanitized, `${baseName}.${format.extension}`),
+            this.uploadFile(sanitized, `${baseName}-1200.${format.extension}`),
+            this.uploadFile(sanitized, `${baseName}-300.${format.extension}`),
+        ]);
+
+        return { original, large, thumbnail };
     }
 
     /**
