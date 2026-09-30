@@ -1,76 +1,99 @@
-/**
- * i18n entry point. Import formatters and `t()` from here.
- *
- *   import { t, formatNaira, formatDate } from "@/lib/i18n";
- *   t("wallet.wrongNetworkBody", { expected: "Testnet" }); // → "Switch Freighter to Testnet…"
- */
-import en from "./messages/en";
-import { pseudoLocalize } from "./pseudo";
-import { resolveLocale, type Locale } from "./config";
+import en from './messages/en';
+import ha from './messages/ha';
+import yo from './messages/yo';
+import ig from './messages/ig';
+import pcm from './messages/pcm';
 
-export * from "./config";
-export * from "./format";
-export { pseudoLocalize } from "./pseudo";
+export const LOCALES = ['en', 'ha', 'yo', 'ig', 'pcm'] as const;
 
-type Messages = typeof en;
+export type Locale = (typeof LOCALES)[number];
 
-// Recursively derive dot-path keys ("wallet.connect", "common.retry", …).
-type Join<K, P> = K extends string
-  ? P extends string
-    ? `${K}${"" extends P ? "" : "."}${P}`
-    : never
-  : never;
+export const LOCALE_LABELS: Record<Locale, string> = {
+  en: 'English',
+  ha: 'Hausa',
+  yo: 'Yorùbá',
+  ig: 'Igbo',
+  pcm: 'Pidgin',
+};
 
-type Paths<T> = {
-  [K in keyof T]-?: T[K] extends object ? Join<K, Paths<T[K]>> : K & string;
-}[keyof T];
+export const DEFAULT_LOCALE: Locale = 'en';
 
-export type MessageKey = Paths<Messages>;
+export const STORAGE_KEY = 'app.locale';
 
-const CATALOGS: Record<string, Messages> = { "en-NG": en, "en-US": en, pseudo: en };
+export type Messages = typeof en;
 
-function lookup(catalog: Messages, key: string): string | undefined {
-  return key
-    .split(".")
-    .reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], catalog) as
-    | string
-    | undefined;
+export const messages: Record<Locale, Messages> = {
+  en,
+  ha,
+  yo,
+  ig,
+  pcm,
+};
+
+export function isLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && (LOCALES as readonly string[]).includes(value);
 }
 
-function interpolate(template: string, params?: Record<string, string | number>): string {
-  if (!params) return template;
-  return template.replace(/\{(\w+)\}/g, (match, name) =>
-    name in params ? String(params[name]) : match,
-  );
-}
-
-export interface TranslateOptions {
-  locale?: Locale;
-  params?: Record<string, string | number>;
-}
-
-/** Resolve a catalog key to a localized string. Falls back to the key itself. */
-export function t(key: MessageKey, params?: Record<string, string | number>): string;
-export function t(key: MessageKey, options: TranslateOptions): string;
-export function t(
-  key: MessageKey,
-  paramsOrOptions?: Record<string, string | number> | TranslateOptions,
-): string {
-  const isOptions =
-    paramsOrOptions !== undefined &&
-    ("locale" in paramsOrOptions || "params" in paramsOrOptions);
-  const options = (isOptions ? paramsOrOptions : { params: paramsOrOptions }) as TranslateOptions;
-  const locale = options.locale ?? resolveLocale();
-
-  const catalog = CATALOGS[locale] ?? en;
-  const raw = lookup(catalog, key) ?? lookup(en, key);
-  if (raw === undefined) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[i18n] missing message key: ${key}`);
-    }
-    return key;
+export function getStoredLocale(): Locale {
+  if (typeof window === 'undefined') return DEFAULT_LOCALE;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return isLocale(stored) ? stored : DEFAULT_LOCALE;
+  } catch {
+    return DEFAULT_LOCALE;
   }
+}
 
-  const resolved = interpolate(raw, options.params);
-  return locale === "pseudo" ? pseudoLocalize(resolved) : resolved;
+export function setStoredLocale(locale: Locale): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, locale);
+  } catch {
+    // ignore storage failures (private mode, quota, etc.)
+  }
+}
+
+/**
+ * Resolve a dot-notation key (e.g. "marketplace.title") against a locale's
+ * message catalog, falling back to the default locale and finally the key.
+ */
+export function translate(locale: Locale, key: string): string {
+  const resolve = (catalog: Messages): string | undefined => {
+    const parts = key.split('.');
+    let current: unknown = catalog;
+    for (const part of parts) {
+      if (current && typeof current === 'object' && part in (current as Record<string, unknown>)) {
+        current = (current as Record<string, unknown>)[part];
+      } else {
+        return undefined;
+      }
+    }
+    return typeof current === 'string' ? current : undefined;
+  };
+
+  return resolve(messages[locale]) ?? resolve(messages[DEFAULT_LOCALE]) ?? key;
+}
+
+/**
+ * Collect every dot-notation key present in the default locale catalog.
+ * Used by the missing-key check to keep locale files in sync.
+ */
+export function collectKeys(catalog: unknown, prefix = ''): string[] {
+  if (!catalog || typeof catalog !== 'object') return [];
+  const keys: string[] = [];
+  for (const [k, v] of Object.entries(catalog as Record<string, unknown>)) {
+    const path = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === 'object') {
+      keys.push(...collectKeys(v, path));
+    } else {
+      keys.push(path);
+    }
+  }
+  return keys;
+}
+
+export function findMissingKeys(locale: Locale): string[] {
+  const base = new Set(collectKeys(messages[DEFAULT_LOCALE]));
+  const target = new Set(collectKeys(messages[locale]));
+  return [...base].filter((key) => !target.has(key));
 }
