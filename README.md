@@ -39,6 +39,13 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 - `mobile/` → React Native Expo environment (mobile wallet, notification, and trade UX)
 - `contracts/` → Rust/Soroban smart contract environment
 
+### Step 0: environment doctor
+
+Run `scripts/dev-doctor.sh` from the repo root. It checks every toolchain (node, npm, docker,
+cargo, wasm32 target, stellar CLI), prints the exact install command for anything missing, and
+finishes with one smoke test per stack. Hit something it didn't catch? Open an
+**Onboarding friction** issue.
+
 ### Frontend setup
 
 1. `cd frontend`
