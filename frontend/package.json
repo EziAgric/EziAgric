@@ -13,6 +13,8 @@
     "test:coverage": "jest --config jest.config.ts --coverage",
     "test:visual": "playwright test",
     "test:visual:update": "playwright test --update-snapshots",
+    "test:e2e": "playwright test --config playwright.e2e.config.ts",
+    "test:e2e:update": "playwright test --config playwright.e2e.config.ts --update-snapshots",
     "analyze": "ANALYZE=true next build"
   },
   "dependencies": {
