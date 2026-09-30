@@ -176,6 +176,48 @@ pub struct TradeCancelledByBuyerEvent {
     pub buyer: Address,
 }
 
+/// Emitted when the seller withdraws a trade before it is funded.
+#[contractevent(topics = ["TCNBSL"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TradeCancelledBySellerEvent {
+    pub trade_id: u64,
+    pub seller: Address,
+}
+
+/// Emitted when a party proposes new terms for an unfunded trade.
+/// `expires_at` is `0` when the proposed terms carry no deadline.
+#[contractevent(topics = ["AMDPRP"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AmendmentProposedEvent {
+    pub trade_id: u64,
+    pub proposer: Address,
+    pub amount: i128,
+    pub buyer_loss_bps: u32,
+    pub seller_loss_bps: u32,
+    pub expires_at: u64,
+}
+
+/// Emitted when the counter-party accepts a pending amendment and the new
+/// terms are applied to the trade. `expires_at` is `0` for no deadline.
+#[contractevent(topics = ["AMDACC"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AmendmentAcceptedEvent {
+    pub trade_id: u64,
+    pub acceptor: Address,
+    pub amount: i128,
+    pub buyer_loss_bps: u32,
+    pub seller_loss_bps: u32,
+    pub expires_at: u64,
+}
+
+/// Emitted when a pending amendment is withdrawn before it is accepted.
+#[contractevent(topics = ["AMDWDR"])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AmendmentWithdrawnEvent {
+    pub trade_id: u64,
+    pub caller: Address,
+}
+
 #[contractevent(topics = ["UPGRAD"])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContractUpgradedEvent {
@@ -395,8 +437,9 @@ pub struct FeeRateUpdatedEvent {
 #[contractevent(topics = ["FEEWTH"])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeesWithdrawnEvent {
+    pub to: Address,
     pub amount: i128,
-    pub destination: Address,
+    pub token: Address,
 }
 
 /// Emitted when a buyer initiates a path payment deposit.
@@ -554,6 +597,33 @@ pub mod timelock_errors {
     pub const NOT_READY: &str = "TIMELOCK_NOT_READY";
     pub const OPERATION_NOT_FOUND: &str = "TIMELOCK_OP_NOT_FOUND";
     pub const INVALID_OPERATION: &str = "TIMELOCK_INVALID_OP";
+}
+
+// ---------------------------------------------------------------------------
+// Trade lifecycle error codes
+// ---------------------------------------------------------------------------
+
+/// Structured error codes for trade creation, cancellation and amendment.
+/// Emitted verbatim in panic messages; see `docs/contract-error-codes.md`.
+pub mod trade_errors {
+    /// `buyer_loss_bps` / `seller_loss_bps` are out of range or do not sum to 10 000.
+    pub const INVALID_LOSS_RATIO: &str = "INVALID_LOSS_RATIO";
+    /// Seller tried to cancel a trade that is no longer in `Created` status.
+    pub const SELLER_CANCEL_INVALID_STATUS: &str = "SELLER_CANCEL_INVALID_STATUS";
+    /// Amendment requested on a trade that is no longer in `Created` status.
+    pub const AMENDMENT_INVALID_STATUS: &str = "AMENDMENT_INVALID_STATUS";
+    /// Caller is not the buyer or seller of the trade.
+    pub const AMENDMENT_UNAUTHORIZED: &str = "AMENDMENT_UNAUTHORIZED";
+    /// A pending amendment already exists and must be withdrawn first.
+    pub const AMENDMENT_ALREADY_PENDING: &str = "AMENDMENT_ALREADY_PENDING";
+    /// No pending amendment exists for the trade.
+    pub const AMENDMENT_NOT_FOUND: &str = "AMENDMENT_NOT_FOUND";
+    /// The proposer tried to accept their own amendment.
+    pub const AMENDMENT_SELF_ACCEPT: &str = "AMENDMENT_SELF_ACCEPT";
+    /// Proposed amount is zero, negative or above `MAX_TRADE_VALUE`.
+    pub const AMENDMENT_INVALID_AMOUNT: &str = "AMENDMENT_INVALID_AMOUNT";
+    /// Proposed deadline is not in the future.
+    pub const AMENDMENT_INVALID_DEADLINE: &str = "AMENDMENT_INVALID_DEADLINE";
 }
 
 /// Emitted when the admin performs a partial or full clawback on an escrowed trade.
@@ -934,6 +1004,22 @@ pub enum DataKey {
     /// existing behavior; an admin can explicitly disable/re-enable via
     /// `set_clawback_enabled()` to stage a rollout or freeze the feature.
     ClawbackEnabled,
+    /// Pending `TradeAmendment` proposed by one party and awaiting the
+    /// counter-party's signature. Only meaningful while the trade is `Created`.
+    PendingAmendment(u64),
+}
+
+/// New terms proposed for an unfunded trade. Applied atomically to the trade
+/// only once the counter-party calls `accept_amendment`.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TradeAmendment {
+    pub proposer: Address,
+    pub amount: i128,
+    pub buyer_loss_bps: u32,
+    pub seller_loss_bps: u32,
+    pub expires_at: Option<u64>,
+    pub proposed_at: u64,
 }
 
 #[contracttype]
@@ -1343,8 +1429,9 @@ impl EscrowContract {
             .instance()
             .set(&DataKey::AccruedFees, &(accrued_fees - amount));
         FeesWithdrawnEvent {
+            to: destination,
             amount,
-            destination,
+            token,
         }
         .publish(&env);
         Self::bump_instance_ttl(&env);
@@ -1929,6 +2016,18 @@ impl EscrowContract {
             .set(key, &TradeData::V0(trade.clone()));
     }
 
+    /// Reject any loss-ratio pair that is out of range or does not sum to
+    /// exactly 10 000 bps. Each share is bounded before summing so a malformed
+    /// value cannot trigger an opaque u32 overflow on the addition.
+    fn assert_valid_loss_ratio(buyer_loss_bps: u32, seller_loss_bps: u32) {
+        if buyer_loss_bps > 10_000
+            || seller_loss_bps > 10_000
+            || buyer_loss_bps + seller_loss_bps != 10_000
+        {
+            panic!("{}", trade_errors::INVALID_LOSS_RATIO);
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Trade lifecycle
     // -----------------------------------------------------------------------
@@ -1950,21 +2049,7 @@ impl EscrowContract {
             buyer != seller,
             "buyer and seller must be different addresses"
         );
-        // Bound each share before summing so a malformed out-of-range value is
-        // rejected with a clear message rather than triggering an opaque u32
-        // overflow panic on the addition below.
-        assert!(
-            buyer_loss_bps <= 10_000,
-            "buyer_loss_bps must not exceed 10000"
-        );
-        assert!(
-            seller_loss_bps <= 10_000,
-            "seller_loss_bps must not exceed 10000"
-        );
-        assert!(
-            buyer_loss_bps + seller_loss_bps == 10_000,
-            "loss ratios must sum to 10000 (100%)"
-        );
+        Self::assert_valid_loss_ratio(buyer_loss_bps, seller_loss_bps);
         let now = env.ledger().timestamp();
         // Validate deadline is in the future when provided
         if let Some(deadline) = expires_at {
@@ -2330,6 +2415,201 @@ impl EscrowContract {
         }
         .publish(&env);
         Self::bump_instance_ttl(&env);
+    }
+
+    /// Allow the seller to withdraw a trade before funds are deposited.
+    ///
+    /// Mirrors `cancel_by_buyer`: only the seller may call it and only while
+    /// the trade is still `Created`. Any other status panics with
+    /// [`trade_errors::SELLER_CANCEL_INVALID_STATUS`].
+    pub fn cancel_by_seller(env: Env, trade_id: u64) {
+        let key = DataKey::Trade(trade_id);
+        let mut trade: Trade = Self::load_trade(&env, &key);
+
+        trade.seller.require_auth();
+        if !matches!(trade.status, TradeStatus::Created) {
+            panic!("{}", trade_errors::SELLER_CANCEL_INVALID_STATUS);
+        }
+
+        trade.status = TradeStatus::Cancelled;
+        trade.updated_at = env.ledger().timestamp();
+        Self::save_trade(&env, &key, &trade);
+        Self::update_release_sequence(&env, &trade, |sequence, at| {
+            sequence.cancelled_at = Some(at);
+        });
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingAmendment(trade_id));
+        Self::record_trade_event(
+            &env,
+            trade_id,
+            "cancelled",
+            trade.seller.clone(),
+            "cancelled by seller before funding",
+        );
+
+        TradeCancelledBySellerEvent {
+            trade_id,
+            seller: trade.seller,
+        }
+        .publish(&env);
+        Self::bump_instance_ttl(&env);
+    }
+
+    // -----------------------------------------------------------------------
+    // Mutual-consent trade amendment
+    // -----------------------------------------------------------------------
+
+    /// Propose new terms (amount, loss ratio, deadline) for an unfunded trade.
+    ///
+    /// `proposer` must be the buyer or the seller and must sign. Only one
+    /// proposal may be pending at a time; withdraw it with
+    /// `withdraw_amendment` before proposing different terms, so the
+    /// counter-party can never accept terms swapped in underneath them.
+    /// Emits `AMDPRP`.
+    pub fn propose_amendment(
+        env: Env,
+        trade_id: u64,
+        proposer: Address,
+        amount: i128,
+        buyer_loss_bps: u32,
+        seller_loss_bps: u32,
+        expires_at: Option<u64>,
+    ) {
+        Self::assert_not_paused(&env);
+        proposer.require_auth();
+        let trade: Trade = Self::load_trade(&env, &DataKey::Trade(trade_id));
+        if proposer != trade.buyer && proposer != trade.seller {
+            panic!("{}", trade_errors::AMENDMENT_UNAUTHORIZED);
+        }
+        if !matches!(trade.status, TradeStatus::Created) {
+            panic!("{}", trade_errors::AMENDMENT_INVALID_STATUS);
+        }
+        if amount <= 0 || amount > MAX_TRADE_VALUE {
+            panic!("{}", trade_errors::AMENDMENT_INVALID_AMOUNT);
+        }
+        Self::assert_valid_loss_ratio(buyer_loss_bps, seller_loss_bps);
+        let now = env.ledger().timestamp();
+        if let Some(deadline) = expires_at {
+            if deadline <= now {
+                panic!("{}", trade_errors::AMENDMENT_INVALID_DEADLINE);
+            }
+        }
+
+        let amendment_key = DataKey::PendingAmendment(trade_id);
+        if env.storage().persistent().has(&amendment_key) {
+            panic!("{}", trade_errors::AMENDMENT_ALREADY_PENDING);
+        }
+        env.storage().persistent().set(
+            &amendment_key,
+            &TradeAmendment {
+                proposer: proposer.clone(),
+                amount,
+                buyer_loss_bps,
+                seller_loss_bps,
+                expires_at,
+                proposed_at: now,
+            },
+        );
+
+        AmendmentProposedEvent {
+            trade_id,
+            proposer,
+            amount,
+            buyer_loss_bps,
+            seller_loss_bps,
+            expires_at: expires_at.unwrap_or(0),
+        }
+        .publish(&env);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Accept the pending amendment and apply it to the trade atomically.
+    ///
+    /// `acceptor` must be the counter-party of the proposer and must sign.
+    /// The trade must still be `Created`: if the buyer funded the trade
+    /// before the amendment was accepted, acceptance is rejected so escrowed
+    /// funds can never diverge from the recorded amount. Emits `AMDACC`.
+    pub fn accept_amendment(env: Env, trade_id: u64, acceptor: Address) {
+        Self::assert_not_paused(&env);
+        acceptor.require_auth();
+        let key = DataKey::Trade(trade_id);
+        let mut trade: Trade = Self::load_trade(&env, &key);
+        if acceptor != trade.buyer && acceptor != trade.seller {
+            panic!("{}", trade_errors::AMENDMENT_UNAUTHORIZED);
+        }
+        if !matches!(trade.status, TradeStatus::Created) {
+            panic!("{}", trade_errors::AMENDMENT_INVALID_STATUS);
+        }
+        let amendment_key = DataKey::PendingAmendment(trade_id);
+        let amendment: TradeAmendment = env
+            .storage()
+            .persistent()
+            .get(&amendment_key)
+            .unwrap_or_else(|| panic!("{}", trade_errors::AMENDMENT_NOT_FOUND));
+        if acceptor == amendment.proposer {
+            panic!("{}", trade_errors::AMENDMENT_SELF_ACCEPT);
+        }
+
+        let now = env.ledger().timestamp();
+        // Re-check the deadline: time may have passed since the proposal.
+        if let Some(deadline) = amendment.expires_at {
+            if deadline <= now {
+                panic!("{}", trade_errors::AMENDMENT_INVALID_DEADLINE);
+            }
+        }
+
+        trade.amount = amendment.amount;
+        trade.buyer_loss_bps = amendment.buyer_loss_bps;
+        trade.seller_loss_bps = amendment.seller_loss_bps;
+        trade.expires_at = amendment.expires_at;
+        trade.updated_at = now;
+        Self::save_trade(&env, &key, &trade);
+        env.storage().persistent().remove(&amendment_key);
+        Self::record_trade_event(
+            &env,
+            trade_id,
+            "amended",
+            acceptor.clone(),
+            "amendment accepted by counter-party",
+        );
+
+        AmendmentAcceptedEvent {
+            trade_id,
+            acceptor,
+            amount: amendment.amount,
+            buyer_loss_bps: amendment.buyer_loss_bps,
+            seller_loss_bps: amendment.seller_loss_bps,
+            expires_at: amendment.expires_at.unwrap_or(0),
+        }
+        .publish(&env);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Withdraw a pending amendment. The proposer may retract it, and the
+    /// counter-party may reject it; either way the trade terms are unchanged.
+    /// Emits `AMDWDR`.
+    pub fn withdraw_amendment(env: Env, trade_id: u64, caller: Address) {
+        caller.require_auth();
+        let trade: Trade = Self::load_trade(&env, &DataKey::Trade(trade_id));
+        if caller != trade.buyer && caller != trade.seller {
+            panic!("{}", trade_errors::AMENDMENT_UNAUTHORIZED);
+        }
+        let amendment_key = DataKey::PendingAmendment(trade_id);
+        if !env.storage().persistent().has(&amendment_key) {
+            panic!("{}", trade_errors::AMENDMENT_NOT_FOUND);
+        }
+        env.storage().persistent().remove(&amendment_key);
+
+        AmendmentWithdrawnEvent { trade_id, caller }.publish(&env);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Return the pending amendment for a trade, if any.
+    pub fn get_pending_amendment(env: Env, trade_id: u64) -> Option<TradeAmendment> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingAmendment(trade_id))
     }
 
     /// Unilaterally refund a funded or delivered trade.
@@ -4171,7 +4451,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "loss ratios must sum to 10000 (100%)")]
+    #[should_panic(expected = "INVALID_LOSS_RATIO")]
     fn test_create_trade_fails_if_ratios_dont_sum_to_100() {
         let env = Env::default();
         env.mock_all_auths();
@@ -4191,7 +4471,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "loss ratios must sum to 10000 (100%)")]
+    #[should_panic(expected = "INVALID_LOSS_RATIO")]
     fn test_create_trade_fails_if_ratios_sum_exceeds_10000() {
         let env = Env::default();
         env.mock_all_auths();
