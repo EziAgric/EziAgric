@@ -4,6 +4,19 @@ import { appLogger } from "../middleware/logger";
 import { prisma } from "../lib/db";
 import { TradeStatus } from "@prisma/client";
 
+export type TradeWebhookEvent =
+  | "trade.funded"
+  | "trade.delivered"
+  | "trade.settled"
+  | "trade.disputed";
+
+const TRADE_EVENT_BY_STATUS: Partial<Record<TradeStatus, TradeWebhookEvent>> = {
+  [TradeStatus.FUNDED]: "trade.funded",
+  [TradeStatus.DELIVERED]: "trade.delivered",
+  [TradeStatus.SETTLED]: "trade.settled",
+  [TradeStatus.DISPUTED]: "trade.disputed",
+};
+
 interface WebhookPayload {
   event: string;
   tradeId: string;
@@ -33,8 +46,17 @@ export class WebhookService {
     this.retryMaxMs = env.WEBHOOK_RETRY_MAX_MS;
   }
 
+  /**
+   * Resolve the webhook event name for a trade status. Trade lifecycle
+   * statuses (funded, delivered, settled, disputed) map to dedicated
+   * `trade.*` event types; other statuses fall back to `trade.<status>`.
+   */
+  private resolveEvent(status: TradeStatus): string {
+    return TRADE_EVENT_BY_STATUS[status] ?? `trade.${status.toLowerCase()}`;
+  }
+
   async dispatch(tradeId: string, status: TradeStatus, metadata: Record<string, unknown> = {}): Promise<void> {
-    const event = `trade.${status.toLowerCase()}`;
+    const event = this.resolveEvent(status);
     const activeSubscriptions = await prisma.webhookSubscription.findMany({
       where: {
         isActive: true,
@@ -90,15 +112,21 @@ export class WebhookService {
 
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       try {
+        const timestamp = Math.floor(Date.now() / 1000).toString();
         const signature = target.secret
-          ? crypto.createHmac("sha256", target.secret).update(body).digest("hex")
+          ? this.signPayload(target.secret, timestamp, body)
           : undefined;
 
         const response = await fetch(target.url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(signature ? { "X-Webhook-Signature": signature } : {}),
+            ...(signature
+              ? {
+                  "X-Webhook-Signature": signature,
+                  "X-Webhook-Timestamp": timestamp,
+                }
+              : {}),
           },
           body,
         });
@@ -165,6 +193,19 @@ export class WebhookService {
       },
       "Webhook delivery failed after retries",
     );
+  }
+
+  /**
+   * Sign a webhook payload with the per-subscription secret. The signed
+   * message is `${timestamp}.${body}` so receivers can reject replays by
+   * checking the timestamp, and the signature is sent as
+   * `X-Webhook-Signature` alongside `X-Webhook-Timestamp`.
+   */
+  private signPayload(secret: string, timestamp: string, body: string): string {
+    return crypto
+      .createHmac("sha256", secret)
+      .update(`${timestamp}.${body}`)
+      .digest("hex");
   }
 
   isConfigured(): boolean {

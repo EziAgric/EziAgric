@@ -1,0 +1,72 @@
+name: PR Title Lint
+
+# Enforces Conventional Commit PR titles so release notes and version bumps
+# can be generated from history (issue #270). See CONTRIBUTING.md.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+    branches:
+      - main
+      - develop
+
+permissions:
+  pull-requests: write
+
+jobs:
+  conventional-title:
+    name: Conventional PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lint PR title
+        id: lint
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            security
+            docs
+            refactor
+            test
+            build
+            ci
+            chore
+            style
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" found in the PR title "{title}" must start with a lowercase letter.
+
+      - name: Explain how to fix the title
+        if: always() && steps.lint.outputs.error_message != null
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-title-lint
+          message: |
+            ### ❌ PR title does not follow Conventional Commits
+
+            ```
+            ${{ steps.lint.outputs.error_message }}
+            ```
+
+            Use the format `<type>(<optional scope>)!: <description>`, for example:
+
+            - `feat(backend): add trade expiry webhook`
+            - `fix(mobile): handle offline checkout retry`
+            - `security(contracts): validate clawback destination`
+            - `feat(api)!: drop v1 trade endpoints` ← `!` marks a **breaking change**
+
+            Allowed types: `feat`, `fix`, `perf`, `security`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `style`, `revert`.
+            See [CONTRIBUTING.md](https://github.com/EziAgric/EziAgric/blob/main/CONTRIBUTING.md#commits-and-pr-titles).
+
+      - name: Clear lint comment
+        if: steps.lint.outputs.error_message == null
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-title-lint
+          delete: true

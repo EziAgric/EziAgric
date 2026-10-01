@@ -42,6 +42,46 @@ export function createTradeRouter(prisma: PrismaClient = defaultPrisma) {
   );
 
   router.post(
+    "/from-listing",
+    authMiddleware,
+    idempotencyMiddleware,
+    async (req: AuthRequest, res, next: NextFunction) => {
+      const callerAddress = requireWalletFromJwt(req, res);
+      if (!callerAddress) {
+        return;
+      }
+
+      try {
+        const { listingId, quantity } = req.body as {
+          listingId?: string;
+          quantity?: number;
+        };
+
+        if (!listingId || typeof listingId !== "string") {
+          res.status(400).json({ error: "listingId is required" });
+          return;
+        }
+
+        const parsedQuantity = Number(quantity);
+        if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+          res.status(400).json({ error: "quantity must be a positive number" });
+          return;
+        }
+
+        const trade = await tradeService.createTradeFromListing({
+          listingId,
+          quantity: parsedQuantity,
+          buyerAddress: callerAddress,
+        });
+
+        res.status(201).json(trade);
+      } catch (error) {
+        return next(error);
+      }
+    }
+  );
+
+  router.post(
     "/:id/deposit", 
     authMiddleware, 
     idempotencyMiddleware,
@@ -66,7 +106,7 @@ export function createTradeRouter(prisma: PrismaClient = defaultPrisma) {
 
   router.post(
     "/:id/dispute", 
-    authMiddleware,
+    authMiddleware, 
     disputeLimiter,
     idempotencyMiddleware,
     validateRequest({ params: tradeIdParamSchema, body: initiateDisputeSchema }),
