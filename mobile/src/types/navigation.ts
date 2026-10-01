@@ -6,6 +6,9 @@ export type RootStackParamList = {
   TradeDetail: { tradeId: string };
   DisputeDetail: { id: string };
   CreateTrade: undefined;
+  /** #432 — marketplace browse and listing detail. */
+  Marketplace: undefined;
+  ListingDetail: { listingId: string };
   EvidenceCapture: { tradeId: string };
   VaultDashboard: undefined;
   AdminStreamsOverview: undefined;
