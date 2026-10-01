@@ -1,0 +1,37 @@
+name: Commit Provenance
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  provenance:
+    name: Commit Provenance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require signed commits and linear history
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS=$'\t' read -r sha verified parents; do
+            if [ "$verified" != "true" ]; then
+              echo "::error::Commit $sha is not signed/verified (see docs/branch-protection-policy.md#commit-signing)"
+              fail=1
+            fi
+            if [ "$parents" -gt 1 ]; then
+              echo "::error::Commit $sha is a merge commit; rebase onto the base branch instead"
+              fail=1
+            fi
+          done < <(gh api --paginate "repos/$REPO/pulls/$PR/commits" \
+            --jq '.[] | [.sha, (.commit.verification.verified|tostring), (.parents|length)] | @tsv')
+          exit $fail

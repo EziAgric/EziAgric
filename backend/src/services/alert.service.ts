@@ -21,7 +21,9 @@ export type AlertType =
   | "pii_log_leak_detected"
   | "mobile_crash_spike"
   | "deploy_rollback_triggered"
-  | "backup_stale";
+  | "backup_stale"
+  | "dispute_sla_warning"
+  | "dispute_sla_escalation";
 
 export interface AlertPayload {
   type: AlertType;
@@ -106,6 +108,71 @@ export class AlertService {
       appLogger.info({ type }, "Alert dispatched successfully");
     } catch (error) {
       appLogger.error({ error, type }, "Failed to dispatch alert");
+    }
+  }
+
+  /**
+   * Dispatch an alert keyed by an arbitrary dedupe key so that the same
+   * alert type can fire once per entity (e.g. once per dispute threshold)
+   * without being suppressed by the type-level cooldown.
+   */
+  async dispatchOnce(
+    type: AlertType,
+    dedupeKey: string,
+    message: string,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
+    if (!this.alertWebhookUrl) {
+      return;
+    }
+
+    const registryEntry = ALERT_REGISTRY[type];
+    const dedupeWindowMs = registryEntry.dedupeWindowMs ?? this.cooldownMs;
+
+    const now = Date.now();
+    const lastSent = this.lastSentAt.get(type);
+    if (lastSent !== undefined && now - lastSent < dedupeWindowMs) {
+      appLogger.debug({ type, dedupeKey }, "Alert suppressed by cooldown");
+      return;
+    }
+
+    const payload: AlertPayload = {
+      type,
+      severity: "critical",
+      routing: registryEntry.routing,
+      runbookUrl: registryEntry.runbookUrl,
+      timestamp: new Date().toISOString(),
+      message,
+      details: { ...details, dedupeKey },
+    };
+
+    const body = JSON.stringify(payload);
+    const signature = this.alertWebhookSecret
+      ? crypto.createHmac("sha256", this.alertWebhookSecret).update(body).digest("hex")
+      : undefined;
+
+    try {
+      const response = await fetch(this.alertWebhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(signature ? { "X-Alert-Signature": signature } : {}),
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        appLogger.warn(
+          { type, dedupeKey, statusCode: response.status },
+          "Alert dispatch returned non-OK status",
+        );
+        return;
+      }
+
+      this.lastSentAt.set(type, now);
+      appLogger.info({ type, dedupeKey }, "Alert dispatched successfully");
+    } catch (error) {
+      appLogger.error({ error, type, dedupeKey }, "Failed to dispatch alert");
     }
   }
 

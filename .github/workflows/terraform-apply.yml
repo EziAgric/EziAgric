@@ -1,0 +1,84 @@
+name: Terraform Apply
+
+# Issue #267 — the ONLY workflow that can change infrastructure.
+#
+#   * Runs on main (after PR review) or manual dispatch.
+#   * Each environment job runs inside the protected GitHub environment
+#     `terraform-<env>` (required reviewers, deployment branch = main). The
+#     AWS apply role trusts ONLY that environment's OIDC subject, so no other
+#     workflow, branch or fork can assume it.
+#   * Per-environment concurrency group queues applies instead of racing them;
+#     the DynamoDB state lock is the second line of defence.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/environments/**"
+      - "infra/terraform/modules/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply"
+        required: true
+        type: choice
+        options: [dev, staging]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "true"
+  AWS_REGION: us-east-1
+
+jobs:
+  apply:
+    name: apply (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        environment: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.environment)) || fromJSON('["dev","staging"]') }}
+    environment: terraform-${{ matrix.environment }}
+    concurrency:
+      group: terraform-apply-${{ matrix.environment }}
+      cancel-in-progress: false   # never kill an apply mid-flight
+    env:
+      TF_DIR: infra/terraform/environments/${{ matrix.environment }}
+      TF_VAR_db_master_username: ${{ secrets.TF_VAR_DB_MASTER_USERNAME }}
+      TF_VAR_db_master_password: ${{ secrets.TF_VAR_DB_MASTER_PASSWORD }}
+      TF_VAR_redis_auth_token: ${{ secrets.TF_VAR_REDIS_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Assume apply role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Environment-scoped variable, set from the bootstrap output.
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          role-session-name: tf-apply-${{ matrix.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        run: terraform -chdir="$TF_DIR" init -input=false
+
+      - name: terraform plan
+        run: terraform -chdir="$TF_DIR" plan -input=false -lock-timeout=5m -out=tfplan
+
+      # A concurrent apply (e.g. a local operator run) holds the lock; we wait
+      # up to 5 minutes and then fail rather than forcing it.
+      - name: terraform apply
+        run: terraform -chdir="$TF_DIR" apply -input=false -lock-timeout=5m tfplan
+
+      - name: On lock failure
+        if: failure()
+        run: |
+          echo "::error title=Terraform apply failed::If the error is 'Error acquiring the state lock', do NOT force-unlock from CI. Follow docs/runbooks/terraform-state-recovery.md."

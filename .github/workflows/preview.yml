@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Count active preview PRs
         id: check
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const max = parseInt(process.env.MAX_CONCURRENT_PREVIEWS || '3', 10);
@@ -69,7 +69,7 @@ jobs:
       PREVIEW_REDIS_PORT: "6382"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Enforce concurrency ceiling (graceful skip)
         id: ceiling
@@ -82,7 +82,7 @@ jobs:
 
       - name: Setup Node
         if: steps.ceiling.outputs.skipped != 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -155,7 +155,7 @@ jobs:
 
       - name: Post preview URL on the PR
         if: steps.ceiling.outputs.skipped != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PREVIEW_URL: ${{ steps.tunnel.outputs.url }}
           SMOKE: passed
@@ -208,7 +208,7 @@ jobs:
 
       - name: Mark preview torn down on the PR
         if: always() && steps.ceiling.outputs.skipped != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = '<!-- eziagric-preview-bot -->';
@@ -248,7 +248,7 @@ jobs:
       PREVIEW_PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Defensive teardown + orphan verification
         run: |
@@ -256,7 +256,7 @@ jobs:
           ./scripts/preview-down.sh
 
       - name: Replace preview comment with teardown notice
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = '<!-- eziagric-preview-bot -->';

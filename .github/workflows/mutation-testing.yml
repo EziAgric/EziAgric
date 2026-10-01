@@ -23,13 +23,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -46,7 +46,7 @@ jobs:
 
       - name: Upload mutation HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-report-money-math-${{ github.run_number }}
           path: backend/reports/mutation/money-math/
@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload mutation JSON report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-json-money-math-${{ github.run_number }}
           path: backend/reports/mutation/money-math/mutation-report.json

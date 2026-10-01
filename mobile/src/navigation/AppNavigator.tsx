@@ -10,6 +10,11 @@ import TradeListScreen from '../screens/TradeListScreen';
 import TradeDetailScreen from '../screens/TradeDetailScreen';
 import DisputeDetailScreen from '../screens/DisputeDetailScreen';
 import CreateTradeScreen from '../screens/CreateTradeScreen';
+import MarketplaceScreen from '../screens/MarketplaceScreen';
+import ListingDetailScreen from '../screens/ListingDetailScreen';
+import CreateListingScreen from '../screens/CreateListingScreen';
+import DriverHomeScreen from '../screens/DriverHomeScreen';
+import DriverAttestationScreen from '../screens/DriverAttestationScreen';
 import EvidenceCaptureScreen from '../screens/EvidenceCaptureScreen';
 import VaultDashboard from '../screens/VaultDashboard';
 import AdminStreamsOverviewScreen from '../screens/AdminStreamsOverviewScreen';
@@ -17,6 +22,12 @@ import AdminTradesBatchScreen from '../screens/AdminTradesBatchScreen';
 import AdminContractScreen from '../screens/AdminContractScreen';
 import AdminFeaturesScreen from '../screens/AdminFeaturesScreen';
 import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
+import CoopHomeScreen from '../screens/CoopHomeScreen';
+import MediatorDisputeListScreen from '../screens/MediatorDisputeListScreen';
+import MediatorDisputeReviewScreen from '../screens/MediatorDisputeReviewScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import TrustScoreScreen from '../screens/TrustScoreScreen';
+import LeaveReviewScreen from '../screens/LeaveReviewScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
 import {
   LINK_PREFIXES,
@@ -100,6 +111,11 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="TradeDetail" component={TradeDetailScreen} />
         <Stack.Screen name="DisputeDetail" component={DisputeDetailScreen} />
         <Stack.Screen name="CreateTrade" component={CreateTradeScreen} />
+        <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
+        <Stack.Screen name="ListingDetail" component={ListingDetailScreen} />
+        <Stack.Screen name="CreateListing" component={CreateListingScreen} />
+        <Stack.Screen name="DriverHome" component={DriverHomeScreen} />
+        <Stack.Screen name="DriverAttestation" component={DriverAttestationScreen} />
         <Stack.Screen name="EvidenceCapture" component={EvidenceCaptureScreen} />
         <Stack.Screen name="VaultDashboard" component={VaultDashboard} />
         <Stack.Screen name="AdminStreamsOverview" component={AdminStreamsOverviewScreen} />
@@ -107,6 +123,12 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="AdminContract" component={AdminContractScreen} />
         <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
         <Stack.Screen name="AdminActionSuccess" component={AdminActionSuccessScreen} />
+        <Stack.Screen name="CoopHome" component={CoopHomeScreen} />
+        <Stack.Screen name="MediatorDisputeList" component={MediatorDisputeListScreen} />
+        <Stack.Screen name="MediatorDisputeReview" component={MediatorDisputeReviewScreen} />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="TrustScore" component={TrustScoreScreen} />
+        <Stack.Screen name="LeaveReview" component={LeaveReviewScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

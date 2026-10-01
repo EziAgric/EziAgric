@@ -12,6 +12,14 @@ import {
   recordTradeGmv,
 } from "../lib/metrics";
 
+/**
+ * Settlement asset code used when backfilling/deriving the asset-agnostic
+ * `amount` + `assetCode` fields from the legacy `amountUsdc` column.
+ * cNGN is the settlement asset per the README.
+ */
+export const DEFAULT_SETTLEMENT_ASSET_CODE =
+  process.env.SETTLEMENT_ASSET_CODE ?? "cNGN";
+
 function parseAdminPubkeys(): Set<string> {
   const raw = process.env.ADMIN_STELLAR_PUBKEYS ?? "";
   return new Set(
@@ -28,6 +36,47 @@ function sha256(value: string): string {
 
 function sanitizeLogField(value: string, maxLength = 200): string {
   return String(value).replace(/[\r\n\t]/g, "_").slice(0, maxLength);
+}
+
+/**
+ * Resolve the asset-agnostic amount for a trade, preferring the new `amount`
+ * column and falling back to the legacy `amountUsdc` during the transition.
+ */
+function resolveTradeAmount(trade: {
+  amount?: Prisma.Decimal | string | null;
+  amountUsdc?: Prisma.Decimal | string | null;
+}): string {
+  const value = trade.amount ?? trade.amountUsdc;
+  return value == null ? "0" : String(value);
+}
+
+/**
+ * Resolve the settlement asset code for a trade, preferring the new
+ * `assetCode` column and falling back to the configured settlement asset.
+ */
+function resolveTradeAssetCode(trade: {
+  assetCode?: string | null;
+}): string {
+  return trade.assetCode ?? DEFAULT_SETTLEMENT_ASSET_CODE;
+}
+
+/**
+ * Serialize a trade for API responses, exposing the asset-agnostic `amount`
+ * and `assetCode` while keeping `amountUsdc` for backward compatibility.
+ */
+export function serializeTrade<T extends {
+  amount?: Prisma.Decimal | string | null;
+  amountUsdc?: Prisma.Decimal | string | null;
+  assetCode?: string | null;
+}>(trade: T) {
+  const amount = resolveTradeAmount(trade);
+  return {
+    ...trade,
+    amount,
+    assetCode: resolveTradeAssetCode(trade),
+    // Legacy alias retained during the two-step migration.
+    amountUsdc: trade.amountUsdc ?? amount,
+  };
 }
 
 export interface CreatePendingTradeInput {
@@ -97,6 +146,10 @@ export class TradeService {
     const trade = await this.prisma.trade.create({
       data: {
         ...input,
+        // Mirror the legacy amount into the asset-agnostic columns so new
+        // rows are readable through both fields during the transition.
+        amount: input.amountUsdc,
+        assetCode: DEFAULT_SETTLEMENT_ASSET_CODE,
         status: TradeStatus.PENDING_SIGNATURE,
       },
     });
@@ -153,7 +206,7 @@ export class TradeService {
         : [];
 
       return {
-        items: [...watchedPage, ...unwatchlisted],
+        items: [...watchedPage, ...unwatchlisted].map(serializeTrade),
         pagination: {
           page,
           limit,
@@ -174,7 +227,7 @@ export class TradeService {
     ]);
 
     return {
-      items,
+      items: items.map(serializeTrade),
       pagination: {
         page,
         limit,
@@ -211,7 +264,7 @@ export class TradeService {
       throw new TradeAccessDeniedError();
     }
 
-    return trade;
+    return serializeTrade(trade);
   }
 
   async getUserStats(address: string) {
@@ -220,6 +273,7 @@ export class TradeService {
         OR: [{ buyerAddress: address }, { sellerAddress: address }],
       },
       select: {
+        amount: true,
         amountUsdc: true,
         status: true,
       },
@@ -238,7 +292,7 @@ export class TradeService {
     // precision above 2^53 stroops and drifted further with every addition.
     const totalVolumeStroops = trades.reduce((sum, trade) => {
       try {
-        return sum + parseDecimalToStroops(trade.amountUsdc);
+        return sum + parseDecimalToStroops(resolveTradeAmount(trade));
       } catch {
         // A malformed legacy row must not take down the whole stats call.
         return sum;
