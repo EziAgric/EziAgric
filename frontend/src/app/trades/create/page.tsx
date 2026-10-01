@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { TradeProvider, useTrade } from "./TradeContext";
 import Step1Details from "./steps/Step1Details";
 import Step2Negotiation from "./steps/Step2Negotiation";
@@ -11,6 +12,29 @@ const STEPS = [
   { index: 2, label: "Negotiation" },
   { index: 3, label: "Review" },
 ];
+
+const DRAFT_STORAGE_KEY = "trade-create-draft";
+
+function readDraft(): Record<string, unknown> | null {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    // storage unavailable — ignore
+  }
+}
 
 function StepIndicator() {
   const { step } = useTrade();
@@ -49,8 +73,50 @@ function StepIndicator() {
   );
 }
 
+function ResumePrompt({ onResume, onDiscard }: { onResume: () => void; onDiscard: () => void }) {
+  return (
+    <div className="mb-6 rounded-lg border border-border-default bg-bg-elevated p-4">
+      <p className="text-sm text-text-primary">You have an unsaved trade draft.</p>
+      <p className="text-xs text-text-muted mt-1">Resume where you left off, or discard it and start over.</p>
+      <div className="flex gap-2 mt-3">
+        <button
+          type="button"
+          onClick={onResume}
+          className="px-3 py-1.5 rounded-md bg-gold text-text-inverse text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          Resume draft
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="px-3 py-1.5 rounded-md border border-border-default text-text-secondary text-sm hover:text-text-primary transition-colors"
+        >
+          Discard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CreateTradeInner() {
-  const { step } = useTrade();
+  const { step, restoreDraft } = useTrade();
+  const [pendingDraft, setPendingDraft] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const draft = readDraft();
+    if (draft) setPendingDraft(draft);
+  }, []);
+
+  const handleResume = () => {
+    if (pendingDraft) restoreDraft(pendingDraft);
+    setPendingDraft(null);
+  };
+
+  const handleDiscard = () => {
+    clearDraft();
+    setPendingDraft(null);
+  };
+
   return (
     <div className="min-h-screen bg-bg-primary flex items-start justify-center px-4 py-12">
       <div className="w-full max-w-lg">
@@ -66,6 +132,8 @@ function CreateTradeInner() {
             Lock agricultural commodity value into cNGN escrow via NGN Path Payment
           </p>
         </div>
+
+        {pendingDraft && <ResumePrompt onResume={handleResume} onDiscard={handleDiscard} />}
 
         <div className="bg-bg-card rounded-xl border border-border-default p-6 shadow-card">
           <StepIndicator />
