@@ -216,6 +216,11 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-359 -->
+- #359: [Contract] Default-resolution fallback when no mediator acts
+
+<!-- handsoff-issue-360 -->
+- #360: [Contract] Rustdoc for every public contract entrypoint
 <!-- handsoff-issue-363 -->
 - #363: [Contract] Add `get_trades_by_party` index with pagination
 
