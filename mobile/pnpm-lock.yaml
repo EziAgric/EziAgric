@@ -39,8 +39,8 @@ importers:
         specifier: ^52.0.0
         version: 52.0.49(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
       expo-device:
-        specifier: ^6.0.2
-        version: 6.0.2(expo@52.0.49(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))
+        specifier: ^57.0.2
+        version: 57.0.2(expo@52.0.49(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))
       expo-file-system:
         specifier: ~18.0.12
         version: 18.0.12(expo@52.0.49(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))
@@ -2626,8 +2626,8 @@ packages:
       expo: '*'
       react-native: '*'
 
-  expo-device@6.0.2:
-    resolution: {integrity: sha512-sCt91CuTmAuMXX4SlFOn4lIos2UIr8vb0jDstDDZXys6kErcj0uynC7bQAMreU5uRUTKMAl4MAMpKt9ufCXPBw==}
+  expo-device@57.0.2:
+    resolution: {integrity: sha512-1A0/FICR3CgrH43FeiDQP3l5eHDmiMoh4EjXfhfoHHkMgdBQdyD0kwDWskiGZlQ3E0Nd0LHkCFH6vJ1ofm/jow==}
     peerDependencies:
       expo: '*'
 
@@ -8891,7 +8891,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  expo-device@6.0.2(expo@52.0.49(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)):
+  expo-device@57.0.2(expo@52.0.49(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)):
     dependencies:
       expo: 52.0.49(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
       ua-parser-js: 0.7.41
