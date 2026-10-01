@@ -1,5 +1,9 @@
 # Dependabot configuration — grouped update PRs by risk.
 # Complements the blocking audit gate in .github/workflows/security-audit.yml (issue #204).
+#
+# Minor/patch version updates are grouped into one weekly PR per ecosystem.
+# Major version updates are not matched by any `*-low-risk` group, so each
+# major bump still opens as its own PR for individual review.
 version: 2
 updates:
   # ---- Backend (npm) ----
@@ -40,6 +44,27 @@ updates:
           - minor
           - patch
       frontend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ---- Mobile (npm) ----
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - mobile
+    groups:
+      mobile-low-risk:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      mobile-security:
         applies-to: security-updates
         patterns:
           - "*"
@@ -89,6 +114,8 @@ updates:
       - dependencies
       - ci
     groups:
-      actions-all:
-        patterns:
-          - "*"
+      actions-low-risk:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch

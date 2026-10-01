@@ -24,6 +24,32 @@ export interface TradeEvent {
     metadata: Record<string, unknown>;
 }
 
+/**
+ * A single entry in the merged trade timeline. Combines on-chain events
+ * (CREATED/FUNDED/DELIVERY_CONFIRMED/COMPLETED), off-chain actions
+ * (manifest, evidence, notes) and dispute actions into one ordered feed.
+ */
+export interface TradeTimelineEntry {
+    /** Discriminator for the entry source/kind. */
+    type: TradeEventType | "NOTE";
+    /** Address (or "redacted") of the actor responsible for the entry. */
+    actor: string;
+    /** ISO timestamp of when the entry occurred. */
+    timestamp: string;
+    /** On-chain transaction hash when the entry originated from a chain event. */
+    txHash: string | null;
+    /** Entry-specific payload, already redacted for the requesting role. */
+    metadata: Record<string, unknown>;
+}
+
+export interface TradeTimelineResult {
+    entries: TradeTimelineEntry[];
+    total: number;
+    page: number;
+    pageSize: number;
+    hasMore: boolean;
+}
+
 export interface AuditIntegrityMetadata {
     algorithm: "ed25519";
     keyId: string;
@@ -226,8 +252,8 @@ export class AuditTrailService {
                 events.push({
                     eventType: "RESOLVED",
                     timestamp: dispute.resolvedAt,
-                    actor: dispute.initiator,
-                    metadata: { disputeStatus: dispute.status },
+                    actor: dispute.resolvedBy ?? "system",
+                    metadata: { resolution: dispute.resolution },
                 });
             }
         }
@@ -237,59 +263,61 @@ export class AuditTrailService {
             events.push({
                 eventType: "COMPLETED",
                 timestamp: trade.completedAt ?? trade.updatedAt,
-                actor: trade.sellerAddress,
+                actor: trade.buyerAddress,
                 metadata: {},
             });
         }
 
-        // Sort chronologically
-        events.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-
-        return events;
+        return events.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
     }
 
-    getCanonicalPayload(tradeId: string, events: TradeEvent[]): CanonicalAuditPayload {
+    /**
+     * Build a single ordered, paginated timeline for a trade by merging the
+     * on-chain/off-chain audit events with dispute actions. Entries are
+     * redacted according to the requesting role (buyer, seller, mediator, admin).
+     */
+    async getTradeTimeline(
+        tradeId: string,
+        callerAddress: string,
+        options: { page?: number; pageSize?: number } = {},
+    ): Promise<TradeTimelineResult> {
+        const page = Math.max(1, Math.floor(options.page ?? 1));
+        const pageSize = Math.min(100, Math.max(1, Math.floor(options.pageSize ?? 20)));
+
+        // getTradeHistory already enforces access control and role-based redaction
+        // for the underlying events (manifest, evidence, dispute, chain events).
+        const events = await this.getTradeHistory(tradeId, callerAddress);
+
+        const entries: TradeTimelineEntry[] = events.map((event) => ({
+            type: event.eventType,
+            actor: event.actor,
+            timestamp: event.timestamp.toISOString(),
+            txHash: extractTxHash(event.metadata),
+            metadata: event.metadata,
+        }));
+
+        entries.sort((a, b) => {
+            const diff = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            if (diff !== 0) return diff;
+            return a.type.localeCompare(b.type);
+        });
+
+        const total = entries.length;
+        const start = (page - 1) * pageSize;
+        const paged = entries.slice(start, start + pageSize);
+
         return {
-            tradeId,
-            generatedAt: new Date().toISOString(),
-            events: events.map((event) => ({
-                eventType: event.eventType,
-                timestamp: event.timestamp.toISOString(),
-                actor: event.actor,
-                metadata: event.metadata,
-            })),
+            entries: paged,
+            total,
+            page,
+            pageSize,
+            hasMore: start + pageSize < total,
         };
     }
+}
 
-    signPayload(payload: CanonicalAuditPayload): AuditIntegrityMetadata {
-        const { keyId, privateKeyPem } = getAuditSigningConfig();
-
-        if (!keyId || !privateKeyPem) {
-            throw new AuditSigningConfigError("AUDIT_SIGNING_KEY_ID and AUDIT_SIGNING_PRIVATE_KEY_PEM are required");
-        }
-
-        const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
-        const payloadHash = crypto.createHash("sha256").update(payloadBytes).digest("hex");
-        const privateKey = crypto.createPrivateKey(privateKeyPem);
-        const signature = crypto.sign(null, payloadBytes, privateKey).toString("base64");
-
-        return {
-            algorithm: "ed25519",
-            keyId,
-            payloadHash,
-            signature,
-        };
-    }
-
-    verifyPayload(payload: CanonicalAuditPayload, signatureBase64: string): boolean {
-        const { publicKeyPem } = getAuditSigningConfig();
-        if (!publicKeyPem) {
-            throw new AuditSigningConfigError("AUDIT_SIGNING_PUBLIC_KEY_PEM is required");
-        }
-
-        const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
-        const signature = Buffer.from(signatureBase64, "base64");
-        const publicKey = crypto.createPublicKey(publicKeyPem);
-        return crypto.verify(null, payloadBytes, publicKey, signature);
-    }
+/** Pull a transaction hash out of event metadata when present. */
+function extractTxHash(metadata: Record<string, unknown>): string | null {
+    const candidate = metadata.txHash ?? metadata.transactionHash ?? metadata.tx;
+    return typeof candidate === "string" && candidate.length > 0 ? candidate : null;
 }

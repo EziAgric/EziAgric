@@ -108,6 +108,13 @@ export function stripExif(buffer: Buffer): Buffer {
     return Buffer.from(out);
 }
 
+export interface DerivedEvidenceAssets {
+    /** CID of the transcoded 480p H.264/MP4 rendition. */
+    lowResCid: string;
+    /** CID of the generated thumbnail image. */
+    thumbnailCid: string;
+}
+
 export class IPFSService {
     private pinataCircuit: CircuitBreaker;
 
@@ -254,6 +261,27 @@ export class IPFSService {
         ]);
 
         return { original, large, thumbnail };
+    }
+
+    /**
+     * Pin the derived evidence assets (transcoded 480p rendition and thumbnail)
+     * to IPFS alongside the original. The original CID is never touched here;
+     * derived files are pinned as separate, additive objects.
+     */
+    async pinDerivedEvidenceAssets(
+        lowResBuffer: Buffer,
+        thumbnailBuffer: Buffer,
+        baseName: string,
+    ): Promise<DerivedEvidenceAssets> {
+        const lowResCid = await this.uploadFile(lowResBuffer, `${baseName}-480p.mp4`);
+        const thumbnailCid = await this.uploadFile(thumbnailBuffer, `${baseName}-thumb.jpg`);
+
+        appLogger.info(
+            { lowResCid, thumbnailCid, baseName },
+            "[IPFSService] Derived evidence assets pinned",
+        );
+
+        return { lowResCid, thumbnailCid };
     }
 
     /**

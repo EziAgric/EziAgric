@@ -1,9 +1,11 @@
 import axios from "axios";
+import { createHash } from "crypto";
 import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../lib/db";
 import { IPFSService, ServiceUnavailableError } from "./ipfs.service";
 import { getAdminAllowlistLowercase } from "../lib/accessControl";
 import { env } from "../config/env";
+import { enqueueEvidenceTranscode } from "../jobs/evidenceTranscode.job";
 
 export class EvidenceAccessDeniedError extends Error {
     status = 403;
@@ -26,6 +28,14 @@ export class EvidenceValidationError extends Error {
     constructor(message = "Invalid evidence file") {
         super(message);
         this.name = "EvidenceValidationError";
+    }
+}
+
+export class EvidenceHashMismatchError extends Error {
+    status = 400;
+    constructor(message = "Evidence content hash does not match the uploaded payload") {
+        super(message);
+        this.name = "EvidenceHashMismatchError";
     }
 }
 
@@ -59,6 +69,16 @@ function getEvidenceMetadataRetentionDays(): number {
 function isEvidenceMetadataExpired(createdAt: Date): boolean {
     const retentionMs = getEvidenceMetadataRetentionDays() * 24 * 60 * 60 * 1000;
     return Date.now() - createdAt.getTime() > retentionMs;
+}
+
+/** Normalize a client-supplied SHA-256 hex digest (trim + lowercase). */
+export function normalizeSha256(value: string): string {
+    return value.trim().toLowerCase();
+}
+
+/** Compute the SHA-256 hex digest of a buffer. */
+export function computeSha256(buffer: Buffer): string {
+    return createHash("sha256").update(buffer).digest("hex");
 }
 
 type EvidenceDatabase = {
@@ -108,6 +128,12 @@ export class EvidenceService {
 
         return records.map((r) => {
             const retentionExpired = isEvidenceMetadataExpired(r.createdAt);
+            const derived = r as typeof r & {
+                thumbnailCid?: string | null;
+                lowResCid?: string | null;
+                transcodeStatus?: string | null;
+                contentHash?: string | null;
+            };
             return {
                 id: r.id,
                 cid: retentionExpired ? "redacted" : r.cid,
@@ -115,6 +141,18 @@ export class EvidenceService {
                 mimeType: r.mimeType,
                 uploadedBy: retentionExpired && !isAdmin ? "redacted" : r.uploadedBy,
                 url: retentionExpired ? null : this.resolveGatewayUrl(r.cid),
+                contentHash: derived.contentHash ?? null,
+                thumbnailCid: retentionExpired ? null : derived.thumbnailCid ?? null,
+                thumbnailUrl:
+                    retentionExpired || !derived.thumbnailCid
+                        ? null
+                        : this.resolveGatewayUrl(derived.thumbnailCid),
+                lowResCid: retentionExpired ? null : derived.lowResCid ?? null,
+                lowResUrl:
+                    retentionExpired || !derived.lowResCid
+                        ? null
+                        : this.resolveGatewayUrl(derived.lowResCid),
+                transcodeStatus: derived.transcodeStatus ?? null,
                 createdAt: r.createdAt,
                 retentionExpired,
             };
@@ -124,11 +162,15 @@ export class EvidenceService {
     /**
      * Upload a video file to IPFS and persist the evidence record.
      * Caller must be buyer or seller of the referenced trade.
+     *
+     * The client must supply the SHA-256 of the payload; it is recomputed
+     * server-side and the upload is rejected on mismatch before pinning.
      */
     async uploadVideoEvidence(
         tradeId: string,
         callerAddress: string,
         file: Express.Multer.File,
+        clientHash?: string,
     ) {
         const trade = await this.prisma.trade.findUnique({ where: { tradeId } });
         if (!trade) throw new EvidenceTradeNotFoundError();
@@ -160,6 +202,20 @@ export class EvidenceService {
             throw new EvidenceValidationError("File too large");
         }
 
+        // Require a client-supplied SHA-256 and verify it against the payload
+        // before any pinning happens.
+        if (!clientHash || typeof clientHash !== "string") {
+            throw new EvidenceValidationError("Missing required content hash (sha256)");
+        }
+        const declaredHash = normalizeSha256(clientHash);
+        if (!/^[a-f0-9]{64}$/.test(declaredHash)) {
+            throw new EvidenceValidationError("Invalid content hash: expected 64-char hex SHA-256");
+        }
+        const computedHash = computeSha256(file.buffer);
+        if (computedHash !== declaredHash) {
+            throw new EvidenceHashMismatchError();
+        }
+
         const scan = await this.runEvidenceScan(file);
         if (!scan.clean) {
             throw new EvidenceValidationError(scan.reason || "Evidence blocked by malware scanner");
@@ -174,12 +230,29 @@ export class EvidenceService {
                 filename: file.originalname,
                 mimeType: file.mimetype,
                 uploadedBy: caller,
-            },
+                contentHash: computedHash,
+            } as any,
         });
+
+        // Kick off background transcoding + thumbnail generation. The original
+        // CID above remains the canonical evidence and is never altered.
+        try {
+            await enqueueEvidenceTranscode({
+                evidenceId: record.id,
+                tradeId,
+                originalCid: cid,
+                filename: file.originalname,
+            });
+        } catch (err) {
+            // Enqueue failures must not fail the upload; the job can be retried.
+            // eslint-disable-next-line no-console
+            console.error("Failed to enqueue evidence transcode job", err);
+        }
 
         return {
             evidenceId: record.id,
             cid,
+            contentHash: computedHash,
             ipfsUrl: this.resolveGatewayUrl(cid),
         };
     }
@@ -239,8 +312,7 @@ export class EvidenceService {
         if (buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp") {
             return "video/mp4";
         }
-
-        // WebM: EBML header starts with 0x1A45DFA3.
+        // WebM/Matroska: EBML magic bytes 0x1A45DFA3.
         if (
             buffer.length >= 4 &&
             buffer[0] === 0x1a &&
@@ -250,80 +322,34 @@ export class EvidenceService {
         ) {
             return "video/webm";
         }
-
         return null;
     }
 
     private async runEvidenceScan(file: Express.Multer.File): Promise<EvidenceScanResult> {
-        const required =
-            process.env.EVIDENCE_SCAN_REQUIRED !== undefined
-                ? process.env.EVIDENCE_SCAN_REQUIRED.toLowerCase() === "true"
-                : env.EVIDENCE_SCAN_REQUIRED;
         try {
             return await this.scanner.scan(file);
-        } catch (error) {
-            if (!required) {
-                return { clean: true };
-            }
-            throw new EvidenceScanError(
-                error instanceof Error ? error.message : "Evidence scan service unavailable",
-            );
+        } catch (err) {
+            throw new EvidenceScanError();
         }
     }
 
     private resolveGatewayUrls(cid: string): string[] {
-        const gatewayUrls = process.env.IPFS_GATEWAY_URLS ?? env.IPFS_GATEWAY_URLS;
-        const allowlist = this.parseGatewayAllowlist();
-        const configured: string[] = [];
-
-        if (gatewayUrls) {
-            for (const value of gatewayUrls.split(",")) {
-                const gateway = value.trim();
-                if (!gateway) continue;
-                const normalized = gateway.replace(/\/$/, "");
-                if (!this.isGatewayAllowed(normalized, allowlist)) {
-                    continue;
-                }
-                configured.push(`${normalized}/${cid}`);
-            }
+        const explicit = (env.IPFS_GATEWAY_URLS ?? "")
+            .split(",")
+            .map((base) => base.trim())
+            .filter(Boolean);
+        if (explicit.length > 0) {
+            return explicit.map((base) => `${base.replace(/\/$/, "")}/ipfs/${cid}`);
         }
-
-        if (configured.length > 0) {
-            return configured;
-        }
-
-        const fallback = this.resolveGatewayUrl(cid);
-        const fallbackBase = fallback.replace(/\/+[^/]+$/, "");
-        if (!this.isGatewayAllowed(fallbackBase, allowlist)) {
-            throw new ServiceUnavailableError("No allowed IPFS gateway configured");
-        }
-        return [fallback];
-    }
-
-    private parseGatewayAllowlist(): Set<string> {
-        const raw = process.env.IPFS_GATEWAY_ALLOWLIST ?? env.IPFS_GATEWAY_ALLOWLIST ?? "";
-        return new Set(
-            raw
-                .split(",")
-                .map((v: string) => v.trim().toLowerCase())
-                .filter(Boolean),
-        );
-    }
-
-    private isGatewayAllowed(gatewayBase: string, allowlist: Set<string>): boolean {
-        if (allowlist.size === 0) return true;
-        try {
-            const host = new URL(gatewayBase).hostname.toLowerCase();
-            return allowlist.has(host);
-        } catch {
-            return false;
-        }
+        return [this.resolveGatewayUrl(cid)];
     }
 
     private isGatewayCircuitOpen(url: string): boolean {
         const state = this.gatewayCircuit.get(url);
         if (!state) return false;
-        return state.openUntil > Date.now();
+        if (state.openUntil > Date.now()) return true;
+        this.gatewayCircuit.delete(url);
+        return false;
     }
 
     private onGatewaySuccess(url: string): void {
@@ -331,22 +357,11 @@ export class EvidenceService {
     }
 
     private onGatewayFailure(url: string): void {
-        const threshold = env.IPFS_GATEWAY_CIRCUIT_FAILURE_THRESHOLD;
-        const cooldownMs = env.IPFS_GATEWAY_CIRCUIT_COOLDOWN_MS;
-        const current = this.gatewayCircuit.get(url) ?? { failures: 0, openUntil: 0 };
-        const failures = current.failures + 1;
-
-        if (failures >= threshold) {
-            this.gatewayCircuit.set(url, {
-                failures,
-                openUntil: Date.now() + cooldownMs,
-            });
-            return;
+        const state = this.gatewayCircuit.get(url) ?? { failures: 0, openUntil: 0 };
+        state.failures += 1;
+        if (state.failures >= env.IPFS_GATEWAY_CIRCUIT_FAILURE_THRESHOLD) {
+            state.openUntil = Date.now() + env.IPFS_GATEWAY_CIRCUIT_COOLDOWN_MS;
         }
-
-        this.gatewayCircuit.set(url, {
-            failures,
-            openUntil: 0,
-        });
+        this.gatewayCircuit.set(url, state);
     }
 }

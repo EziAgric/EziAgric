@@ -139,7 +139,7 @@ impl H {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "buyer_loss_bps must not exceed 10000")]
+#[should_panic(expected = "INVALID_LOSS_RATIO")]
 fn create_trade_rejects_out_of_range_buyer_bps() {
     let h = H::new();
     h.init();
@@ -149,13 +149,55 @@ fn create_trade_rejects_out_of_range_buyer_bps() {
 }
 
 #[test]
-#[should_panic(expected = "seller_loss_bps must not exceed 10000")]
+#[should_panic(expected = "INVALID_LOSS_RATIO")]
 fn create_trade_rejects_out_of_range_seller_bps() {
     let h = H::new();
     h.init();
     h.tok().mint(&h.buyer, &100i128);
     h.c()
         .create_trade(&h.buyer, &h.seller, &100i128, &0u32, &10_001u32, &None);
+}
+
+// Issue #350 — boundary pairs for the dedicated INVALID_LOSS_RATIO error.
+
+#[test]
+fn create_trade_accepts_zero_buyer_full_seller_ratio() {
+    let h = H::new();
+    h.init();
+    let trade_id = h
+        .c()
+        .create_trade(&h.buyer, &h.seller, &100i128, &0u32, &10_000u32, &None);
+    let trade = h.c().get_trade(&trade_id);
+    assert_eq!((trade.buyer_loss_bps, trade.seller_loss_bps), (0, 10_000));
+}
+
+#[test]
+fn create_trade_accepts_full_buyer_zero_seller_ratio() {
+    let h = H::new();
+    h.init();
+    let trade_id = h
+        .c()
+        .create_trade(&h.buyer, &h.seller, &100i128, &10_000u32, &0u32, &None);
+    let trade = h.c().get_trade(&trade_id);
+    assert_eq!((trade.buyer_loss_bps, trade.seller_loss_bps), (10_000, 0));
+}
+
+#[test]
+#[should_panic(expected = "INVALID_LOSS_RATIO")]
+fn create_trade_rejects_ratio_summing_over_10000() {
+    let h = H::new();
+    h.init();
+    h.c()
+        .create_trade(&h.buyer, &h.seller, &100i128, &5000u32, &5001u32, &None);
+}
+
+#[test]
+#[should_panic(expected = "INVALID_LOSS_RATIO")]
+fn create_trade_rejects_overflowing_ratio_pair() {
+    let h = H::new();
+    h.init();
+    h.c()
+        .create_trade(&h.buyer, &h.seller, &100i128, &u32::MAX, &1u32, &None);
 }
 
 // ---------------------------------------------------------------------------
