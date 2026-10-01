@@ -216,6 +216,11 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-409 -->
+- #409: [Frontend] NGN payment quote display in trade funding step
+
+<!-- handsoff-issue-410 -->
+- #410: [Frontend] Trade timeline component on trade detail page
 <!-- handsoff-issue-408 -->
 - #408: [Frontend] Loss-ratio negotiation UI with visual risk explainer
 <!-- handsoff-issue-404 -->
