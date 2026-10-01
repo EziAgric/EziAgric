@@ -12,6 +12,7 @@ import DisputeDetailScreen from '../screens/DisputeDetailScreen';
 import CreateTradeScreen from '../screens/CreateTradeScreen';
 import MarketplaceScreen from '../screens/MarketplaceScreen';
 import ListingDetailScreen from '../screens/ListingDetailScreen';
+import CreateListingScreen from '../screens/CreateListingScreen';
 import EvidenceCaptureScreen from '../screens/EvidenceCaptureScreen';
 import VaultDashboard from '../screens/VaultDashboard';
 import AdminStreamsOverviewScreen from '../screens/AdminStreamsOverviewScreen';
@@ -109,6 +110,7 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="CreateTrade" component={CreateTradeScreen} />
         <Stack.Screen name="Marketplace" component={MarketplaceScreen} />
         <Stack.Screen name="ListingDetail" component={ListingDetailScreen} />
+        <Stack.Screen name="CreateListing" component={CreateListingScreen} />
         <Stack.Screen name="EvidenceCapture" component={EvidenceCaptureScreen} />
         <Stack.Screen name="VaultDashboard" component={VaultDashboard} />
         <Stack.Screen name="AdminStreamsOverview" component={AdminStreamsOverviewScreen} />

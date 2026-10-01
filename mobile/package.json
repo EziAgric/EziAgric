@@ -29,6 +29,8 @@
     "@testing-library/react-native": "^12.9.0",
     "axios": "^1.6.8",
     "expo": "^52.0.0",
+    "expo-image-manipulator": "~13.0.6",
+    "expo-image-picker": "~16.0.6",
     "expo-localization": "~15.0.3",
     "i18next": "^23.11.5",
     "react-i18next": "^14.1.2",
