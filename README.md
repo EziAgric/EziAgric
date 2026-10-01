@@ -292,6 +292,9 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-373 -->
+- #373: [Backend] SMS notification provider abstraction (Termii / Africa's Talking)
+
 <!-- handsoff-issue-409 -->
 - #409: [Frontend] NGN payment quote display in trade funding step
 
