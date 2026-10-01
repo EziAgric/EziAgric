@@ -113,3 +113,13 @@ Mark breaking changes with `!` after the type/scope (`feat(api)!: ...`) or a `BR
 
 - Fill in the [PR template](.github/pull_request_template.md), including the issue's area, complexity and `Closes #<number>`.
 - All relevant CI gates must pass (see README → *Required PR CI Gates*).
+
+## Where do implementation and PR notes go?
+
+Do **not** add implementation notes, PR summaries, or wave/issue write-ups to the repository root. The root should only contain project-level files (e.g. `README.md`, `CONTRIBUTING.md`, `LICENSE`, config files).
+
+- **Implementation notes** (e.g. `ISSUE_<n>_IMPLEMENTATION.md`) → `docs/` topic pages.
+- **PR summaries** (e.g. `PR_SUMMARY_ISSUE_<n>.md`) → the PR description, or a `docs/` topic page when the content is durable reference material.
+- **Wave / program write-ups** → `docs/` topic pages.
+
+If a note is no longer useful, delete it rather than leaving it in the root. Historical notes that must be retained belong under `docs/archive/`.

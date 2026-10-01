@@ -6,6 +6,11 @@ const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 const DEFAULT_KEY_VERSION = "v1";
 
+// E.164: optional leading +, country code and subscriber digits, max 15 digits total.
+const E164_REGEX = /^\+[1-9]\d{1,14}$/;
+// Nigerian numbers in E.164: +234 followed by 10 national digits (e.g. +2348012345678).
+const NIGERIAN_E164_REGEX = /^\+234[7-9]\d{9}$/;
+
 export class EncryptionService {
   constructor(private readonly masterSecret: string = env.JWT_SECRET) {}
 
@@ -45,6 +50,44 @@ export class EncryptionService {
 
     const plaintext = this.decrypt(ciphertext, tradeId);
     return this.encrypt(plaintext, tradeId, newVersion);
+  }
+
+  /**
+   * Validates that a phone number is in E.164 format.
+   * Nigerian numbers (+234) are explicitly supported.
+   */
+  isValidE164Phone(phone: string): boolean {
+    return E164_REGEX.test(phone);
+  }
+
+  /**
+   * Validates a Nigerian phone number in E.164 format (+234...).
+   */
+  isValidNigerianPhone(phone: string): boolean {
+    return NIGERIAN_E164_REGEX.test(phone);
+  }
+
+  /**
+   * Encrypts a driver phone number for storage at rest, keyed by trade id.
+   * Throws if the number is not valid E.164.
+   */
+  encryptDriverPhone(phone: string, tradeId: string, keyVersion: string = DEFAULT_KEY_VERSION): string {
+    if (!this.isValidE164Phone(phone)) {
+      throw new Error("Invalid E.164 phone number");
+    }
+
+    return this.encrypt(phone, tradeId, keyVersion);
+  }
+
+  /**
+   * Decrypts a stored driver phone number. Returns null when no ciphertext is present.
+   */
+  decryptDriverPhone(ciphertext: string | null | undefined, tradeId: string): string | null {
+    if (!ciphertext) {
+      return null;
+    }
+
+    return this.decrypt(ciphertext, tradeId);
   }
 
   private deriveKey(tradeId: string, keyVersion: string): Buffer {

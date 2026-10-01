@@ -117,6 +117,10 @@ jobs:
         if: needs.changes.outputs.frontend == 'true'
         run: pnpm build
 
+      - name: Build Storybook
+        if: needs.changes.outputs.frontend == 'true'
+        run: pnpm build-storybook
+
       - name: Test
         if: needs.changes.outputs.frontend == 'true'
         # --json writes a machine-readable result file used by the flake reporter

@@ -10,6 +10,22 @@ This is the main repository containing the smart contracts and orchestration log
 
 ---
 
+## 📁 Repository Layout
+
+The root of this repository is intentionally small. Each top-level entry has a single, clear purpose:
+
+- `frontend/` → Next.js app (UI + wallet + Supabase/Pinata client integration)
+- `backend/` → Node.js/TypeScript API (Supabase + Pinata + integration endpoints)
+- `mobile/` → React Native Expo app (mobile wallet, notification, and trade UX)
+- `contracts/` → Rust/Soroban smart contracts
+- `docs/` → Current project documentation (ADRs, threat model, policies, guides)
+- `docs/archive/` → **Historical** completion summaries and hardening PR notes, kept for reference only. See [`docs/archive/README.md`](./docs/archive/README.md).
+- `.github/` → CI workflows and repository automation
+
+> The former top-level `archive/` directory has been folded into `docs/` and `docs/archive/`. Nothing at the repository root is historical — if you are looking for old completion summaries or hardening notes, they now live under `docs/archive/`.
+
+---
+
 ## 🚀 The Mission
 
 To provide a programmable safety net for regional commodity trading. Amana ensures that the risk of "sending first" is eliminated, replaced by a secure, neutral vault that only releases funds when delivery is verified.
@@ -115,6 +131,82 @@ For the protected branch (`main`), set these required status checks:
    - **Dispute:** Buyer uploads a video of loss/damage with driver affirmation. A mediator reviews the evidence.
 5. **Settlement:** Based on the outcome, funds are distributed (either 100% to one party or split via the `Loss_Ratio`).
 
+### Happy Path Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer
+    actor Seller
+    actor Driver
+    participant Backend
+    participant Contract as Soroban Contract
+    participant IPFS
+
+    Buyer->>Backend: POST /trades (create trade intent)
+    Backend->>Contract: invoke create_trade(buyer, seller, amount, ratio)
+    Contract-->>Backend: TradeCreated event (trade_id)
+    Backend-->>Buyer: 201 { tradeId }
+
+    Buyer->>Contract: invoke fund_trade(trade_id, cNGN amount)
+    Contract-->>Backend: TradeFunded event
+    Backend-->>Seller: push notification — trade funded, prepare shipment
+
+    Seller->>Driver: hand over goods
+    Driver->>Backend: POST /trades/:id/delivery (driver confirms delivery)
+    Driver->>IPFS: upload delivery video evidence
+    IPFS-->>Driver: CID
+    Driver->>Backend: POST /trades/:id/evidence { cid }
+    Backend->>Contract: invoke submit_evidence(trade_id, cid)
+    Contract-->>Backend: EvidenceSubmitted event
+
+    Buyer->>Backend: POST /trades/:id/confirm (buyer confirms receipt)
+    Backend->>Contract: invoke confirm_delivery(trade_id)
+    Contract-->>Backend: TradeCompleted event
+    Contract->>Seller: release funds (minus 1% platform fee)
+```
+
+### Dispute Path Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer
+    actor Seller
+    actor Driver
+    participant Backend
+    participant Contract as Soroban Contract
+    participant IPFS
+
+    Note over Buyer,Contract: Trade is in Funded state
+
+    Buyer->>Backend: POST /trades/:id/dispute (buyer raises dispute)
+    Backend->>Contract: invoke raise_dispute(trade_id, reason)
+    Contract-->>Backend: DisputeRaised event
+
+    Seller->>IPFS: upload counter-evidence
+    IPFS-->>Seller: CID
+    Seller->>Backend: POST /trades/:id/evidence { cid, party: "seller" }
+
+    Driver->>IPFS: upload delivery confirmation
+    IPFS-->>Driver: CID
+    Driver->>Backend: POST /trades/:id/evidence { cid, party: "driver" }
+
+    Note over Backend,Contract: Mediator quorum reviews evidence
+
+    Backend->>Contract: invoke resolve_dispute(trade_id, verdict, loss_ratio)
+    Contract-->>Backend: DisputeResolved event
+
+    alt Verdict: buyer wins
+        Contract->>Buyer: refund per loss-sharing ratio
+        Contract->>Seller: partial payment
+    else Verdict: seller wins
+        Contract->>Seller: full payment (minus 1% fee)
+    end
+```
+
+> Full diagrams with all events and edge cases are in [`docs/event-flow.md`](docs/event-flow.md).
+
 ---
 
 ## 🗺 Roadmap
@@ -216,6 +308,9 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-373 -->
+- #373: [Backend] SMS notification provider abstraction (Termii / Africa's Talking)
+
 <!-- handsoff-issue-409 -->
 - #409: [Frontend] NGN payment quote display in trade funding step
 
@@ -259,3 +354,5 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- handsoff-issue-364 -->
 - #364: [Contract] Reject self-trades where buyer == seller
+<!-- handsoff-issue-426 -->
+- #426: [Frontend] Price reference widget on listing form
