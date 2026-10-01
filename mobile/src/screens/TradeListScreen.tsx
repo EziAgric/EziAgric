@@ -117,6 +117,24 @@ export default function TradeListScreen({ navigation }: Props) {
         <Text style={styles.headerTitle}>🌾 Trades</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity
+            onPress={() => navigation.navigate('DriverHome')}
+            testID="open-driver"
+            accessibilityRole="button"
+            accessibilityLabel="Open driver mode"
+            style={styles.headerBtn}
+          >
+            <Text style={styles.createBtnText}>Driver</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Marketplace')}
+            testID="open-marketplace"
+            accessibilityRole="button"
+            accessibilityLabel="Open marketplace"
+            style={styles.headerBtn}
+          >
+            <Text style={styles.createBtnText}>Market</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => navigation.navigate('CreateTrade')}
             accessibilityRole="button"
             accessibilityLabel="Create new trade"

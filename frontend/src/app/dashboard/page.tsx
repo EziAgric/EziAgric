@@ -9,10 +9,11 @@ import { Activity, CreditCard, CheckCircle2, AlertCircle } from "lucide-react";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { SkeletonList } from "@/components/ui/SkeletonList";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { SellerListings } from "@/components/dashboard/SellerListings";
 
 export default function DashboardPage() {
   const { token, isAuthenticated } = useAuth();
-  
+
   const [stats, setStats] = useState<TradeStatsResponse | null>(null);
   const [recentTrades, setRecentTrades] = useState<TradeResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,8 +98,8 @@ export default function DashboardPage() {
       <div className="p-6">
         <div className="bg-status-danger/10 border border-status-danger/40 rounded-lg p-4 text-center">
           <p className="text-status-danger">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="mt-4 px-4 py-2 text-sm font-medium bg-bg-elevated hover:bg-bg-card rounded-md border border-border-default transition-colors"
           >
             Try Again
@@ -128,8 +129,8 @@ export default function DashboardPage() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <BentoCard 
-          title="Total Volume" 
+        <BentoCard
+          title="Total Volume"
           icon={<CreditCard className="w-5 h-5" />}
           glowVariant="gold"
         >
@@ -141,8 +142,8 @@ export default function DashboardPage() {
           </div>
         </BentoCard>
 
-        <BentoCard 
-          title="Active Trades" 
+        <BentoCard
+          title="Active Trades"
           icon={<Activity className="w-5 h-5" />}
           glowVariant="emerald"
         >
@@ -154,8 +155,8 @@ export default function DashboardPage() {
           </div>
         </BentoCard>
 
-        <BentoCard 
-          title="Completed Trades" 
+        <BentoCard
+          title="Completed Trades"
           icon={<CheckCircle2 className="w-5 h-5" />}
         >
           <div className="text-3xl font-bold text-text-primary mt-2">
@@ -166,8 +167,8 @@ export default function DashboardPage() {
           </div>
         </BentoCard>
 
-        <BentoCard 
-          title="Total Trades" 
+        <BentoCard
+          title="Total Trades"
           icon={<AlertCircle className="w-5 h-5" />}
         >
           <div className="text-3xl font-bold text-text-primary mt-2">
@@ -179,6 +180,9 @@ export default function DashboardPage() {
         </BentoCard>
       </div>
 
+      {/* Seller Listings Management */}
+      <SellerListings token={token} />
+
       {/* Recent Activity Section */}
       <div className="space-y-4">
         <div className="flex justify-between items-end">
@@ -187,7 +191,7 @@ export default function DashboardPage() {
             View All
           </Link>
         </div>
-        
+
         {recentTrades.length === 0 ? (
           <div className="bg-bg-card border border-border-default rounded-xl p-8 text-center flex flex-col items-center">
             <div className="w-12 h-12 rounded-full bg-bg-elevated border border-border-default flex items-center justify-center mb-3">
@@ -210,47 +214,21 @@ export default function DashboardPage() {
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-text-muted uppercase bg-bg-elevated/50 border-b border-border-default">
                   <tr>
-                    <th scope="col" className="px-6 py-4 font-medium">Trade ID</th>
-                    <th scope="col" className="px-6 py-4 font-medium">Counterparty</th>
-                    <th scope="col" className="px-6 py-4 font-medium">Amount</th>
+                    <th scope="col" className="px-6 py-4 font-medium">Trade</th>
                     <th scope="col" className="px-6 py-4 font-medium">Status</th>
-                    <th scope="col" className="px-6 py-4 font-medium">Date</th>
+                    <th scope="col" className="px-6 py-4 font-medium">Amount</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {recentTrades.map((trade, idx) => (
-                    <tr 
-                      key={trade.tradeId} 
-                      className={`
-                        border-b border-border-default hover:bg-bg-elevated/40 transition-colors
-                        ${idx === recentTrades.length - 1 ? 'border-b-0' : ''}
-                      `}
-                    >
-                      <td className="px-6 py-4 font-mono text-gold">
-                        <Link href={`/trades/${trade.tradeId}`} className="hover:underline">
-                          {trade.tradeId.substring(0, 8)}...
+                <tbody className="divide-y divide-border-default">
+                  {recentTrades.map((trade) => (
+                    <tr key={trade.id} className="hover:bg-bg-elevated/40 transition-colors">
+                      <td className="px-6 py-4">
+                        <Link href={`/trades/${trade.id}`} className="text-text-primary font-medium hover:text-gold">
+                          {trade.id}
                         </Link>
                       </td>
-                      <td className="px-6 py-4 text-text-secondary font-mono">
-                        {trade.sellerAddress.substring(0, 6)}...{trade.sellerAddress.substring(trade.sellerAddress.length - 4)}
-                      </td>
-                      <td className="px-6 py-4 text-text-primary font-medium">
-                        {trade.amountCngn} cNGN
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 text-xs font-medium rounded-full capitalize
-                          ${trade.status === 'active' ? 'bg-status-success/20 text-status-success border border-status-success/30' : 
-                            trade.status === 'completed' ? 'bg-bg-elevated text-text-secondary border border-border-default' :
-                            trade.status === 'pending' ? 'bg-status-warning/20 text-status-warning border border-status-warning/30' :
-                            'bg-status-danger/20 text-status-danger border border-status-danger/30'
-                          }
-                        `}>
-                          {trade.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-text-secondary">
-                        {new Date(trade.createdAt).toLocaleDateString()}
-                      </td>
+                      <td className="px-6 py-4 text-text-secondary">{trade.status}</td>
+                      <td className="px-6 py-4 text-text-secondary">{trade.amount}</td>
                     </tr>
                   ))}
                 </tbody>

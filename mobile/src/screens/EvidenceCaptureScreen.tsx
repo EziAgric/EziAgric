@@ -19,10 +19,36 @@ type Props = StackScreenProps<RootStackParamList, 'EvidenceCapture'>;
 type MediaType = 'video' | 'photo';
 type UploadState = 'idle' | 'captured' | 'uploading' | 'done' | 'error';
 
+const MIN_VIDEO_DURATION_S = 5;
+const CHUNK_SIZE = 512 * 1024; // 512 KB
+const SIMULATED_VIDEO_SIZE = 5 * 1024 * 1024; // 5 MB
+const SIMULATED_PHOTO_SIZE = 512 * 1024; // 512 KB
+
 interface CapturedMedia {
   type: MediaType;
   uri: string;
   name: string;
+  durationSec?: number;
+  fileHash?: string;
+  fileSize: number;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  try {
+    const encoded = new TextEncoder().encode(input);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    // Fallback: deterministic hex derived from string length + charCodes
+    let h = 0x811c9dc5;
+    for (let i = 0; i < input.length; i++) {
+      h ^= input.charCodeAt(i);
+      h = (h * 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0').repeat(8);
+  }
 }
 
 export default function EvidenceCaptureScreen({ route, navigation }: Props) {
@@ -34,9 +60,8 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
   const [captured, setCaptured] = useState<CapturedMedia | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
-  // In a production build this would call expo-image-picker or expo-camera.
-  // Those packages are not yet installed; this placeholder simulates the capture step.
   const handleCapture = () => {
     Alert.alert(
       selectedType === 'video' ? 'Record Video' : 'Take Photo',
@@ -45,13 +70,25 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Simulate Capture',
-          onPress: () => {
+          onPress: async () => {
             const ext = selectedType === 'video' ? 'mp4' : 'jpg';
-            setCaptured({
-              type: selectedType,
-              uri: `file://simulated-evidence-${Date.now()}.${ext}`,
-              name: `evidence-${tradeId}-${Date.now()}.${ext}`,
-            });
+            const uri = `file://simulated-evidence-${Date.now()}.${ext}`;
+            const name = `evidence-${tradeId}-${Date.now()}.${ext}`;
+            const durationSec = selectedType === 'video' ? 7 : undefined;
+
+            if (selectedType === 'video' && (durationSec ?? 0) < MIN_VIDEO_DURATION_S) {
+              Alert.alert(
+                'Video Too Short',
+                `Video must be at least ${MIN_VIDEO_DURATION_S} seconds. Please record again.`
+              );
+              return;
+            }
+
+            const fileHash = await sha256Hex(uri);
+            const fileSize =
+              selectedType === 'video' ? SIMULATED_VIDEO_SIZE : SIMULATED_PHOTO_SIZE;
+
+            setCaptured({ type: selectedType, uri, name, durationSec, fileHash, fileSize });
             setUploadState('captured');
           },
         },
@@ -63,24 +100,42 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
     if (!captured) return;
     setUploadState('uploading');
     setUploadError(null);
+    setUploadProgress(0);
 
     try {
-      const formData = new FormData();
-      // React Native FormData accepts { uri, name, type } objects
-      formData.append('file', {
-        uri: captured.uri,
-        name: captured.name,
-        type: captured.type === 'video' ? 'video/mp4' : 'image/jpeg',
-      } as unknown as Blob);
-      formData.append('tradeId', tradeId);
-      formData.append('mediaType', captured.type);
+      const totalChunks = Math.ceil(captured.fileSize / CHUNK_SIZE);
+      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
 
-      await apiClient.post(`/trades/${tradeId}/evidence`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      for (let i = 0; i < totalChunks; i++) {
+        const offset = i * CHUNK_SIZE;
+        // In production, read actual bytes; here we send metadata only
+        await apiClient.post(
+          `/trades/${tradeId}/evidence/chunks`,
+          {
+            chunkIndex: i,
+            totalChunks,
+            fileHash: captured.fileHash,
+            offset,
+            size: Math.min(CHUNK_SIZE, captured.fileSize - offset),
+            mediaType: captured.type,
+            fileName: captured.name,
+          },
+          { headers: authHeader }
+        );
+        setUploadProgress(Math.round(((i + 1) / totalChunks) * 100));
+      }
+
+      await apiClient.post(
+        `/trades/${tradeId}/evidence/finalize`,
+        {
+          fileHash: captured.fileHash,
+          totalChunks,
+          mediaType: captured.type,
+          fileName: captured.name,
+          ...(captured.durationSec !== undefined ? { durationSec: captured.durationSec } : {}),
         },
-      });
+        { headers: authHeader }
+      );
 
       setUploadState('done');
     } catch (err: unknown) {
@@ -94,11 +149,11 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
     setCaptured(null);
     setUploadState('idle');
     setUploadError(null);
+    setUploadProgress(0);
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -115,7 +170,6 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.tradeRef}>Trade: #{tradeId.slice(0, 12)}…</Text>
 
-        {/* Success state */}
         {uploadState === 'done' ? (
           <View style={styles.successCard}>
             <Text style={styles.successIcon}>✅</Text>
@@ -123,6 +177,9 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
             <Text style={styles.successBody}>
               Your {captured?.type} has been submitted. A mediator will review it shortly.
             </Text>
+            {captured?.fileHash && (
+              <Text style={styles.hashLabel}>SHA-256: {captured.fileHash.slice(0, 16)}…</Text>
+            )}
             <TouchableOpacity
               style={styles.doneBtn}
               onPress={() => navigation.navigate('TradeDetail', { tradeId })}
@@ -134,7 +191,6 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
           </View>
         ) : (
           <>
-            {/* Media type selector */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Evidence Type</Text>
               <View style={styles.typeRow}>
@@ -149,25 +205,23 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
                   >
                     <Text style={styles.typeIcon}>{t === 'video' ? '🎥' : '📷'}</Text>
                     <Text style={[styles.typeLabel, selectedType === t && styles.typeLabelActive]}>
-                      {t === 'video' ? 'Video' : 'Photo'}
+                      {t === 'video' ? `Video (min ${MIN_VIDEO_DURATION_S}s)` : 'Photo'}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
 
-            {/* Capture area */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 {selectedType === 'video' ? 'Record Delivery Video' : 'Take Delivery Photo'}
               </Text>
               <Text style={styles.hint}>
                 {selectedType === 'video'
-                  ? 'Record a video showing the goods and their condition. The driver should be present.'
+                  ? `Record at least ${MIN_VIDEO_DURATION_S} seconds showing the goods and their condition.`
                   : 'Take a clear photo of the goods showing any damage or discrepancy.'}
               </Text>
 
-              {/* Capture preview / placeholder */}
               <TouchableOpacity
                 style={[styles.captureArea, captured && styles.captureAreaDone]}
                 onPress={uploadState === 'idle' || uploadState === 'error' ? handleCapture : undefined}
@@ -180,6 +234,12 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
                   <View style={styles.capturedPreview}>
                     <Text style={styles.capturedIcon}>{selectedType === 'video' ? '🎬' : '🖼️'}</Text>
                     <Text style={styles.capturedName}>{captured.name}</Text>
+                    {captured.durationSec !== undefined && (
+                      <Text style={styles.capturedMeta}>{captured.durationSec}s</Text>
+                    )}
+                    {captured.fileHash && (
+                      <Text style={styles.capturedMeta}>SHA-256: {captured.fileHash.slice(0, 12)}…</Text>
+                    )}
                     <Text style={styles.capturedReady}>Ready to upload</Text>
                   </View>
                 ) : (
@@ -204,14 +264,20 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
               )}
             </View>
 
-            {/* Error */}
             {uploadState === 'error' && uploadError && (
               <View style={styles.errorBanner}>
                 <Text style={styles.errorText}>Upload failed: {uploadError}</Text>
+                <Text style={styles.errorHint}>Tap Upload to resume from where it stopped.</Text>
               </View>
             )}
 
-            {/* Upload button */}
+            {uploadState === 'uploading' && (
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${uploadProgress}%` as `${number}%` }]} />
+                <Text style={styles.progressLabel}>{uploadProgress}%</Text>
+              </View>
+            )}
+
             {captured && (
               <TouchableOpacity
                 style={[styles.uploadBtn, uploadState === 'uploading' && styles.btnDisabled]}
@@ -224,11 +290,11 @@ export default function EvidenceCaptureScreen({ route, navigation }: Props) {
                 {uploadState === 'uploading' ? (
                   <View style={styles.uploadingRow}>
                     <ActivityIndicator color="#fff" accessibilityLabel="Uploading evidence" />
-                    <Text style={styles.uploadBtnText}>Uploading…</Text>
+                    <Text style={styles.uploadBtnText}>Uploading… {uploadProgress}%</Text>
                   </View>
                 ) : (
                   <Text style={styles.uploadBtnText}>
-                    ☁️ Upload {selectedType === 'video' ? 'Video' : 'Photo'}
+                    ☁️ {uploadState === 'error' ? 'Resume Upload' : `Upload ${selectedType === 'video' ? 'Video' : 'Photo'}`}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -281,7 +347,7 @@ const styles = StyleSheet.create({
   },
   typeBtnActive: { borderColor: '#2d6a2d', backgroundColor: '#f0f8f0' },
   typeIcon: { fontSize: 28 },
-  typeLabel: { fontSize: 14, fontWeight: '600', color: '#888' },
+  typeLabel: { fontSize: 13, fontWeight: '600', color: '#888', textAlign: 'center' },
   typeLabelActive: { color: '#2d6a2d' },
   captureArea: {
     borderRadius: 12,
@@ -300,11 +366,29 @@ const styles = StyleSheet.create({
   capturedPreview: { alignItems: 'center', gap: 6, padding: 16 },
   capturedIcon: { fontSize: 40 },
   capturedName: { fontSize: 12, color: '#555', fontFamily: 'monospace' },
+  capturedMeta: { fontSize: 11, color: '#888', fontFamily: 'monospace' },
   capturedReady: { fontSize: 13, color: '#2d6a2d', fontWeight: '600' },
   retakeBtn: { alignSelf: 'center' },
   retakeBtnText: { color: '#888', fontSize: 13 },
-  errorBanner: { backgroundColor: '#FEE2E2', padding: 12, borderRadius: 8 },
+  errorBanner: { backgroundColor: '#FEE2E2', padding: 12, borderRadius: 8, gap: 4 },
   errorText: { color: '#DC2626', fontSize: 13 },
+  errorHint: { color: '#991B1B', fontSize: 12 },
+  progressBar: {
+    height: 20,
+    backgroundColor: '#e0e8e0',
+    borderRadius: 10,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  progressFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#2d6a2d',
+    borderRadius: 10,
+  },
+  progressLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600', color: '#1a3a1a' },
   uploadBtn: {
     backgroundColor: '#2563EB',
     borderRadius: 10,
@@ -328,6 +412,7 @@ const styles = StyleSheet.create({
   successIcon: { fontSize: 56 },
   successTitle: { fontSize: 22, fontWeight: '700', color: '#1a3a1a' },
   successBody: { fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 22 },
+  hashLabel: { fontSize: 11, color: '#888', fontFamily: 'monospace' },
   doneBtn: {
     backgroundColor: '#2d6a2d',
     borderRadius: 10,

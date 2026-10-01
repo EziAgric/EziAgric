@@ -1,0 +1,65 @@
+name: Documentation
+description: Report missing, outdated or unclear documentation.
+title: "[Docs] "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [CONTRIBUTING.md](https://github.com/EziAgric/EziAgric/blob/main/CONTRIBUTING.md) first.
+        Wave issues must state an **area**, a **complexity** level and **acceptance criteria**.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the stack does the documentation cover?
+      options:
+        - Backend
+        - Frontend
+        - Mobile
+        - Contracts
+        - DevOps
+        - Docs
+      default: 5
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexity
+      description: Drips Wave complexity level. Maintainers may adjust it before the issue is resolved.
+      options:
+        - Trivial (100 points) — Typos, minor copy changes, or very small, well-contained fixes.
+        - Medium (150 points) — Standard features or fixes touching a few files.
+        - High (200 points) — Complex features, cross-cutting changes or deep investigation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is missing, wrong or unclear?
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant files / pages
+      placeholder: "- `docs/...`"
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] Documentation updated and links resolve
+        - [ ] All relevant CI gates pass (see README → *Required PR CI Gates*)
+    validations:
+      required: true
