@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/components/AnalyticsProvider";
 import { useToast } from "@/hooks/useToast";
@@ -12,14 +13,35 @@ import { NavButton } from "@/components/ui/Navigation";
 import { VirtualizedList } from "@/components/ui/VirtualizedList";
 
 type TradeStatus = "all" | "active" | "pending" | "completed" | "disputed";
+type TradeRole = "all" | "buying" | "selling";
 
-const FILTERS: { label: string; value: TradeStatus }[] = [
+const STATUS_FILTERS: { label: string; value: TradeStatus }[] = [
   { label: "All", value: "all" },
   { label: "Active", value: "active" },
   { label: "Pending", value: "pending" },
   { label: "Completed", value: "completed" },
   { label: "Disputed", value: "disputed" },
 ];
+
+const ROLE_FILTERS: { label: string; value: TradeRole }[] = [
+  { label: "All roles", value: "all" },
+  { label: "Buying", value: "buying" },
+  { label: "Selling", value: "selling" },
+];
+
+/** Statuses where the wallet-address holder needs to act. */
+function needsMyAction(trade: TradeResponse, address: string | null): boolean {
+  if (!address) return false;
+  const addr = address.toLowerCase();
+  const isBuyer = trade.buyerAddress.toLowerCase() === addr;
+  const isSeller = trade.sellerAddress.toLowerCase() === addr;
+  const s = trade.status.toUpperCase();
+  return (
+    (isBuyer && s === "PENDING") ||
+    (isBuyer && s === "FUNDED") ||
+    (isSeller && (s === "FUNDED" || s === "CONFIRMED"))
+  );
+}
 
 // Status chip tokens: text = status color, bg = status/10, border = status/20.
 // "completed" and "draft" use neutral surface tokens (no alert color).
@@ -65,18 +87,41 @@ function TradesTableSkeleton() {
 }
 
 export default function TradesPage() {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, address } = useAuth();
   const { trackApiFailure, trackFunnelStep } = useAnalytics();
   const { addToast } = useToast();
-  const [activeFilter, setActiveFilter] = useState<TradeStatus>("all");
-  const [page, setPage] = useState(1);
-  const [trades, setTrades] = useState<TradeResponse[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Derive filter state from URL; fall back to "all"
+  const activeFilter = (searchParams.get("status") as TradeStatus) ?? "all";
+  const activeRole = (searchParams.get("role") as TradeRole) ?? "all";
+  const needsAction = searchParams.get("action") === "1";
+  const page = Number(searchParams.get("page") ?? "1");
+
+  const [allTrades, setAllTrades] = useState<TradeResponse[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /** Push updated URL params without adding a new history entry for page resets. */
+  const pushParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [k, v] of Object.entries(updates)) {
+        if (v === null || v === "all" || v === "1" || (k === "action" && v === "0")) {
+          params.delete(k);
+        } else {
+          params.set(k, v);
+        }
+      }
+      router.push(`/trades?${params.toString()}`);
+    },
+    [router, searchParams],
+  );
+
   useEffect(() => {
-    trackFunnelStep("trade_page_view", { filter: activeFilter });
+    trackFunnelStep("trade_page_view", { filter: activeFilter, role: activeRole });
 
     async function fetchTrades() {
       if (!isAuthenticated || !token) {
@@ -95,7 +140,7 @@ export default function TradesPage() {
           limit: PAGE_SIZE,
         });
 
-        setTrades(response.items);
+        setAllTrades(response.items);
         setTotalPages(response.pagination.totalPages);
       } catch (err) {
         let errorMessage = "Failed to load trades";
@@ -118,10 +163,37 @@ export default function TradesPage() {
     fetchTrades();
   }, [token, isAuthenticated, activeFilter, page, trackApiFailure, trackFunnelStep]);
 
-  function handleFilter(value: TradeStatus) {
-    setActiveFilter(value);
-    setPage(1);
+  /** Client-side role + action filter applied after the API fetch. */
+  const trades = allTrades.filter((t) => {
+    if (activeRole !== "all") {
+      const addr = address?.toLowerCase();
+      const isBuyer = t.buyerAddress.toLowerCase() === addr;
+      const isSeller = t.sellerAddress.toLowerCase() === addr;
+      if (activeRole === "buying" && !isBuyer) return false;
+      if (activeRole === "selling" && !isSeller) return false;
+    }
+    if (needsAction && !needsMyAction(t, address ?? null)) return false;
+    return true;
+  });
+
+  function handleStatusFilter(value: TradeStatus) {
+    pushParams({ status: value === "all" ? null : value, page: null });
   }
+
+  function handleRoleFilter(value: TradeRole) {
+    pushParams({ role: value === "all" ? null : value, page: null });
+  }
+
+  function handleNeedsAction() {
+    pushParams({ action: needsAction ? "0" : "1", page: null });
+  }
+
+  // Keep legacy name for pagination calls
+  const setPage = (p: number | ((prev: number) => number)) => {
+    const next = typeof p === "function" ? p(page) : p;
+    pushParams({ page: String(next) });
+  };
+
 
   function formatDate(dateString: string) {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -180,25 +252,51 @@ export default function TradesPage() {
         </Link>
       </div>
 
-      {/* Filter tabs */}
-      <div className="mb-6" role="tablist" aria-label="Trade filters">
-        <div className="flex items-center gap-2">
-          {FILTERS.map((filter) => {
+      {/* Filter bar */}
+      <div className="mb-6 flex flex-col gap-3">
+        {/* Status chips */}
+        <div className="flex items-center gap-2 flex-wrap" role="tablist" aria-label="Filter by status">
+          {STATUS_FILTERS.map((filter) => {
             const isActive = activeFilter === filter.value;
-
             return (
               <NavButton
                 key={filter.value}
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => handleFilter(filter.value)}
+                onClick={() => handleStatusFilter(filter.value)}
                 isActive={isActive}
               >
                 {filter.label}
               </NavButton>
             );
           })}
+        </div>
+
+        {/* Role + action chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {ROLE_FILTERS.map((rf) => {
+            const isActive = activeRole === rf.value;
+            return (
+              <NavButton
+                key={rf.value}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => handleRoleFilter(rf.value)}
+                isActive={isActive}
+              >
+                {rf.label}
+              </NavButton>
+            );
+          })}
+          <NavButton
+            type="button"
+            aria-pressed={needsAction}
+            onClick={handleNeedsAction}
+            isActive={needsAction}
+          >
+            ⚡ Needs my action
+          </NavButton>
         </div>
       </div>
 

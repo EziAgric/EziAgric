@@ -24,10 +24,10 @@ jobs:
       flake_status: ${{ steps.flake-check.outputs.flake_status }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -37,7 +37,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       # ── Contract Build ──────────────────────────────────────────────────
       - name: Build WASM contract
@@ -172,7 +172,7 @@ jobs:
 
       - name: Upload failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-lifecycle-artifacts
           path: /tmp/e2e-artifacts/

@@ -39,6 +39,13 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 - `mobile/` → React Native Expo environment (mobile wallet, notification, and trade UX)
 - `contracts/` → Rust/Soroban smart contract environment
 
+### Step 0: environment doctor
+
+Run `scripts/dev-doctor.sh` from the repo root. It checks every toolchain (node, npm, docker,
+cargo, wasm32 target, stellar CLI), prints the exact install command for anything missing, and
+finishes with one smoke test per stack. Hit something it didn't catch? Open an
+**Onboarding friction** issue.
+
 ### Frontend setup
 
 1. `cd frontend`
@@ -82,6 +89,8 @@ Amana enforces stack-level CI gates on pull requests through `.github/workflows/
 - **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
 - **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobile/`
 - **Contracts Required Gate**: `cargo test` in `contracts/amana_escrow/`
+  - Also builds the optimized WASM, posts its size and sha256 to the job summary, fails if it exceeds the size budget (`WASM_SIZE_BUDGET_BYTES`), and verifies a clean rebuild produces the same sha256
+- **Conventional PR Title**: PR titles must follow Conventional Commits (`.github/workflows/pr-title.yml`); see [CONTRIBUTING.md](CONTRIBUTING.md#commits-and-pr-titles)
 
 Path-aware execution is enabled to avoid unnecessary runtime. If a stack has no changed files, the gate reports a skip-note and passes.
 
@@ -173,3 +182,42 @@ Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr).
 
 - [Threat Model](./docs/threat-model.md) — reviewed quarterly and on trigger events; see §8 for cadence/ownership and `docs/threat-model-review-checklist.md` for the reviewer checklist.
 - [Secrets Policy & Rotation](./docs/secrets-policy.md) — secrets inventory (owner, location, max-age), rotation automation, and verification. Rotation reminders are opened automatically by [`.github/workflows/secrets-rotation-reminder.yml`](./.github/workflows/secrets-rotation-reminder.yml).
+- [PII Encryption at Rest](./docs/pii-encryption.md) — classified PII column inventory, app-layer envelope encryption design, blind-index search, key rotation procedure, and decrypt access logging.
+- [Software Bill of Materials (SBOM)](./docs/sbom.md) — CycloneDX SBOM generated for every release artifact via [`.github/workflows/sbom.yml`](./.github/workflows/sbom.yml), attached to GitHub Releases, with a weekly vulnerability diff scan.
+- [Golden Signals Dashboard](./docs/dashboards.md) — Grafana dashboard stored as code ([`infra/grafana/`](./infra/grafana)) covering API latency/traffic/errors and DB/queue saturation, with deploy annotations wired into staging deploys.
+- [Alert Routing Policy](./docs/alert-routing-policy.md) — page-vs-ticket severity rubric, runbook linkage enforced in CI, per-alert dedup windows, and the [monthly alert review log](./docs/alert-review-log.md).
+- [Synthetic Probes Policy](./docs/synthetic-probes-policy.md) — hourly staging probe of the core escrow journey (auth → create → deposit → release), with failure alerting and a results dashboard log.
+- [Preview Environments](./docs/preview-environments.md) — per-PR ephemeral backend stack (compose `preview` profile) spun up by the `preview` label workflow, smoke-tested and torn down under TTL/concurrency budget caps.
+- [Backup Freshness & Restore Drills](./docs/runbooks/backup-restore-drill.md) — weekly freshness gate that pages `backup_stale` on a missing/stale daily backup, plus a quarterly automated restore drill (integrity assertions, app smoke on the restored copy, RTO history under `backup-drills/`).
+- [Incident Response](./docs/runbooks/incident-response.md) — severity levels, incident roles, and channel/ticket conventions; see the [postmortem template](./docs/runbooks/postmortem-template.md), the [postmortem archive](./docs/postmortems/README.md), and a worked [tabletop exercise](./docs/runbooks/tabletop-exercise-escrow-drain.md).
+
+## 🤝 Contributing
+
+EziAgric is an open-source project aimed at improving food security and trade efficiency. We welcome developers, designers, and agricultural experts!
+
+1. Fork the Project.
+2. Create your Feature Branch (`git checkout -b feature/NewFeature`).
+3. Commit your Changes (`git commit -m 'Add NewFeature'`).
+4. Push to the Branch (`git push origin feature/NewFeature`).
+5. Open a Pull Request.
+
+### Admin route development
+
+If you are adding or modifying admin routes, see the
+[Admin Route Contribution Guide](./docs/admin-route-contribution-guide.md)
+for architecture details, middleware requirements, testing expectations, and a
+step-by-step example.
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+// setting up and starting out
+
+## Handsoff notes
+
+<!-- handsoff-issue-363 -->
+- #363: [Contract] Add `get_trades_by_party` index with pagination
+
+<!-- handsoff-issue-364 -->
+- #364: [Contract] Reject self-trades where buyer == seller
