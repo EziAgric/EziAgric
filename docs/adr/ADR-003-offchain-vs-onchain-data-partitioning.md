@@ -32,6 +32,11 @@ must be trust-minimized:**
 - The authoritative trade status enum and the numbers that determine fund
   movement: `amount`, `buyer_loss_bps`/`seller_loss_bps`, `fee_bps` at
   resolution time, and the mediator's `seller_gets_bps` ruling.
+- An optional `terms_hash: BytesN<32>` anchoring the off-chain commodity
+  listing (commodity, grade, quantity, etc.) at trade creation. The hash
+  is a commitment, not the data itself - the listing text stays off-chain
+  (see below), but the hash makes the goods a trade refers to verifiable
+  and lets a dispute prove the listing wasn't swapped after the fact.
 - Nothing that's expensive to store or has no bearing on fund movement:
   no manifest text, no evidence files, no user profile data, no dispute
   reason/category text.
@@ -46,13 +51,18 @@ human-facing:**
   concurrency for the backend's own writes),
   `fundedAt`/`deliveredAt`/`completedAt` timestamps, and relations to
   `Dispute`, `DeliveryManifest`, `TradeEvidence`, `TradeNote`.
+- The commodity listing itself (commodity, grade, quantity, and any other
+  descriptive fields) - the human-readable goods description a trade's
+  `terms_hash` commits to. The backend computes the hash from its listing
+  record and passes it to `create_trade`; the listing text is never stored
+  on-chain.
 - Delivery manifests and dispute evidence - PII (driver identity,
   documents, photos/video) that has no reason to ever be on a public
   ledger, and where role-based masking (see
   [docs/api/trades.md](../api/trades.md#manifest)) only makes sense
   server-side.
 - User profiles, notifications, webhooks - product features with no
-  trust-minimization requirement at all.
+trust-minimization requirement at all.
 
 **The off-chain `Trade` row is never the source of truth for fund
 movement - it's a read-optimized mirror, kept in sync via an event-sourced
@@ -77,6 +87,34 @@ so the off-chain mirror's claim about a trade's status can be checked
 against the chain when it matters (support escalations, audits, disputes
 about disputes).
 
+### Canonical JSON for `terms_hash`
+
+`terms_hash` is a `BytesN<32>` commitment to the off-chain commodity
+listing. To make the hash reproducible from the backend listing record
+(and verifiable by anyone holding the listing), the hashed payload is the
+UTF-8 bytes of a **canonical JSON** object with exactly these keys, in
+this order, and no others:
+
+```json
+{"commodity":"<string>","grade":"<string>","quantity":"<string>","unit":"<string>"}
+```
+
+Canonicalization rules (so two encoders always produce the same bytes):
+
+- Keys appear in the fixed order above (`commodity`, `grade`, `quantity`,
+  `unit`); no whitespace between tokens.
+- All values are JSON strings. `quantity` is a decimal string (e.g.
+  `"12.500"`) to avoid float formatting drift; `unit` is the unit of
+  measure (e.g. `"kg"`).
+- Strings are UTF-8, with `"` and `\` escaped per JSON, and no other
+  escaping.
+- The hash is `SHA-256` of those bytes, stored on-chain as `BytesN<32>`.
+
+`terms_hash` is optional: trades created without a listing (or before this
+field existed) store `None`, and the field is omitted from
+`TradeCreatedEvent` in that case - existing trades and read paths are
+unaffected.
+
 ## Consequences
 
 - **Positive:** Reads that matter for UX (list my trades, filter by
@@ -93,6 +131,10 @@ about disputes).
   about a trade's status - it can only be as wrong as the event pipeline,
   which is independently auditable against
   `GET /contract/:contractId/state`.
+- **Positive:** `terms_hash` commits to the traded goods without putting
+  the listing on-chain, so a dispute about *what* was traded is verifiable
+  against the backend listing record while the descriptive data stays
+  off-chain.
 - **Negative:** There is an inherent lag between an on-chain state change
   and its reflection in the Postgres mirror (bounded by the event
   listener's poll interval plus handler processing time) - a client that
@@ -105,3 +147,8 @@ about disputes).
   [docs/data-model-relationships.md](../data-model-relationships.md) for
   the current mapping. A status added to one side without the other is a
   real failure mode the event pipeline can't protect against by itself.
+- **Negative:** `terms_hash` is only as trustworthy as the canonical JSON
+  rules above - if the backend and a verifier disagree on key order or
+  number formatting, the hashes won't match. The canonical form is
+  therefore part of the contract's public interface, not an implementation
+  detail.

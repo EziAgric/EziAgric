@@ -1,0 +1,17 @@
+{
+  "$schema": "./doc-refs-whitelist.schema.json",
+  "description": "Whitelist of documentation code references that are intentionally allowed to be stale or unresolvable. Entries here are skipped by the doc-refs checker (scripts/check-doc-refs.mjs). Use this for historical/archived docs, external references, and references to files that live outside this repository.",
+  "version": 1,
+  "paths": [
+    "docs/adr/README.md",
+    "docs/archive/**",
+    "CHANGELOG.md"
+  ],
+  "references": [
+    {
+      "doc": "README.md",
+      "ref": "docs/tracing.md",
+      "reason": "Historical tracing guide filename; superseded by the current tracing documentation. Kept for archived links."
+    }
+  ]
+}

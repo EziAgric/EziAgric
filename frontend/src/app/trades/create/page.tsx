@@ -1,15 +1,40 @@
 "use client";
+import { useEffect, useState } from "react";
 import { TradeProvider, useTrade } from "./TradeContext";
 import Step1Details from "./steps/Step1Details";
 import Step2Negotiation from "./steps/Step2Negotiation";
 import Step3Review from "./steps/Step3Review";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 const STEPS = [
   { index: 1, label: "Details" },
   { index: 2, label: "Negotiation" },
   { index: 3, label: "Review" },
 ];
+
+const DRAFT_STORAGE_KEY = "trade-create-draft";
+
+function readDraft(): Record<string, unknown> | null {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    // storage unavailable — ignore
+  }
+}
 
 function StepIndicator() {
   const { step } = useTrade();
@@ -48,8 +73,50 @@ function StepIndicator() {
   );
 }
 
+function ResumePrompt({ onResume, onDiscard }: { onResume: () => void; onDiscard: () => void }) {
+  return (
+    <div className="mb-6 rounded-lg border border-border-default bg-bg-elevated p-4">
+      <p className="text-sm text-text-primary">You have an unsaved trade draft.</p>
+      <p className="text-xs text-text-muted mt-1">Resume where you left off, or discard it and start over.</p>
+      <div className="flex gap-2 mt-3">
+        <button
+          type="button"
+          onClick={onResume}
+          className="px-3 py-1.5 rounded-md bg-gold text-text-inverse text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          Resume draft
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="px-3 py-1.5 rounded-md border border-border-default text-text-secondary text-sm hover:text-text-primary transition-colors"
+        >
+          Discard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CreateTradeInner() {
-  const { step } = useTrade();
+  const { step, restoreDraft } = useTrade();
+  const [pendingDraft, setPendingDraft] = useState<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const draft = readDraft();
+    if (draft) setPendingDraft(draft);
+  }, []);
+
+  const handleResume = () => {
+    if (pendingDraft) restoreDraft(pendingDraft);
+    setPendingDraft(null);
+  };
+
+  const handleDiscard = () => {
+    clearDraft();
+    setPendingDraft(null);
+  };
+
   return (
     <div className="min-h-screen bg-bg-primary flex items-start justify-center px-4 py-12">
       <div className="w-full max-w-lg">
@@ -66,6 +133,8 @@ function CreateTradeInner() {
           </p>
         </div>
 
+        {pendingDraft && <ResumePrompt onResume={handleResume} onDiscard={handleDiscard} />}
+
         <div className="bg-bg-card rounded-xl border border-border-default p-6 shadow-card">
           <StepIndicator />
           {step === 1 && <Step1Details />}
@@ -77,9 +146,38 @@ function CreateTradeInner() {
   );
 }
 
+/**
+ * Reads listing pre-fill params from the URL so the marketplace listing
+ * detail page's "Start trade" action can seed the wizard.
+ *
+ * Supported params:
+ *  - listingId: the marketplace listing id
+ *  - commodity: commodity name (e.g. "Maize")
+ *  - quantity: requested quantity, bounded by the listing availability
+ *  - unit: unit of measure (e.g. "tonne")
+ *  - price: unit price in NGN
+ *  - seller: seller display name
+ */
+export function parseTradePrefill(
+  params: URLSearchParams | { get(key: string): string | null }
+): Record<string, string> {
+  const keys = ["listingId", "commodity", "quantity", "unit", "price", "seller"];
+  const prefill: Record<string, string> = {};
+  for (const key of keys) {
+    const value = params.get(key);
+    if (value !== null && value !== "") {
+      prefill[key] = value;
+    }
+  }
+  return prefill;
+}
+
 export default function CreateTradePage() {
+  const searchParams = useSearchParams();
+  const prefill = parseTradePrefill(searchParams);
+
   return (
-    <TradeProvider>
+    <TradeProvider initialValues={prefill}>
       <CreateTradeInner />
     </TradeProvider>
   );

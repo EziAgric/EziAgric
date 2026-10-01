@@ -78,3 +78,80 @@ of the API.
   and `stellar.tx.status.ts` currently handle Horizon failures with a bare
   `try/catch` -> `502`, not this pattern, and might benefit from it as they
   see more traffic.
+
+## Addendum: Seller Payout Destination Preferences (cNGN -> NGN off-ramp)
+
+### Status
+
+Proposed (issue #396). This addendum extends the path payment architecture
+above to cover the *outbound* leg: sellers who want to convert settled USDC
+into NGN held in a bank account.
+
+### Context
+
+Sellers ultimately want NGN in a bank account, not a Stellar asset. The
+path payment flow above only closes the loop for *buyers* funding trades.
+To close the loop for sellers we need an off-ramp from cNGN (the NGN-pegged
+Stellar asset) to fiat NGN, and we need to remember, per seller, whether
+they want to be paid out to a Stellar wallet or to a bank account via an
+anchor.
+
+### Candidate cNGN anchors
+
+Anchors are evaluated against the SEP-1 `stellar.toml` discovery document,
+SEP-10 auth, SEP-24 interactive deposit/withdraw, and testnet availability.
+The table below is the research artifact required by issue #396; entries
+are filled in as each anchor is verified against its testnet `stellar.toml`.
+
+| Anchor | SEP-1 | SEP-10 | SEP-24 | Testnet | Notes |
+|---|---|---|---|---|---|
+| Anchor candidate A (cNGN issuer) | TBD | TBD | TBD | TBD | Verify `TRANSFER_SERVER_SEP0024` + `WEB_AUTH_ENDPOINT` in `stellar.toml`. |
+| Anchor candidate B | TBD | TBD | TBD | TBD | Verify withdraw support for cNGN asset code/issuer. |
+| Anchor candidate C | TBD | TBD | TBD | TBD | Verify KYC requirements and NGN bank payout rails. |
+
+Selection criteria, in priority order:
+
+1. Supports SEP-24 **withdraw** for the cNGN asset (not just deposit).
+2. Publishes a testnet `stellar.toml` so the end-to-end demo can run on
+   testnet.
+3. Reasonable KYC surface (SEP-12 optional) and NGN bank payout coverage.
+4. Operationally stable (uptime, published status page).
+
+### Decision
+
+1. **Payout preference is stored per seller** as a discriminated value:
+   `wallet` (default - pay out to the seller's Stellar address) or
+   `anchor_offramp` (pay out to a bank account via a SEP-24 anchor). The
+   preference is persisted alongside the seller record and read by the
+   payout service; it does not change how trades settle, only where the
+   resulting funds are sent.
+2. **Anchor interaction uses SEP-10 for authentication.** The backend
+   fetches the anchor's `stellar.toml`, reads `WEB_AUTH_ENDPOINT`, requests
+   a challenge transaction, signs it with the seller's (or a dedicated
+   payout) Stellar keypair, and exchanges the signed challenge for a JWT.
+   The JWT is held only for the duration of the withdraw flow and is never
+   persisted.
+3. **SEP-24 drives the interactive withdraw flow.** With a valid SEP-10
+   JWT the backend calls the anchor's `TRANSFER_SERVER_SEP0024`
+   `/transactions/withdraw/interactive` endpoint, returns the interactive
+   URL to the client, and polls `/transaction` until the anchor reports a
+   terminal status. The backend does not custody funds at any point.
+4. **Secrets follow `docs/secrets-policy.md`.** Anchor endpoints, signing
+   keys, and any anchor API credentials are supplied via environment
+   variables (never committed), consistent with the existing
+   `USDC_ISSUER_*` handling. No anchor secret is logged.
+
+### Consequences
+
+- **Positive:** Sellers can choose wallet or bank payout without changing
+  the settlement path; the off-ramp is additive.
+- **Positive:** SEP-10/SEP-24 are standard, so swapping anchors is a
+  configuration change rather than a code change.
+- **Negative:** The off-ramp depends on a third-party anchor's availability
+  and KYC process; failures there are outside our control and must surface
+  as clear, retryable errors to the seller.
+- **Negative:** Interactive SEP-24 flows require a client round-trip
+  (KYC, bank details), so the withdraw is not fully headless.
+- **Follow-up:** Once an anchor is selected, add a testnet end-to-end
+  withdraw demo and wire the payout preference into the seller settings
+  API.
