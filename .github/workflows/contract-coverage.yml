@@ -61,7 +61,7 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -97,14 +97,14 @@ jobs:
 
       - name: Upload HTML report
         id: html
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-coverage-html
           path: coverage-html/
           retention-days: 30
 
       - name: Upload summary (+ lcov)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # The main-branch copy of this artifact is the ratchet baseline.
           name: contract-coverage-summary
@@ -152,7 +152,7 @@ jobs:
 
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request' && hashFiles('coverage-report.md') != ''
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: contract-coverage-report
           path: coverage-report.md

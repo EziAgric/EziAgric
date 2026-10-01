@@ -87,11 +87,6 @@ Amana enforces stack-level CI gates on pull requests through `.github/workflows/
 
 - **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
 - **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
-- **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobil
-Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
-
-- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
-- **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
 - **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobile/`
 - **Contracts Required Gate**: `cargo test` in `contracts/amana_escrow/`
   - Also builds the optimized WASM, posts its size and sha256 to the job summary, fails if it exceeds the size budget (`WASM_SIZE_BUDGET_BYTES`), and verifies a clean rebuild produces the same sha256
@@ -172,13 +167,16 @@ See [DISTRIBUTED_TRACING_GUIDE.md](./DISTRIBUTED_TRACING_GUIDE.md) for detailed 
 
 ## 📐 Architecture Decision Records
 
-Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr):
+Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr). Each ADR follows the standard template and status lifecycle (proposed → accepted → superseded).
 
 - [ADR-001: Stellar Path Payment Architecture](./docs/adr/ADR-001-stellar-path-payment-architecture.md)
 - [ADR-002: Escrow Loss-Sharing Model](./docs/adr/ADR-002-escrow-loss-sharing-model.md)
 - [ADR-003: Off-chain vs. On-chain Data Partitioning](./docs/adr/ADR-003-offchain-vs-onchain-data-partitioning.md)
 - [ADR-004: Idempotency and Retry Strategy](./docs/adr/ADR-004-idempotency-and-retry-strategy.md)
 - [ADR-005: Frontend State Management](./docs/adr/ADR-005-frontend-state-management.md)
+- [ADR-006: Mobile Navigation and State Architecture](./docs/adr/ADR-006-mobile-navigation-and-state-architecture.md)
+- [ADR-007: Offline Caching and Conflict Resolution](./docs/adr/ADR-007-offline-caching-and-conflict-resolution.md)
+- [ADR-008: Notification and Deep-Link Architecture](./docs/adr/ADR-008-notification-and-deep-link-architecture.md)
 
 ## 🔐 Security & Operations
 
@@ -218,6 +216,44 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-409 -->
+- #409: [Frontend] NGN payment quote display in trade funding step
+
+<!-- handsoff-issue-410 -->
+- #410: [Frontend] Trade timeline component on trade detail page
+<!-- handsoff-issue-408 -->
+- #408: [Frontend] Loss-ratio negotiation UI with visual risk explainer
+<!-- handsoff-issue-404 -->
+- #404: [Frontend] Marketplace page: browse and search listings
+<!-- handsoff-issue-398 -->
+- #398: [Backend] OpenAPI coverage check for non-admin routes
+<!-- handsoff-issue-416 -->
+- #416: [Frontend] Landing page copy: explain EziAgric flow for farmers and buyers
+
+<!-- handsoff-issue-418 -->
+- #418: [Frontend] Low-bandwidth mode: disable autoplay media and compress images
+<!-- handsoff-issue-412 -->
+- #412: [Frontend] Mediator dispute review: side-by-side evidence viewer
+<!-- handsoff-issue-389 -->
+- #389: [Backend] Indicative commodity price feed (off-chain) for listings
+<!-- handsoff-issue-354 -->
+- #354: [Contract] Milestone-based release for multi-drop deliveries
+
+<!-- handsoff-issue-356 -->
+- #356: [Contract] Per-token minimum trade amount to prevent dust trades
+
+<!-- handsoff-issue-357 -->
+- #357: [Contract] Mediator fee share on resolved disputes
+
+<!-- handsoff-issue-358 -->
+- #358: [Contract] Dispute evidence submission deadline
+<!-- handsoff-issue-367 -->
+- #367: [Backend] Product listing model and CRUD API for sellers
+<!-- handsoff-issue-359 -->
+- #359: [Contract] Default-resolution fallback when no mediator acts
+
+<!-- handsoff-issue-360 -->
+- #360: [Contract] Rustdoc for every public contract entrypoint
 <!-- handsoff-issue-363 -->
 - #363: [Contract] Add `get_trades_by_party` index with pagination
 
