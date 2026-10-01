@@ -263,6 +263,105 @@ export class EvidenceService {
      */
     async streamFromIPFS(cid: string, range?: string) {
         // Build list of gateway base URLs to try. Prefer explicit env var list.
-        const urls = this.resolveGatewayU
+        const urls = this.resolveGatewayUrls(cid);
 
-/* … truncated 3129 chars — edit only what you need near the top … */
+        const headers: Record<string, string> = {};
+        if (range) headers["Range"] = range;
+
+        const timeoutMs = env.IPFS_STREAM_TIMEOUT_MS;
+
+        let lastError: any = null;
+        for (const url of urls) {
+            if (this.isGatewayCircuitOpen(url)) {
+                continue;
+            }
+
+            try {
+                const response = await axios.get(url, {
+                    responseType: "stream",
+                    headers,
+                    timeout: timeoutMs,
+                    validateStatus: (s) => s < 500,
+                });
+                this.onGatewaySuccess(url);
+                return response;
+            } catch (err) {
+                lastError = err;
+                this.onGatewayFailure(url);
+            }
+        }
+
+        if (lastError) {
+            throw new ServiceUnavailableError();
+        }
+        throw new ServiceUnavailableError();
+    }
+
+    /** Resolve and cache the public gateway URL for a CID. */
+    private resolveGatewayUrl(cid: string): string {
+        if (this.urlCache.has(cid)) {
+            return this.urlCache.get(cid)!;
+        }
+        const url = this.ipfs.getFileUrl(cid);
+        this.urlCache.set(cid, url);
+        return url;
+    }
+
+    private sniffMimeType(buffer: Buffer): "video/mp4" | "video/webm" | null {
+        // MP4: bytes 4-7 should contain 'ftyp' marker in ISO BMFF containers.
+        if (buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp") {
+            return "video/mp4";
+        }
+        // WebM/Matroska: EBML magic bytes 0x1A45DFA3.
+        if (
+            buffer.length >= 4 &&
+            buffer[0] === 0x1a &&
+            buffer[1] === 0x45 &&
+            buffer[2] === 0xdf &&
+            buffer[3] === 0xa3
+        ) {
+            return "video/webm";
+        }
+        return null;
+    }
+
+    private async runEvidenceScan(file: Express.Multer.File): Promise<EvidenceScanResult> {
+        try {
+            return await this.scanner.scan(file);
+        } catch (err) {
+            throw new EvidenceScanError();
+        }
+    }
+
+    private resolveGatewayUrls(cid: string): string[] {
+        const explicit = (env.IPFS_GATEWAY_URLS ?? "")
+            .split(",")
+            .map((base) => base.trim())
+            .filter(Boolean);
+        if (explicit.length > 0) {
+            return explicit.map((base) => `${base.replace(/\/$/, "")}/ipfs/${cid}`);
+        }
+        return [this.resolveGatewayUrl(cid)];
+    }
+
+    private isGatewayCircuitOpen(url: string): boolean {
+        const state = this.gatewayCircuit.get(url);
+        if (!state) return false;
+        if (state.openUntil > Date.now()) return true;
+        this.gatewayCircuit.delete(url);
+        return false;
+    }
+
+    private onGatewaySuccess(url: string): void {
+        this.gatewayCircuit.delete(url);
+    }
+
+    private onGatewayFailure(url: string): void {
+        const state = this.gatewayCircuit.get(url) ?? { failures: 0, openUntil: 0 };
+        state.failures += 1;
+        if (state.failures >= env.IPFS_GATEWAY_CIRCUIT_FAILURE_THRESHOLD) {
+            state.openUntil = Date.now() + env.IPFS_GATEWAY_CIRCUIT_COOLDOWN_MS;
+        }
+        this.gatewayCircuit.set(url, state);
+    }
+}

@@ -10,6 +10,7 @@ export interface SubmitManifestInput {
     tradeId: string;
     callerAddress: string;
     driverName: string;
+    driverPhone: string;
     driverIdNumber: string;
     vehicleRegistration: string;
     routeDescription: string;
@@ -64,8 +65,29 @@ export class ManifestNotFoundError extends Error {
     }
 }
 
+export class ManifestValidationError extends Error {
+    status = 400;
+    constructor(message: string) {
+        super(message);
+        this.name = "ManifestValidationError";
+    }
+}
+
 function sha256(value: string): string {
     return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+// E.164: leading '+', country code and subscriber number, max 15 digits total.
+const E164_REGEX = /^\+[1-9]\d{1,14}$/;
+
+function normalizeDriverPhone(driverPhone: string): string {
+    const trimmed = driverPhone.trim();
+    if (!E164_REGEX.test(trimmed)) {
+        throw new ManifestValidationError(
+            "driverPhone must be a valid E.164 phone number (e.g. +2348012345678)",
+        );
+    }
+    return trimmed;
 }
 
 type ManifestDatabase = {
@@ -137,6 +159,7 @@ export class ManifestService {
         });
         if (existing) throw new ManifestConflictError();
 
+        const driverPhone = normalizeDriverPhone(input.driverPhone);
         const driverNameHash = sha256(input.driverName);
         const driverIdHash = sha256(input.driverIdNumber);
 
@@ -146,6 +169,7 @@ export class ManifestService {
                 data: {
                     tradeId: input.tradeId,
                     driverName: this.encryptionService.encrypt(input.driverName, input.tradeId),
+                    driverPhone: this.encryptionService.encrypt(driverPhone, input.tradeId),
                     driverIdNumber: this.encryptionService.encrypt(input.driverIdNumber, input.tradeId),
                     vehicleRegistration: this.encryptionService.encrypt(input.vehicleRegistration, input.tradeId),
                     routeDescription: this.encryptionService.encrypt(input.routeDescription, input.tradeId),
@@ -184,6 +208,7 @@ export class ManifestService {
 
         const retentionExpired = isOutsideRetentionWindow(manifest.createdAt);
         const decryptedDriverName = this.encryptionService.decrypt(manifest.driverName, tradeId);
+        const decryptedDriverPhone = this.encryptionService.decrypt(manifest.driverPhone, tradeId);
         const decryptedDriverIdNumber = this.encryptionService.decrypt(manifest.driverIdNumber, tradeId);
         const decryptedVehicleRegistration = this.encryptionService.decrypt(manifest.vehicleRegistration, tradeId);
         const decryptedRouteDescription = this.encryptionService.decrypt(manifest.routeDescription, tradeId);
@@ -194,7 +219,7 @@ export class ManifestService {
         logPiiAccess({
             resource: "DeliveryManifest",
             recordId: tradeId,
-            fields: ["driverName", "driverIdNumber", "vehicleRegistration", "routeDescription"],
+            fields: ["driverName", "driverPhone", "driverIdNumber", "vehicleRegistration", "routeDescription"],
             actor: callerAddress,
             action: "manifest.view",
         });
@@ -217,22 +242,8 @@ export class ManifestService {
             return {
                 tradeId,
                 roleView: "mediator" as const,
-                driverNameHash: manifest.driverNameHash,
-                driverIdHash: manifest.driverIdHash,
-                vehicleRegistration: manifest.vehicleRegistration,
-                routeDescription: manifest.routeDescription,
-                expectedDeliveryAt: manifest.expectedDeliveryAt,
-                createdAt: manifest.createdAt,
-                retentionExpired,
-            };
-        }
-
-        if (retentionExpired) {
-            return {
-                tradeId,
-                roleView: "seller" as const,
-                driverName: "REDACTED",
-                driverIdNumber: "REDACTED",
+                driverName: decryptedDriverName,
+                driverPhone: decryptedDriverPhone,
                 driverNameHash: manifest.driverNameHash,
                 driverIdHash: manifest.driverIdHash,
                 vehicleRegistration: decryptedVehicleRegistration,
@@ -247,9 +258,8 @@ export class ManifestService {
             tradeId,
             roleView: "seller" as const,
             driverName: decryptedDriverName,
+            driverPhone: decryptedDriverPhone,
             driverIdNumber: decryptedDriverIdNumber,
-            driverNameHash: manifest.driverNameHash,
-            driverIdHash: manifest.driverIdHash,
             vehicleRegistration: decryptedVehicleRegistration,
             routeDescription: decryptedRouteDescription,
             expectedDeliveryAt: manifest.expectedDeliveryAt,

@@ -78,6 +78,45 @@ npm run start
 npm test
 ```
 
+### Listing Photo Uploads (IPFS)
+
+Listing photos are uploaded through `src/services/ipfs.service.ts`. The service accepts
+`image/jpeg`, `image/png`, and `image/webp` files up to **10MB**, detects the MIME type by
+sniffing magic bytes (never by file extension), strips EXIF metadata (including GPS
+location), and pins two resized variants — a **1200px** display image and a **300px**
+thumbnail — returning their CIDs.
+
+```ts
+import { uploadListingPhoto } from './services/ipfs.service';
+
+const { original, display, thumbnail } = await uploadListingPhoto(buffer);
+```
+
+### Demo Seed Data
+
+For pilot walkthroughs and demos, a dedicated seed script populates a coherent story:
+two cooperatives, their listings, trades spanning every trade status, and one active
+dispute with evidence placeholders.
+
+```bash
+npm run seed:demo
+```
+
+The demo seed is **idempotent** — it upserts records by stable identifiers, so it is
+safe to re-run without duplicating data.
+
+#### Demo accounts
+
+| Role | Email | Password |
+|---|---|---|
+| Cooperative admin (Green Valley) | `admin@greenvalley.demo` | `DemoPass123!` |
+| Cooperative admin (Sunrise) | `admin@sunrise.demo` | `DemoPass123!` |
+| Buyer | `buyer@amana.demo` | `DemoPass123!` |
+| Driver | `driver@amana.demo` | `DemoPass123!` |
+| Arbitrator | `arbitrator@amana.demo` | `DemoPass123!` |
+
+These accounts are for local/demo environments only and must never be used in production.
+
 ### Admin Auth Regression Suite
 
 A dedicated CI regression suite (`src/__tests__/admin.auth.ci-regression.test.ts`) covers
