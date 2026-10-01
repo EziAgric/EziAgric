@@ -194,6 +194,8 @@ const TS_TYPES = {
   u128: "bigint",
   i64: "bigint",
   "soroban_sdk::String": "string",
+  // Unit-variant contracttype enum: scValToNative yields a one-element tuple.
+  QuorumOutcome: "[\"Quorum\"] | [\"Fallback\"]",
 };
 
 /**

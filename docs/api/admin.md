@@ -1,5 +1,7 @@
 # Admin Endpoints
 
+> **Vesting & clawback policy**: For the business rules, allowed scenarios, compliance requirements, and worked examples governing admin clawback operations, see the [Vesting & Admin Clawback Policy](../vesting-clawback-policy.md).
+
 Every endpoint on this page requires a bearer token whose wallet address
 appears in the `ADMIN_STELLAR_PUBKEYS` environment variable (a
 comma-separated allowlist of Stellar public keys). This is enforced by
@@ -207,7 +209,9 @@ for the full policy.
 
 ## Streams
 
-Vested token streams the admin dashboard can act on.
+Vested token streams the admin dashboard can act on. For full policy details on
+when and how clawbacks may be performed, see the
+[Vesting & Admin Clawback Policy](../vesting-clawback-policy.md).
 
 `GET /admin/streams` - paginated list of streams, newest first (#51).
 

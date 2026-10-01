@@ -17,6 +17,11 @@ import AdminTradesBatchScreen from '../screens/AdminTradesBatchScreen';
 import AdminContractScreen from '../screens/AdminContractScreen';
 import AdminFeaturesScreen from '../screens/AdminFeaturesScreen';
 import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
+import MediatorDisputeListScreen from '../screens/MediatorDisputeListScreen';
+import MediatorDisputeReviewScreen from '../screens/MediatorDisputeReviewScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import TrustScoreScreen from '../screens/TrustScoreScreen';
+import LeaveReviewScreen from '../screens/LeaveReviewScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
 import {
   LINK_PREFIXES,
@@ -107,6 +112,11 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="AdminContract" component={AdminContractScreen} />
         <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
         <Stack.Screen name="AdminActionSuccess" component={AdminActionSuccessScreen} />
+        <Stack.Screen name="MediatorDisputeList" component={MediatorDisputeListScreen} />
+        <Stack.Screen name="MediatorDisputeReview" component={MediatorDisputeReviewScreen} />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="TrustScore" component={TrustScoreScreen} />
+        <Stack.Screen name="LeaveReview" component={LeaveReviewScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

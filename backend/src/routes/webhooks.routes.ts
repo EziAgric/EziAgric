@@ -7,10 +7,20 @@ import { validateRequest } from '../middleware/validateRequest';
 
 const router = Router();
 
+// Trade lifecycle event types external integrators can subscribe to.
+const TRADE_EVENT_TYPES = [
+  'trade.funded',
+  'trade.delivered',
+  'trade.settled',
+  'trade.disputed',
+] as const;
+
 // Zod schemas for validation
 const createWebhookSchema = z.object({
   url: z.string().url('Invalid URL format'),
-  events: z.array(z.string()).min(1, 'At least one event is required'),
+  events: z
+    .array(z.enum(TRADE_EVENT_TYPES))
+    .min(1, 'At least one event is required'),
   secret: z.string().optional(),
 });
 
@@ -165,4 +175,4 @@ router.delete(
   }
 );
 
-export { router as webhooksRoutes };
+export { router as webhooksRoutes, TRADE_EVENT_TYPES };
