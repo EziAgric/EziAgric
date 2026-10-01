@@ -5,6 +5,13 @@
 <!-- List related issues below using 'Closes #issue-number' -->
 - Closes #
 
+## Issue Details
+<!-- Copy these from the issue form fields (.github/ISSUE_TEMPLATE/). See CONTRIBUTING.md. -->
+- **Area**: <!-- Backend / Frontend / Mobile / Contracts / DevOps / Docs -->
+- **Complexity**: <!-- Trivial (100) / Medium (150) / High (200) -->
+- [ ] Every item in the issue's **Acceptance criteria** is satisfied
+- [ ] PR title follows Conventional Commits (`feat(scope): ...`, `fix: ...`, `!` for breaking changes)
+
 ## Type of Change
 - [ ] Bug fix (non-breaking change fixing an issue)
 - [ ] New feature (non-breaking change adding functionality)

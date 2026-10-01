@@ -1,4 +1,5 @@
 import MediatorPanelClient from "./MediatorPanelClient";
+import { ResolutionForm } from "./ResolutionForm";
 
 export default async function Page({
   params,
@@ -6,5 +7,10 @@ export default async function Page({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <MediatorPanelClient disputeId={id} />;
+  return (
+    <div className="space-y-6">
+      <MediatorPanelClient disputeId={id} />
+      <ResolutionForm disputeId={id} />
+    </div>
+  );
 }

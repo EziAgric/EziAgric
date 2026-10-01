@@ -12,6 +12,14 @@ import {
   recordTradeGmv,
 } from "../lib/metrics";
 
+/**
+ * Settlement asset code used when backfilling/deriving the asset-agnostic
+ * `amount` + `assetCode` fields from the legacy `amountUsdc` column.
+ * cNGN is the settlement asset per the README.
+ */
+export const DEFAULT_SETTLEMENT_ASSET_CODE =
+  process.env.SETTLEMENT_ASSET_CODE ?? "cNGN";
+
 function parseAdminPubkeys(): Set<string> {
   const raw = process.env.ADMIN_STELLAR_PUBKEYS ?? "";
   return new Set(
@@ -28,6 +36,47 @@ function sha256(value: string): string {
 
 function sanitizeLogField(value: string, maxLength = 200): string {
   return String(value).replace(/[\r\n\t]/g, "_").slice(0, maxLength);
+}
+
+/**
+ * Resolve the asset-agnostic amount for a trade, preferring the new `amount`
+ * column and falling back to the legacy `amountUsdc` during the transition.
+ */
+function resolveTradeAmount(trade: {
+  amount?: Prisma.Decimal | string | null;
+  amountUsdc?: Prisma.Decimal | string | null;
+}): string {
+  const value = trade.amount ?? trade.amountUsdc;
+  return value == null ? "0" : String(value);
+}
+
+/**
+ * Resolve the settlement asset code for a trade, preferring the new
+ * `assetCode` column and falling back to the configured settlement asset.
+ */
+function resolveTradeAssetCode(trade: {
+  assetCode?: string | null;
+}): string {
+  return trade.assetCode ?? DEFAULT_SETTLEMENT_ASSET_CODE;
+}
+
+/**
+ * Serialize a trade for API responses, exposing the asset-agnostic `amount`
+ * and `assetCode` while keeping `amountUsdc` for backward compatibility.
+ */
+export function serializeTrade<T extends {
+  amount?: Prisma.Decimal | string | null;
+  amountUsdc?: Prisma.Decimal | string | null;
+  assetCode?: string | null;
+}>(trade: T) {
+  const amount = resolveTradeAmount(trade);
+  return {
+    ...trade,
+    amount,
+    assetCode: resolveTradeAssetCode(trade),
+    // Legacy alias retained during the two-step migration.
+    amountUsdc: trade.amountUsdc ?? amount,
+  };
 }
 
 export interface CreatePendingTradeInput {
@@ -97,6 +146,10 @@ export class TradeService {
     const trade = await this.prisma.trade.create({
       data: {
         ...input,
+        // Mirror the legacy amount into the asset-agnostic columns so new
+        // rows are readable through both fields during the transition.
+        amount: input.amountUsdc,
+        assetCode: DEFAULT_SETTLEMENT_ASSET_CODE,
         status: TradeStatus.PENDING_SIGNATURE,
       },
     });
@@ -153,7 +206,7 @@ export class TradeService {
         : [];
 
       return {
-        items: [...watchedPage, ...unwatchlisted],
+        items: [...watchedPage, ...unwatchlisted].map(serializeTrade),
         pagination: {
           page,
           limit,
@@ -174,7 +227,7 @@ export class TradeService {
     ]);
 
     return {
-      items,
+      items: items.map(serializeTrade),
       pagination: {
         page,
         limit,
@@ -211,7 +264,7 @@ export class TradeService {
       throw new TradeAccessDeniedError();
     }
 
-    return trade;
+    return serializeTrade(trade);
   }
 
   async getUserStats(address: string) {
@@ -220,6 +273,7 @@ export class TradeService {
         OR: [{ buyerAddress: address }, { sellerAddress: address }],
       },
       select: {
+        amount: true,
         amountUsdc: true,
         status: true,
       },
@@ -238,7 +292,7 @@ export class TradeService {
     // precision above 2^53 stroops and drifted further with every addition.
     const totalVolumeStroops = trades.reduce((sum, trade) => {
       try {
-        return sum + parseDecimalToStroops(trade.amountUsdc);
+        return sum + parseDecimalToStroops(resolveTradeAmount(trade));
       } catch {
         // A malformed legacy row must not take down the whole stats call.
         return sum;
@@ -262,108 +316,6 @@ export class TradeService {
     const field = fieldRaw as keyof Prisma.TradeOrderByWithRelationInput;
     const direction = dirRaw?.toLowerCase() === "asc" ? "asc" : "desc";
 
-    const allowedFields = new Set<string>([
-      "id",
-      "tradeId",
-      "buyerAddress",
-      "sellerAddress",
-      "amountUsdc",
-      "status",
-      "createdAt",
-      "updatedAt",
-    ]);
+    const allowedFields = new Set<st
 
-    if (!allowedFields.has(fieldRaw)) {
-      return [{ createdAt: "desc" }, { id: "desc" }];
-    }
-
-    if (fieldRaw === "id") {
-      return [{ id: direction }];
-    }
-
-    return [{ [field]: direction }, { id: direction }];
-  }
-
-  async initiateDispute(
-    id: string,
-    callerAddress: string,
-    reason: string,
-    category: string,
-    categoryId?: number,
-  ) {
-    const trade = await this.getTradeById(id, callerAddress);
-    if (!trade) {
-      throw new Error("Trade not found");
-    }
-
-    // Access check is already done by getTradeById, but let's be explicit
-    if (trade.buyerAddress !== callerAddress && trade.sellerAddress !== callerAddress) {
-      throw new TradeAccessDeniedError();
-    }
-
-    // Check status: FUNDED or DELIVERED
-    if (trade.status !== TradeStatus.FUNDED && trade.status !== TradeStatus.DELIVERED) {
-      throw new DisputeTradeStatusError(trade.status);
-    }
-
-    const resolvedCategoryId = await this.resolveDisputeCategoryId(category, categoryId);
-    const reasonHash = sha256(reason);
-
-    // Build contract transaction
-    // Note: getTradeById handles both numeric and string IDs for local lookup,
-    // but the contract needs the tradeId (the blockchain-sourced one).
-    const { unsignedXdr } = await this.contractService.buildInitiateDisputeTx({
-      tradeId: trade.tradeId,
-      initiatorAddress: callerAddress,
-      reasonHash,
-    });
-
-    // Create DB record
-    // We store the plaintext reason for human review.
-    await this.prisma.dispute.create({
-      data: {
-        tradeId: trade.tradeId,
-        initiator: callerAddress,
-        reason,
-        status: DisputeStatus.OPEN,
-        categoryId: resolvedCategoryId,
-      },
-    });
-
-    return { unsignedXdr };
-  }
-
-  private async resolveDisputeCategoryId(category: string, categoryId?: number): Promise<number> {
-    if (categoryId !== undefined) {
-      const categoryRecord = await this.prisma.disputeCategory.findFirst({
-        where: { id: categoryId, isActive: true },
-        select: { id: true },
-      });
-
-      if (!categoryRecord) {
-        throw new DisputeCategoryValidationError(categoryId);
-      }
-
-      return categoryRecord.id;
-    }
-
-    const normalizedCategory = category.trim();
-    if (!normalizedCategory) {
-      throw new DisputeCategoryValidationError(category);
-    }
-
-    const categoryRecord = await this.prisma.disputeCategory.findFirst({
-      where: { name: normalizedCategory, isActive: true },
-      select: { id: true },
-    });
-
-    if (!categoryRecord) {
-      throw new DisputeCategoryValidationError(normalizedCategory);
-    }
-
-    return categoryRecord.id;
-  }
-
-  /** Alias for listUserTrades — used by trade.controller.test.ts */
-  listTrades = this.listUserTrades.bind(this);
-}
+/* … truncated 2914 chars — edit only what you need near the top … */

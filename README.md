@@ -39,6 +39,13 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 - `mobile/` → React Native Expo environment (mobile wallet, notification, and trade UX)
 - `contracts/` → Rust/Soroban smart contract environment
 
+### Step 0: environment doctor
+
+Run `scripts/dev-doctor.sh` from the repo root. It checks every toolchain (node, npm, docker,
+cargo, wasm32 target, stellar CLI), prints the exact install command for anything missing, and
+finishes with one smoke test per stack. Hit something it didn't catch? Open an
+**Onboarding friction** issue.
+
 ### Frontend setup
 
 1. `cd frontend`
@@ -80,13 +87,10 @@ Amana enforces stack-level CI gates on pull requests through `.github/workflows/
 
 - **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
 - **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
-- **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobil
-Amana enforces stack-level CI gates on pull requests through `.github/workflows/ci.yml`.
-
-- **Frontend Required Gate**: `npm ci`, `npm run lint`, `npm run build`, `npm test` in `frontend/`
-- **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
 - **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobile/`
 - **Contracts Required Gate**: `cargo test` in `contracts/amana_escrow/`
+  - Also builds the optimized WASM, posts its size and sha256 to the job summary, fails if it exceeds the size budget (`WASM_SIZE_BUDGET_BYTES`), and verifies a clean rebuild produces the same sha256
+- **Conventional PR Title**: PR titles must follow Conventional Commits (`.github/workflows/pr-title.yml`); see [CONTRIBUTING.md](CONTRIBUTING.md#commits-and-pr-titles)
 
 Path-aware execution is enabled to avoid unnecessary runtime. If a stack has no changed files, the gate reports a skip-note and passes.
 
@@ -163,13 +167,16 @@ See [DISTRIBUTED_TRACING_GUIDE.md](./DISTRIBUTED_TRACING_GUIDE.md) for detailed 
 
 ## 📐 Architecture Decision Records
 
-Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr):
+Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr). Each ADR follows the standard template and status lifecycle (proposed → accepted → superseded).
 
 - [ADR-001: Stellar Path Payment Architecture](./docs/adr/ADR-001-stellar-path-payment-architecture.md)
 - [ADR-002: Escrow Loss-Sharing Model](./docs/adr/ADR-002-escrow-loss-sharing-model.md)
 - [ADR-003: Off-chain vs. On-chain Data Partitioning](./docs/adr/ADR-003-offchain-vs-onchain-data-partitioning.md)
 - [ADR-004: Idempotency and Retry Strategy](./docs/adr/ADR-004-idempotency-and-retry-strategy.md)
 - [ADR-005: Frontend State Management](./docs/adr/ADR-005-frontend-state-management.md)
+- [ADR-006: Mobile Navigation and State Architecture](./docs/adr/ADR-006-mobile-navigation-and-state-architecture.md)
+- [ADR-007: Offline Caching and Conflict Resolution](./docs/adr/ADR-007-offline-caching-and-conflict-resolution.md)
+- [ADR-008: Notification and Deep-Link Architecture](./docs/adr/ADR-008-notification-and-deep-link-architecture.md)
 
 ## 🔐 Security & Operations
 
@@ -214,3 +221,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- handsoff-issue-360 -->
 - #360: [Contract] Rustdoc for every public contract entrypoint
+<!-- handsoff-issue-363 -->
+- #363: [Contract] Add `get_trades_by_party` index with pagination
+
+<!-- handsoff-issue-364 -->
+- #364: [Contract] Reject self-trades where buyer == seller

@@ -4,6 +4,8 @@
 
 This document describes the governance and compliance model for admin clawback operations in the Amana escrow contract. Admin clawback is a privileged emergency operation that allows the contract administrator to recover escrowed funds under specific circumstances.
 
+> **See also**: The centralized [Vesting & Admin Clawback Policy](../../../../docs/vesting-clawback-policy.md) covers the full business policy, allowed/prohibited scenarios, worked examples, and compliance requirements across all layers (contract, API, and CLI).
+
 ## When Clawback is Allowed
 
 Admin clawback is permitted under the following conditions:
@@ -179,6 +181,7 @@ These queries enable off-chain systems to verify on-chain state and maintain acc
 
 ## Related Documentation
 
+- **Centralized policy**: [Vesting & Admin Clawback Policy](../../../../docs/vesting-clawback-policy.md) — business rules, allowed scenarios, compliance requirements, worked examples
 - Contract README: Migration and deployment safety
 - Backend admin docs: docs/admin-operations.md
 - Event schema documentation: ClawbackExecutedEvent structure
