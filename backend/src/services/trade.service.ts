@@ -316,6 +316,108 @@ export class TradeService {
     const field = fieldRaw as keyof Prisma.TradeOrderByWithRelationInput;
     const direction = dirRaw?.toLowerCase() === "asc" ? "asc" : "desc";
 
-    const allowedFields = new Set<st
+    const allowedFields = new Set<string>([
+      "id",
+      "tradeId",
+      "buyerAddress",
+      "sellerAddress",
+      "amountUsdc",
+      "status",
+      "createdAt",
+      "updatedAt",
+    ]);
 
-/* … truncated 2914 chars — edit only what you need near the top … */
+    if (!allowedFields.has(fieldRaw)) {
+      return [{ createdAt: "desc" }, { id: "desc" }];
+    }
+
+    if (fieldRaw === "id") {
+      return [{ id: direction }];
+    }
+
+    return [{ [field]: direction }, { id: direction }];
+  }
+
+  async initiateDispute(
+    id: string,
+    callerAddress: string,
+    reason: string,
+    category: string,
+    categoryId?: number,
+  ) {
+    const trade = await this.getTradeById(id, callerAddress);
+    if (!trade) {
+      throw new Error("Trade not found");
+    }
+
+    // Access check is already done by getTradeById, but let's be explicit
+    if (trade.buyerAddress !== callerAddress && trade.sellerAddress !== callerAddress) {
+      throw new TradeAccessDeniedError();
+    }
+
+    // Check status: FUNDED or DELIVERED
+    if (trade.status !== TradeStatus.FUNDED && trade.status !== TradeStatus.DELIVERED) {
+      throw new DisputeTradeStatusError(trade.status);
+    }
+
+    const resolvedCategoryId = await this.resolveDisputeCategoryId(category, categoryId);
+    const reasonHash = sha256(reason);
+
+    // Build contract transaction
+    // Note: getTradeById handles both numeric and string IDs for local lookup,
+    // but the contract needs the tradeId (the blockchain-sourced one).
+    const { unsignedXdr } = await this.contractService.buildInitiateDisputeTx({
+      tradeId: trade.tradeId,
+      initiatorAddress: callerAddress,
+      reasonHash,
+    });
+
+    // Create DB record
+    // We store the plaintext reason for human review.
+    await this.prisma.dispute.create({
+      data: {
+        tradeId: trade.tradeId,
+        initiator: callerAddress,
+        reason,
+        status: DisputeStatus.OPEN,
+        categoryId: resolvedCategoryId,
+      },
+    });
+
+    return { unsignedXdr };
+  }
+
+  private async resolveDisputeCategoryId(category: string, categoryId?: number): Promise<number> {
+    if (categoryId !== undefined) {
+      const categoryRecord = await this.prisma.disputeCategory.findFirst({
+        where: { id: categoryId, isActive: true },
+        select: { id: true },
+      });
+
+      if (!categoryRecord) {
+        throw new DisputeCategoryValidationError(categoryId);
+      }
+
+      return categoryRecord.id;
+    }
+
+    const normalizedCategory = category.trim();
+    if (!normalizedCategory) {
+      throw new DisputeCategoryValidationError(category);
+    }
+
+    const categoryRecord = await this.prisma.disputeCategory.findFirst({
+      where: { name: normalizedCategory, isActive: true },
+      select: { id: true },
+    });
+
+    if (!categoryRecord) {
+      throw new DisputeCategoryValidationError(normalizedCategory);
+    }
+
+    return categoryRecord.id;
+  }
+
+  /** Alias for listUserTrades — used by trade.controller.test.ts */
+  listTrades = this.listUserTrades.bind(this);
+}
