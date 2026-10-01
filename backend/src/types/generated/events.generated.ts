@@ -15,15 +15,25 @@ export enum GeneratedEventType {
   TradeFunded = "TradeFunded",
   TradeCancelled = "TradeCancelled",
   TradeCancelledByBuyer = "TradeCancelledByBuyer",
+  TradeCancelledBySeller = "TradeCancelledBySeller",
+  AmendmentProposed = "AmendmentProposed",
+  AmendmentAccepted = "AmendmentAccepted",
+  AmendmentWithdrawn = "AmendmentWithdrawn",
   ContractUpgraded = "ContractUpgraded",
   DeliveryConfirmed = "DeliveryConfirmed",
   FundsReleased = "FundsReleased",
   DisputeResolved = "DisputeResolved",
+  DisputeVoteCast = "DisputeVoteCast",
+  DisputeQuorumResolved = "DisputeQuorumResolved",
+  QuorumConfigUpdated = "QuorumConfigUpdated",
+  MediatorWeightUpdated = "MediatorWeightUpdated",
   EvidenceSubmitted = "EvidenceSubmitted",
   DisputeInitiated = "DisputeInitiated",
   VideoProofSubmitted = "VideoProofSubmitted",
   TradeExpired = "TradeExpired",
   DeadlineExtended = "DeadlineExtended",
+  DeadlineExtensionBudget = "DeadlineExtensionBudget",
+  ExtensionPolicyUpdated = "ExtensionPolicyUpdated",
   ManifestSubmitted = "ManifestSubmitted",
   MediatorAdded = "MediatorAdded",
   MediatorRemoved = "MediatorRemoved",
@@ -51,15 +61,25 @@ export const TOPIC_TO_EVENT_TYPE: Readonly<Record<string, GeneratedEventType>> =
   "TRDFND": GeneratedEventType.TradeFunded,
   "TRDCAN": GeneratedEventType.TradeCancelled,
   "TCNBYR": GeneratedEventType.TradeCancelledByBuyer,
+  "TCNBSL": GeneratedEventType.TradeCancelledBySeller,
+  "AMDPRP": GeneratedEventType.AmendmentProposed,
+  "AMDACC": GeneratedEventType.AmendmentAccepted,
+  "AMDWDR": GeneratedEventType.AmendmentWithdrawn,
   "UPGRAD": GeneratedEventType.ContractUpgraded,
   "DELCNF": GeneratedEventType.DeliveryConfirmed,
   "RELSD": GeneratedEventType.FundsReleased,
   "DISRES": GeneratedEventType.DisputeResolved,
+  "DVOTE": GeneratedEventType.DisputeVoteCast,
+  "DQURES": GeneratedEventType.DisputeQuorumResolved,
+  "QURCFG": GeneratedEventType.QuorumConfigUpdated,
+  "MEDWGT": GeneratedEventType.MediatorWeightUpdated,
   "EVDSUB": GeneratedEventType.EvidenceSubmitted,
   "DISINI": GeneratedEventType.DisputeInitiated,
   "VIDPRF": GeneratedEventType.VideoProofSubmitted,
   "TRDEXP": GeneratedEventType.TradeExpired,
   "DEDEXT": GeneratedEventType.DeadlineExtended,
+  "DEDBGT": GeneratedEventType.DeadlineExtensionBudget,
+  "EXTPOL": GeneratedEventType.ExtensionPolicyUpdated,
   "MNFST": GeneratedEventType.ManifestSubmitted,
   "MEDADD": GeneratedEventType.MediatorAdded,
   "MEDREM": GeneratedEventType.MediatorRemoved,
@@ -82,15 +102,25 @@ export const EVENT_TOPICS: Readonly<Record<GeneratedEventType, readonly string[]
   [GeneratedEventType.TradeFunded]: ["TRDFND"],
   [GeneratedEventType.TradeCancelled]: ["TRDCAN"],
   [GeneratedEventType.TradeCancelledByBuyer]: ["TCNBYR"],
+  [GeneratedEventType.TradeCancelledBySeller]: ["TCNBSL"],
+  [GeneratedEventType.AmendmentProposed]: ["AMDPRP"],
+  [GeneratedEventType.AmendmentAccepted]: ["AMDACC"],
+  [GeneratedEventType.AmendmentWithdrawn]: ["AMDWDR"],
   [GeneratedEventType.ContractUpgraded]: ["UPGRAD"],
   [GeneratedEventType.DeliveryConfirmed]: ["DELCNF"],
   [GeneratedEventType.FundsReleased]: ["RELSD"],
   [GeneratedEventType.DisputeResolved]: ["DISRES"],
+  [GeneratedEventType.DisputeVoteCast]: ["DVOTE"],
+  [GeneratedEventType.DisputeQuorumResolved]: ["DQURES"],
+  [GeneratedEventType.QuorumConfigUpdated]: ["QURCFG"],
+  [GeneratedEventType.MediatorWeightUpdated]: ["MEDWGT"],
   [GeneratedEventType.EvidenceSubmitted]: ["EVDSUB"],
   [GeneratedEventType.DisputeInitiated]: ["DISINI"],
   [GeneratedEventType.VideoProofSubmitted]: ["VIDPRF"],
   [GeneratedEventType.TradeExpired]: ["TRDEXP"],
   [GeneratedEventType.DeadlineExtended]: ["DEDEXT"],
+  [GeneratedEventType.DeadlineExtensionBudget]: ["DEDBGT"],
+  [GeneratedEventType.ExtensionPolicyUpdated]: ["EXTPOL"],
   [GeneratedEventType.ManifestSubmitted]: ["MNFST"],
   [GeneratedEventType.MediatorAdded]: ["MEDADD"],
   [GeneratedEventType.MediatorRemoved]: ["MEDREM"],
@@ -113,20 +143,30 @@ export const EVENT_FIELDS: Readonly<Record<GeneratedEventType, readonly string[]
   [GeneratedEventType.TradeFunded]: ["trade_id", "amount"],
   [GeneratedEventType.TradeCancelled]: ["trade_id", "refund_amount", "caller", "timestamp"],
   [GeneratedEventType.TradeCancelledByBuyer]: ["trade_id", "buyer"],
+  [GeneratedEventType.TradeCancelledBySeller]: ["trade_id", "seller"],
+  [GeneratedEventType.AmendmentProposed]: ["trade_id", "proposer", "amount", "buyer_loss_bps", "seller_loss_bps", "expires_at"],
+  [GeneratedEventType.AmendmentAccepted]: ["trade_id", "acceptor", "amount", "buyer_loss_bps", "seller_loss_bps", "expires_at"],
+  [GeneratedEventType.AmendmentWithdrawn]: ["trade_id", "caller"],
   [GeneratedEventType.ContractUpgraded]: ["admin", "new_wasm_hash"],
   [GeneratedEventType.DeliveryConfirmed]: ["trade_id", "delivered_at"],
   [GeneratedEventType.FundsReleased]: ["trade_id", "seller_amount", "fee_amount"],
   [GeneratedEventType.DisputeResolved]: ["trade_id", "seller_payout", "buyer_refund", "mediator"],
+  [GeneratedEventType.DisputeVoteCast]: ["trade_id", "mediator", "seller_gets_bps", "weight", "rationale_hash", "outcome_weight", "weight_to_quorum", "voted_at", "schema_version"],
+  [GeneratedEventType.DisputeQuorumResolved]: ["trade_id", "seller_gets_bps", "outcome", "winning_weight", "total_weight", "vote_count", "schema_version"],
+  [GeneratedEventType.QuorumConfigUpdated]: ["enabled", "value_threshold", "required_weight", "vote_window_secs", "fallback_min_weight", "schema_version"],
+  [GeneratedEventType.MediatorWeightUpdated]: ["mediator", "weight", "schema_version"],
   [GeneratedEventType.EvidenceSubmitted]: ["trade_id", "submitter", "evidence_hash"],
   [GeneratedEventType.DisputeInitiated]: ["trade_id", "initiator", "reason_hash"],
   [GeneratedEventType.VideoProofSubmitted]: ["trade_id", "submitter", "ipfs_cid", "timestamp"],
   [GeneratedEventType.TradeExpired]: ["trade_id", "refund_amount", "caller"],
   [GeneratedEventType.DeadlineExtended]: ["trade_id", "old_deadline", "new_deadline"],
+  [GeneratedEventType.DeadlineExtensionBudget]: ["trade_id", "extensions_used", "extensions_remaining", "original_deadline", "extended_by_secs", "extension_secs_remaining", "schema_version"],
+  [GeneratedEventType.ExtensionPolicyUpdated]: ["max_extensions", "max_total_extension_secs", "schema_version"],
   [GeneratedEventType.ManifestSubmitted]: ["trade_id", "seller", "driver_name_hash", "driver_id_hash", "timestamp"],
   [GeneratedEventType.MediatorAdded]: ["mediator"],
   [GeneratedEventType.MediatorRemoved]: ["mediator"],
   [GeneratedEventType.FeeRateUpdated]: ["old_fee_bps", "new_fee_bps"],
-  [GeneratedEventType.FeesWithdrawn]: ["amount", "destination"],
+  [GeneratedEventType.FeesWithdrawn]: ["to", "amount", "token"],
   [GeneratedEventType.PathPaymentInitiated]: ["trade_id", "buyer", "source_token", "source_amount", "dest_min", "path"],
   [GeneratedEventType.PathPaymentExecuted]: ["trade_id", "buyer", "source_token", "source_amount", "dest_token", "dest_amount"],
   [GeneratedEventType.AdminClawback]: ["trade_id", "amount", "admin", "timestamp"],
@@ -172,6 +212,38 @@ export interface TradeCancelledByBuyerPayload {
   buyer: string;
 }
 
+/** Payload of the `TCNBSL` event. */
+export interface TradeCancelledBySellerPayload {
+  trade_id: bigint;
+  seller: string;
+}
+
+/** Payload of the `AMDPRP` event. */
+export interface AmendmentProposedPayload {
+  trade_id: bigint;
+  proposer: string;
+  amount: bigint;
+  buyer_loss_bps: number;
+  seller_loss_bps: number;
+  expires_at: bigint;
+}
+
+/** Payload of the `AMDACC` event. */
+export interface AmendmentAcceptedPayload {
+  trade_id: bigint;
+  acceptor: string;
+  amount: bigint;
+  buyer_loss_bps: number;
+  seller_loss_bps: number;
+  expires_at: bigint;
+}
+
+/** Payload of the `AMDWDR` event. */
+export interface AmendmentWithdrawnPayload {
+  trade_id: bigint;
+  caller: string;
+}
+
 /** Payload of the `UPGRAD` event. */
 export interface ContractUpgradedPayload {
   admin: string;
@@ -197,6 +269,47 @@ export interface DisputeResolvedPayload {
   seller_payout: bigint;
   buyer_refund: bigint;
   mediator: string;
+}
+
+/** Payload of the `DVOTE` event. */
+export interface DisputeVoteCastPayload {
+  trade_id: bigint;
+  mediator: string;
+  seller_gets_bps: number;
+  weight: number;
+  rationale_hash: string;
+  outcome_weight: number;
+  weight_to_quorum: number;
+  voted_at: bigint;
+  schema_version: number;
+}
+
+/** Payload of the `DQURES` event. */
+export interface DisputeQuorumResolvedPayload {
+  trade_id: bigint;
+  seller_gets_bps: number;
+  outcome: ["Quorum"] | ["Fallback"];
+  winning_weight: number;
+  total_weight: number;
+  vote_count: number;
+  schema_version: number;
+}
+
+/** Payload of the `QURCFG` event. */
+export interface QuorumConfigUpdatedPayload {
+  enabled: boolean;
+  value_threshold: bigint;
+  required_weight: number;
+  vote_window_secs: bigint;
+  fallback_min_weight: number;
+  schema_version: number;
+}
+
+/** Payload of the `MEDWGT` event. */
+export interface MediatorWeightUpdatedPayload {
+  mediator: string;
+  weight: number;
+  schema_version: number;
 }
 
 /** Payload of the `EVDSUB` event. */
@@ -235,6 +348,24 @@ export interface DeadlineExtendedPayload {
   new_deadline: bigint;
 }
 
+/** Payload of the `DEDBGT` event. */
+export interface DeadlineExtensionBudgetPayload {
+  trade_id: bigint;
+  extensions_used: number;
+  extensions_remaining: number;
+  original_deadline: bigint;
+  extended_by_secs: bigint;
+  extension_secs_remaining: bigint;
+  schema_version: number;
+}
+
+/** Payload of the `EXTPOL` event. */
+export interface ExtensionPolicyUpdatedPayload {
+  max_extensions: number;
+  max_total_extension_secs: bigint;
+  schema_version: number;
+}
+
 /** Payload of the `MNFST` event. */
 export interface ManifestSubmittedPayload {
   trade_id: bigint;
@@ -262,8 +393,9 @@ export interface FeeRateUpdatedPayload {
 
 /** Payload of the `FEEWTH` event. */
 export interface FeesWithdrawnPayload {
+  to: string;
   amount: bigint;
-  destination: string;
+  token: string;
 }
 
 /** Payload of the `PTHINT` event. */
@@ -341,15 +473,25 @@ export interface EventPayloadMap {
   [GeneratedEventType.TradeFunded]: TradeFundedPayload;
   [GeneratedEventType.TradeCancelled]: TradeCancelledPayload;
   [GeneratedEventType.TradeCancelledByBuyer]: TradeCancelledByBuyerPayload;
+  [GeneratedEventType.TradeCancelledBySeller]: TradeCancelledBySellerPayload;
+  [GeneratedEventType.AmendmentProposed]: AmendmentProposedPayload;
+  [GeneratedEventType.AmendmentAccepted]: AmendmentAcceptedPayload;
+  [GeneratedEventType.AmendmentWithdrawn]: AmendmentWithdrawnPayload;
   [GeneratedEventType.ContractUpgraded]: ContractUpgradedPayload;
   [GeneratedEventType.DeliveryConfirmed]: DeliveryConfirmedPayload;
   [GeneratedEventType.FundsReleased]: FundsReleasedPayload;
   [GeneratedEventType.DisputeResolved]: DisputeResolvedPayload;
+  [GeneratedEventType.DisputeVoteCast]: DisputeVoteCastPayload;
+  [GeneratedEventType.DisputeQuorumResolved]: DisputeQuorumResolvedPayload;
+  [GeneratedEventType.QuorumConfigUpdated]: QuorumConfigUpdatedPayload;
+  [GeneratedEventType.MediatorWeightUpdated]: MediatorWeightUpdatedPayload;
   [GeneratedEventType.EvidenceSubmitted]: EvidenceSubmittedPayload;
   [GeneratedEventType.DisputeInitiated]: DisputeInitiatedPayload;
   [GeneratedEventType.VideoProofSubmitted]: VideoProofSubmittedPayload;
   [GeneratedEventType.TradeExpired]: TradeExpiredPayload;
   [GeneratedEventType.DeadlineExtended]: DeadlineExtendedPayload;
+  [GeneratedEventType.DeadlineExtensionBudget]: DeadlineExtensionBudgetPayload;
+  [GeneratedEventType.ExtensionPolicyUpdated]: ExtensionPolicyUpdatedPayload;
   [GeneratedEventType.ManifestSubmitted]: ManifestSubmittedPayload;
   [GeneratedEventType.MediatorAdded]: MediatorAddedPayload;
   [GeneratedEventType.MediatorRemoved]: MediatorRemovedPayload;

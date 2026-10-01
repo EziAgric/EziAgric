@@ -53,11 +53,35 @@ The corresponding `ErrorCode` enum values (in `backend/src/errors/errorCodes.ts`
 
 ---
 
+## Trade Lifecycle Error Codes
+
+Emitted by `create_trade`, `cancel_by_seller` and the trade-amendment entry
+points (`propose_amendment`, `accept_amendment`, `withdraw_amendment`). Constants
+live in `pub mod trade_errors` in `lib.rs`.
+
+| Error Code                      | HTTP Status | Description                                                                                          |
+|---------------------------------|-------------|------------------------------------------------------------------------------------------------------|
+| `INVALID_LOSS_RATIO`            | 400         | `buyer_loss_bps` or `seller_loss_bps` is outside `0..=10000`, or the pair does not sum to exactly `10000`. |
+| `SELLER_CANCEL_INVALID_STATUS`  | 409         | `cancel_by_seller` called on a trade that is not in `Created` status (already funded, cancelled, etc.). |
+| `AMENDMENT_INVALID_STATUS`      | 409         | Amendment proposed or accepted on a trade that is no longer in `Created` status.                     |
+| `AMENDMENT_UNAUTHORIZED`        | 403         | Caller is neither the buyer nor the seller of the trade.                                             |
+| `AMENDMENT_ALREADY_PENDING`     | 409         | A proposal is already pending; it must be withdrawn before new terms are proposed.                   |
+| `AMENDMENT_NOT_FOUND`           | 404         | No pending amendment exists for the trade.                                                           |
+| `AMENDMENT_SELF_ACCEPT`         | 403         | The proposer tried to accept their own amendment; only the counter-party may accept.                 |
+| `AMENDMENT_INVALID_AMOUNT`      | 400         | Proposed amount is zero, negative, or above `MAX_TRADE_VALUE`.                                       |
+| `AMENDMENT_INVALID_DEADLINE`    | 400         | Proposed `expires_at` is not in the future (checked on proposal and again on acceptance).            |
+
+`INVALID_LOSS_RATIO` is also raised by `propose_amendment`, which applies the
+same loss-ratio validation as `create_trade`.
+
+---
+
 ## Source of Truth
 
 | Artifact                                                   | Purpose                                 |
 |------------------------------------------------------------|-----------------------------------------|
 | `contracts/amana_escrow/src/lib.rs` → `pub mod clawback_errors` | Canonical string constants on-chain |
+| `contracts/amana_escrow/src/lib.rs` → `pub mod trade_errors` | Trade lifecycle string constants on-chain |
 | `backend/src/errors/errorCodes.ts` → `enum ErrorCode`     | Backend enum values                     |
 | `backend/src/services/contractClawbackError.service.ts`   | Mapping logic + user-facing messages    |
 | `contracts/amana_escrow/tests/clawback_error_tests.rs`    | On-chain test assertions                |
