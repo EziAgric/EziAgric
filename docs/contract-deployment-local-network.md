@@ -93,6 +93,80 @@ echo "AMANA_ESCROW_CONTRACT_ID=CXXXXXXX..." >> backend/.env
 cd backend && npm test
 ```
 
+## Testnet Deployment Script
+
+Testnet deployments are automated by `scripts/deploy-contract-testnet.sh`. A single
+command builds the contract, optimizes the wasm, deploys it, calls `initialize`,
+runs post-deploy smoke assertions, and records the resulting contract id in a
+versioned `deployments/testnet.json` file.
+
+### Usage
+
+```bash
+./scripts/deploy-contract-testnet.sh \
+  --network testnet \
+  --admin GDZST3XVCDTUJ76ZAV2HA72KYQM4YQQ5DQJP4YOWQ56OOKLVTOITLBX \
+  --token-contract CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4 \
+  --treasury GDZST3XVCDTUJ76ZAV2HA72KYQM4YQQ5DQJP4YOWQ56OOKLVTOITLBX \
+  --fee-bps 100
+```
+
+### Options
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--network NAME` | No | Network name (default: `testnet`) |
+| `--admin PUBKEY` | Yes | Admin public key for contract initialization |
+| `--token-contract ID` | Yes | Token contract ID (e.g., test USDC) |
+| `--treasury PUBKEY` | Yes | Treasury address for fee collection |
+| `--fee-bps BPS` | No | Platform fee in basis points (default: `100`) |
+| `--source-token ID` | No | Source token for path payments (optional) |
+| `--help` | No | Show help message |
+
+### Workflow
+
+1. **Build WASM artifact** with `--features wasm --release`
+2. **Optimize WASM** with `soroban contract optimize` (falls back to the unoptimized artifact if unavailable)
+3. **Deploy contract** to the target network
+4. **Initialize contract** with the provided parameters
+5. **Run smoke assertions**: create a trade, fund it, and release it using test accounts
+6. **Record the contract id** in `deployments/testnet.json`
+
+### Recorded Deployment File
+
+After a successful run, `deployments/testnet.json` contains the deployed contract
+id and the parameters used for initialization:
+
+```json
+{
+  "network": "testnet",
+  "contractId": "CXXXXXXX...",
+  "admin": "GXXXXXXX...",
+  "tokenContract": "CXXXXXXX...",
+  "treasury": "GXXXXXXX...",
+  "feeBps": 100
+}
+```
+
+### Example: Full Testnet Deployment
+
+```bash
+# 1. Configure the testnet network (once)
+soroban network add --rpc-url https://soroban-testnet.stellar.org \
+  --network-passphrase "Test SDF Network ; September 2015" testnet
+
+# 2. Deploy, initialize, and smoke-test in a single command
+./scripts/deploy-contract-testnet.sh \
+  --network testnet \
+  --admin GDZST3XVCDTUJ76ZAV2HA72KYQM4YQQ5DQJP4YOWQ56OOKLVTOITLBX \
+  --token-contract CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4 \
+  --treasury GDZST3XVCDTUJ76ZAV2HA72KYQM4YQQ5DQJP4YOWQ56OOKLVTOITLBX \
+  --fee-bps 100
+
+# 3. Update backend .env with the recorded contract id
+echo "AMANA_ESCROW_CONTRACT_ID=$(jq -r .contractId deployments/testnet.json)" >> backend/.env
+```
+
 ## Regression Tests
 
 New test suite (`contracts/amana_escrow/tests/local_deployment_tests.rs`) validates:
@@ -233,6 +307,21 @@ pub fn initialize(env: Env, admin: Address, ...) {
    cargo test local_deployment_tests
    ```
 
+### For Testnet Deployments
+
+1. **Use the testnet script** for a single-command deploy + verify:
+   ```bash
+   ./scripts/deploy-contract-testnet.sh --network testnet ...
+   ```
+
+2. **Read the recorded contract id** from `deployments/testnet.json`:
+   ```bash
+   jq -r .contractId deployments/testnet.json
+   ```
+
+3. **Smoke assertions run automatically** (create, fund, release) before the
+   contract id is recorded, so a failed deploy never writes a stale id.
+
 ### For CI/CD
 
 1. **Safety checks run first** before any tests
@@ -245,16 +334,3 @@ pub fn initialize(env: Env, admin: Address, ...) {
 1. **Validate in staging** with same contract build
 2. **Run full test suite** before production
 3. **Verify storage keys** haven't changed
-4. **Monitor event processing** after deployment
-5. **Keep initialization idempotent** for safety
-
-## Related Documentation
-
-- [Event Flow](./event-flow.md) - On-chain event processing
-- [Migration Rollback Playbook](./migration-rollback-playbook.md) - Database migration safety
-- [Contract README](../contracts/amana_escrow/README.md) - Contract-specific guidance
-- [CI Configuration](.github/workflows/ci.yml) - GitHub Actions pipeline
-
-## Summary
-
-This fix enables clean, reproducible contract deployments to local Soroban networks while maintaining strict safety guarantees for production deployments. The combination of updated safety checks, deployment automation, and comprehensive regression tests ensures platform reliability across all deployment scenarios.

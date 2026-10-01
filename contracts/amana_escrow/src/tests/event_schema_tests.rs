@@ -446,6 +446,114 @@ mod event_schema_tests {
         );
     }
 
+    /// Return the field names of the most-recently emitted event's map payload.
+    fn last_event_field_names(env: &Env) -> std::vec::Vec<std::string::String> {
+        let all = env.events().all();
+        let events = all.events();
+        let last = events.last().expect("no events emitted");
+        match &last.body {
+            ContractEventBody::V0(v0) => match &v0.data {
+                ScVal::Map(Some(map)) => map
+                    .iter()
+                    .map(|entry| match &entry.key {
+                        ScVal::Symbol(sym) => {
+                            std::str::from_utf8(sym.0.as_slice()).unwrap().into()
+                        }
+                        other => panic!("unexpected event field key {other:?}"),
+                    })
+                    .collect(),
+                other => panic!("expected map event payload, got {other:?}"),
+            },
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // #355  FeesWithdrawnEvent  topics = ["FEEWTH"], fields = to, amount, token
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_event_schema_fees_withdrawn() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (contract_id, usdc_id, buyer, seller, _) = setup(&env, 10_000, 100);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let trade_id =
+            client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+        client.deposit(&trade_id);
+        client.confirm_delivery(&trade_id);
+        client.release_funds(&trade_id, &buyer);
+        assert_eq!(client.get_accrued_fees(), 100);
+
+        let to = Address::generate(&env);
+        client.withdraw_fees(&100_i128, &to);
+
+        assert_last_event_topics(&env, &[symbol_short!("FEEWTH").into_val(&env)]);
+        // Map keys are XDR-sorted by name.
+        assert_eq!(last_event_field_names(&env), ["amount", "to", "token"]);
+
+        let all = env.events().all();
+        let last = all.events().last().unwrap().clone();
+        let values: std::vec::Vec<ScVal> = match &last.body {
+            ContractEventBody::V0(v0) => match &v0.data {
+                ScVal::Map(Some(map)) => map.iter().map(|e| e.val.clone()).collect(),
+                _ => panic!("unexpected event data shape"),
+            },
+        };
+        let to_scval = |v: Val| ScVal::try_from_val(&env, &v).unwrap();
+        assert_eq!(values[0], to_scval(100_i128.into_val(&env)));
+        assert_eq!(values[1], to_scval(to.into_val(&env)));
+        assert_eq!(values[2], to_scval(usdc_id.into_val(&env)));
+    }
+
+    // -----------------------------------------------------------------------
+    // #352  TradeCancelledBySellerEvent  topics = ["TCNBSL"]
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_event_schema_trade_cancelled_by_seller() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (contract_id, _, buyer, seller, _) = setup(&env, 10_000, 100);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let trade_id =
+            client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+
+        client.cancel_by_seller(&trade_id);
+
+        assert_last_event_topics(&env, &[symbol_short!("TCNBSL").into_val(&env)]);
+        assert_eq!(last_event_field_names(&env), ["seller", "trade_id"]);
+    }
+
+    // -----------------------------------------------------------------------
+    // #353  Amendment events  topics = ["AMDPRP"], ["AMDACC"], ["AMDWDR"]
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_event_schema_amendment_events() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (contract_id, _, buyer, seller, _) = setup(&env, 10_000, 100);
+        let client = EscrowContractClient::new(&env, &contract_id);
+        let trade_id =
+            client.create_trade(&buyer, &seller, &10_000_i128, &5000_u32, &5000_u32, &None);
+
+        client.propose_amendment(&trade_id, &seller, &9_000_i128, &4000_u32, &6000_u32, &None);
+        assert_last_event_topics(&env, &[symbol_short!("AMDPRP").into_val(&env)]);
+        assert_eq!(
+            last_event_field_names(&env),
+            ["amount", "buyer_loss_bps", "expires_at", "proposer", "seller_loss_bps", "trade_id"]
+        );
+
+        client.withdraw_amendment(&trade_id, &seller);
+        assert_last_event_topics(&env, &[symbol_short!("AMDWDR").into_val(&env)]);
+        assert_eq!(last_event_field_names(&env), ["caller", "trade_id"]);
+
+        client.propose_amendment(&trade_id, &seller, &9_000_i128, &4000_u32, &6000_u32, &None);
+        client.accept_amendment(&trade_id, &buyer);
+        assert_last_event_topics(&env, &[symbol_short!("AMDACC").into_val(&env)]);
+        assert_eq!(
+            last_event_field_names(&env),
+            ["acceptor", "amount", "buyer_loss_bps", "expires_at", "seller_loss_bps", "trade_id"]
+        );
+    }
+
     // -----------------------------------------------------------------------
     // #93  EVENT_SCHEMA_VERSION constant is publicly exported
     // -----------------------------------------------------------------------

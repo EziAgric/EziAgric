@@ -1,5 +1,11 @@
 # Release Note Template
 
+> **Changelog is automated.** Run the **Release** workflow (`.github/workflows/release.yml`)
+> to tag, bump the version and publish categorized notes (with breaking changes and
+> rollback steps) generated from Conventional Commit history by
+> `scripts/release-notes.mjs`. Use this template only for the extra per-feature
+> write-up of admin, contract and infra changes.
+
 > Template for producing consistent release notes for new EziAgric features.
 > Copy this file into `docs/releases/`, name it `YYYY-MM-DD-<feature>.md`, fill in
 > each section, and delete the instructional comments. Ensure entries exist for
