@@ -216,6 +216,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-367 -->
+- #367: [Backend] Product listing model and CRUD API for sellers
 <!-- handsoff-issue-359 -->
 - #359: [Contract] Default-resolution fallback when no mediator acts
 
