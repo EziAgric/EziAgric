@@ -10,6 +10,22 @@ This is the main repository containing the smart contracts and orchestration log
 
 ---
 
+## 📁 Repository Layout
+
+The root of this repository is intentionally small. Each top-level entry has a single, clear purpose:
+
+- `frontend/` → Next.js app (UI + wallet + Supabase/Pinata client integration)
+- `backend/` → Node.js/TypeScript API (Supabase + Pinata + integration endpoints)
+- `mobile/` → React Native Expo app (mobile wallet, notification, and trade UX)
+- `contracts/` → Rust/Soroban smart contracts
+- `docs/` → Current project documentation (ADRs, threat model, policies, guides)
+- `docs/archive/` → **Historical** completion summaries and hardening PR notes, kept for reference only. See [`docs/archive/README.md`](./docs/archive/README.md).
+- `.github/` → CI workflows and repository automation
+
+> The former top-level `archive/` directory has been folded into `docs/` and `docs/archive/`. Nothing at the repository root is historical — if you are looking for old completion summaries or hardening notes, they now live under `docs/archive/`.
+
+---
+
 ## 🚀 The Mission
 
 To provide a programmable safety net for regional commodity trading. Amana ensures that the risk of "sending first" is eliminated, replaced by a secure, neutral vault that only releases funds when delivery is verified.
