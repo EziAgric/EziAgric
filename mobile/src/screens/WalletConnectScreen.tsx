@@ -191,13 +191,15 @@ export default function WalletConnectScreen({ navigation }: Props) {
 
         {status === 'awaiting_wallet' ? (
           <View style={styles.awaitingBox}>
-            <ActivityIndicator color="#2d6a2d" style={styles.awaitingSpinner} />
+            <ActivityIndicator color="#2d6a2d" style={styles.awaitingSpinner} accessibilityLabel="Waiting for wallet" />
             <Text style={styles.awaitingText}>
               Your wallet app should have opened.{'\n'}Approve the sign request, then return here.
             </Text>
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => { clearSession(); setStatus('idle'); setErrorMessage(null); }}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel wallet connection"
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -207,9 +209,13 @@ export default function WalletConnectScreen({ navigation }: Props) {
             style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleConnect}
             disabled={isLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Connect Wallet"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
+            accessible
           >
             {status === 'signing' ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#fff" accessibilityLabel="Signing with wallet" />
             ) : (
               <Text style={styles.buttonText}>{statusLabel[status]}</Text>
             )}

@@ -44,7 +44,14 @@ function TradeCard({ trade, onPress }: { trade: Trade; onPress: () => void }) {
   const shortSeller = `${trade.sellerAddress.slice(0, 6)}…${trade.sellerAddress.slice(-4)}`;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={`Trade ${trade.tradeId.slice(0, 8)}, ${trade.amountUsdc} USDC, status ${trade.status}`}
+      accessible
+    >
       <View style={styles.cardRow}>
         <Text style={styles.tradeId}>#{trade.tradeId.slice(0, 8)}</Text>
         <View style={[styles.statusBadge, { backgroundColor: `${statusColor}22` }]}>
@@ -109,16 +116,38 @@ export default function TradeListScreen({ navigation }: Props) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🌾 Trades</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => navigation.navigate('DriverHome')} testID="open-driver">
+          <TouchableOpacity
+            onPress={() => navigation.navigate('DriverHome')}
+            testID="open-driver"
+            accessibilityRole="button"
+            accessibilityLabel="Open driver mode"
+            style={styles.headerBtn}
+          >
             <Text style={styles.createBtnText}>Driver</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Marketplace')} testID="open-marketplace">
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Marketplace')}
+            testID="open-marketplace"
+            accessibilityRole="button"
+            accessibilityLabel="Open marketplace"
+            style={styles.headerBtn}
+          >
             <Text style={styles.createBtnText}>Market</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('CreateTrade')}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CreateTrade')}
+            accessibilityRole="button"
+            accessibilityLabel="Create new trade"
+            style={styles.headerBtn}
+          >
             <Text style={styles.createBtnText}>+ New</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout}>
+          <TouchableOpacity
+            onPress={handleLogout}
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            style={styles.headerBtn}
+          >
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
         </View>
@@ -131,6 +160,9 @@ export default function TradeListScreen({ navigation }: Props) {
             key={f.value}
             style={[styles.filterTab, activeFilter === f.value && styles.filterTabActive]}
             onPress={() => handleFilterChange(f.value)}
+            accessibilityRole="tab"
+            accessibilityLabel={`Filter by ${f.label}`}
+            accessibilityState={{ selected: activeFilter === f.value }}
           >
             <Text style={[styles.filterLabel, activeFilter === f.value && styles.filterLabelActive]}>
               {f.label}
@@ -204,6 +236,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#1a3a1a' },
   headerActions: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+  headerBtn: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' },
   createBtnText: { fontSize: 14, color: '#2d6a2d', fontWeight: '700' },
   logoutText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500' },
   filterRow: {

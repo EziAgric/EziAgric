@@ -60,7 +60,11 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
     <View style={siStyles.container}>
       {Array.from({ length: total }, (_, i) => (
         <View key={i} style={siStyles.row}>
-          <View style={[siStyles.dot, i < current && siStyles.dotDone, i === current && siStyles.dotActive]}>
+          <View
+            style={[siStyles.dot, i < current && siStyles.dotDone, i === current && siStyles.dotActive]}
+            accessible
+            accessibilityLabel={`Step ${i + 1} of ${total}${i < current ? ', completed' : i === current ? ', current' : ''}`}
+          >
             {i < current ? (
               <Text style={siStyles.dotText}>✓</Text>
             ) : (
@@ -117,6 +121,9 @@ function Step1Details({
               key={c}
               style={[stepStyles.chip, data.commodity === c && stepStyles.chipActive]}
               onPress={() => update({ commodity: c })}
+              accessibilityRole="radio"
+              accessibilityLabel={c}
+              accessibilityState={{ selected: data.commodity === c }}
             >
               <Text style={[stepStyles.chipText, data.commodity === c && stepStyles.chipTextActive]}>{c}</Text>
             </TouchableOpacity>
@@ -133,6 +140,7 @@ function Step1Details({
             placeholder="e.g. 500"
             value={data.quantity}
             onChangeText={(v) => update({ quantity: v })}
+            accessibilityLabel="Quantity"
           />
         </View>
         <View style={[stepStyles.field, { flex: 1 }]}>
@@ -143,6 +151,9 @@ function Step1Details({
                 key={u}
                 style={[stepStyles.chipSmall, data.unit === u && stepStyles.chipActive]}
                 onPress={() => update({ unit: u })}
+                accessibilityRole="radio"
+                accessibilityLabel={u}
+                accessibilityState={{ selected: data.unit === u }}
               >
                 <Text style={[stepStyles.chipTextSmall, data.unit === u && stepStyles.chipTextActive]}>{u}</Text>
               </TouchableOpacity>
@@ -159,6 +170,7 @@ function Step1Details({
           placeholder="e.g. 450"
           value={data.pricePerUnit}
           onChangeText={(v) => update({ pricePerUnit: v })}
+          accessibilityLabel="Price per unit in NGN"
         />
       </View>
 
@@ -176,6 +188,7 @@ function Step1Details({
           placeholder="G..."
           value={data.sellerAddress}
           onChangeText={(v) => update({ sellerAddress: v })}
+          accessibilityLabel="Seller Stellar address"
         />
       </View>
 
@@ -183,6 +196,9 @@ function Step1Details({
         style={[stepStyles.btn, !valid && stepStyles.btnDisabled]}
         onPress={onNext}
         disabled={!valid}
+        accessibilityRole="button"
+        accessibilityLabel="Continue to negotiation step"
+        accessibilityState={{ disabled: !valid }}
       >
         <Text style={stepStyles.btnText}>Continue</Text>
       </TouchableOpacity>
@@ -241,11 +257,16 @@ function Step2Negotiation({
               const newBuyer = Math.max(0, data.buyerRatio - 1);
               update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
             }}
-            accessibilityLabel="Decrease buyer loss ratio by 1%"
+            accessibilityRole="button"
+            accessibilityLabel="Decrease buyer loss ratio by 1 percent"
+            accessibilityState={{ disabled: data.buyerRatio <= 0 }}
           >
             <Text style={stepStyles.ratioBtnText}>−1%</Text>
           </TouchableOpacity>
-          <View style={stepStyles.ratioDisplay}>
+          <View
+            style={stepStyles.ratioDisplay}
+            accessibilityLabel={`Buyer ${data.buyerRatio} percent, Seller ${data.sellerRatio} percent`}
+          >
             <Text style={stepStyles.ratioValue}>{data.buyerRatio}</Text>
             <Text style={stepStyles.ratioSlash}>/</Text>
             <Text style={stepStyles.ratioValue}>{data.sellerRatio}</Text>
@@ -256,7 +277,9 @@ function Step2Negotiation({
               const newBuyer = Math.min(100, data.buyerRatio + 1);
               update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
             }}
-            accessibilityLabel="Increase buyer loss ratio by 1%"
+            accessibilityRole="button"
+            accessibilityLabel="Increase buyer loss ratio by 1 percent"
+            accessibilityState={{ disabled: data.buyerRatio >= 100 }}
           >
             <Text style={stepStyles.ratioBtnText}>+1%</Text>
           </TouchableOpacity>
@@ -292,6 +315,7 @@ function Step2Negotiation({
           placeholder="7"
           value={data.deliveryDays}
           onChangeText={(v) => update({ deliveryDays: v })}
+          accessibilityLabel="Delivery window in days"
         />
       </View>
 
@@ -302,10 +326,20 @@ function Step2Negotiation({
       </View>
 
       <View style={stepStyles.btnRow}>
-        <TouchableOpacity style={stepStyles.btnSecondary} onPress={onBack}>
+        <TouchableOpacity
+          style={stepStyles.btnSecondary}
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back to trade details step"
+        >
           <Text style={stepStyles.btnSecondaryText}>Back</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={stepStyles.btn} onPress={onNext}>
+        <TouchableOpacity
+          style={stepStyles.btn}
+          onPress={onNext}
+          accessibilityRole="button"
+          accessibilityLabel="Review trade before submitting"
+        >
           <Text style={stepStyles.btnText}>Review</Text>
         </TouchableOpacity>
       </View>
@@ -348,16 +382,26 @@ function Step3Review({
       </View>
 
       <View style={stepStyles.btnRow}>
-        <TouchableOpacity style={stepStyles.btnSecondary} onPress={onBack} disabled={submitting}>
+        <TouchableOpacity
+          style={stepStyles.btnSecondary}
+          onPress={onBack}
+          disabled={submitting}
+          accessibilityRole="button"
+          accessibilityLabel="Go back to negotiation step"
+          accessibilityState={{ disabled: submitting }}
+        >
           <Text style={stepStyles.btnSecondaryText}>Back</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[stepStyles.btn, stepStyles.btnSubmit, submitting && stepStyles.btnDisabled]}
           onPress={onSubmit}
           disabled={submitting}
+          accessibilityRole="button"
+          accessibilityLabel="Create trade"
+          accessibilityState={{ disabled: submitting, busy: submitting }}
         >
           {submitting ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#fff" accessibilityLabel="Creating trade" />
           ) : (
             <Text style={stepStyles.btnText}>Create Trade</Text>
           )}
@@ -420,13 +464,15 @@ export default function CreateTradeScreen({ navigation, route }: Props) {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => {
-          if (step > 0) setStep(step - 1);
-          else navigation.goBack();
-        }}>
+        <TouchableOpacity
+          onPress={() => { if (step > 0) setStep(step - 1); else navigation.goBack(); }}
+          accessibilityRole="button"
+          accessibilityLabel={step > 0 ? 'Go to previous step' : 'Go back'}
+          style={styles.backBtn}
+        >
           <Text style={styles.backBtnText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Trade</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">Create Trade</Text>
         <View style={{ width: 60 }} />
       </View>
 
@@ -459,6 +505,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e8e0',
   },
+  backBtn: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
   backBtnText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
   content: { padding: 16, gap: 8 },
