@@ -13,6 +13,9 @@ export type RootStackParamList = {
   ListingDetail: { listingId: string };
   /** #434 — seller creates a listing with camera photos. */
   CreateListing: undefined;
+  /** #435 — driver mode: assigned manifests and pickup/delivery/loss attestation. */
+  DriverHome: undefined;
+  DriverAttestation: { manifestId: number; tradeId: string; kind: 'PICKUP' | 'DELIVERY' | 'LOSS' };
   EvidenceCapture: { tradeId: string };
   VaultDashboard: undefined;
   AdminStreamsOverview: undefined;
