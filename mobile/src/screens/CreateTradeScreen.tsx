@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types/navigation';
 import { useTradeStore } from '../stores/tradeStore';
+import type { TradePrefill } from '../lib/tradePrefill';
 
 type Props = StackScreenProps<RootStackParamList, 'CreateTrade'>;
 
@@ -40,6 +41,19 @@ const defaults: FormData = {
   sellerRatio: 50,
   deliveryDays: '7',
 };
+
+/** Initial form state; listing-prefilled fields override the blank defaults. */
+export function buildInitialFormData(prefill?: TradePrefill): FormData {
+  if (!prefill) return defaults;
+  return {
+    ...defaults,
+    commodity: prefill.commodity,
+    quantity: prefill.quantity,
+    unit: prefill.unit,
+    pricePerUnit: prefill.pricePerUnit,
+    sellerAddress: prefill.sellerAddress,
+  };
+}
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
@@ -362,10 +376,10 @@ function ReviewRow({ label, value, mono }: { label: string; value: string; mono?
   );
 }
 
-export default function CreateTradeScreen({ navigation }: Props) {
+export default function CreateTradeScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
-  const [data, setData] = useState<FormData>(defaults);
+  const [data, setData] = useState<FormData>(() => buildInitialFormData(route.params?.prefill));
   const [submitting, setSubmitting] = useState(false);
   const { createTrade } = useTradeStore();
 

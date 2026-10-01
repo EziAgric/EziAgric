@@ -1,11 +1,13 @@
-﻿import type { AdminActionType } from '../screens/AdminActionSuccessScreen';
+﻿import type { TradePrefill } from '../lib/tradePrefill';
+import type { AdminActionType } from '../screens/AdminActionSuccessScreen';
 
 export type RootStackParamList = {
   WalletConnect: undefined;
   TradeList: undefined;
   TradeDetail: { tradeId: string };
   DisputeDetail: { id: string };
-  CreateTrade: undefined;
+  /** #433 — optional prefill when starting a trade from a listing. */
+  CreateTrade: { prefill?: TradePrefill } | undefined;
   /** #432 — marketplace browse and listing detail. */
   Marketplace: undefined;
   ListingDetail: { listingId: string };
