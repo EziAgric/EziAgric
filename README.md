@@ -216,6 +216,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-404 -->
+- #404: [Frontend] Marketplace page: browse and search listings
 <!-- handsoff-issue-398 -->
 - #398: [Backend] OpenAPI coverage check for non-admin routes
 <!-- handsoff-issue-416 -->
