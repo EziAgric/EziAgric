@@ -5,6 +5,8 @@ import Step3Review from '../steps/Step3Review';
 import { TradeProvider, useTrade, TradeData } from '../TradeContext';
 import { api } from '@/lib/api';
 import { signTransaction } from '@stellar/freighter-api';
+import { ToastProvider } from '@/hooks/useToast';
+import { _clearAllForTests as clearActionDedup } from '@/lib/actionDedup';
 
 // Mock @stellar/stellar-sdk to simplify address validation in tests
 jest.mock('@stellar/stellar-sdk', () => ({
@@ -82,16 +84,24 @@ const TestWrapper = ({ initialData, children }: { initialData?: Partial<TradeDat
 
 const renderWithProvider = (initialData?: Partial<TradeData>) => {
     return render(
-        <TradeProvider>
-            <TestWrapper initialData={initialData}>
-                <Step3Review />
-            </TestWrapper>
-        </TradeProvider>
+        <ToastProvider>
+            <TradeProvider>
+                <TestWrapper initialData={initialData}>
+                    <Step3Review />
+                </TestWrapper>
+            </TradeProvider>
+        </ToastProvider>
     );
 };
 
 describe('Step3Review', () => {
     beforeEach(() => {
+        // TradeContext persists the draft to localStorage; clear it so each test
+        // starts from a clean form (otherwise later tests see earlier drafts).
+        localStorage.clear();
+        // Reset the module-level double-submit window so a previous test's
+        // submission doesn't swallow this one.
+        clearActionDedup();
         mockUseAuth.token = 'mock-token';
         mockUseAuth.isAuthenticated = true;
         mockUseAuth.isWalletConnected = true;
@@ -104,6 +114,8 @@ describe('Step3Review', () => {
             signedTxXdr: 'signed-xdr',
         });
         global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
             json: jest.fn().mockResolvedValue({
                 result: { hash: 'tx-hash-123' },
             }),

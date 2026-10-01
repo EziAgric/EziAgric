@@ -1,0 +1,146 @@
+name: Terraform Plan
+
+# Issue #267 — PRs get a read-only plan. The job assumes the *plan* role,
+# which can read state but cannot write state, take locks, or mutate any
+# infrastructure. A negative test at the end proves that on every run.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform-*.yml"
+      - "scripts/terraform-lock-test.sh"
+
+permissions:
+  contents: read
+  id-token: write        # OIDC → AWS plan role (no long-lived keys)
+  pull-requests: write   # plan summary comment
+
+env:
+  TF_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "true"
+  AWS_REGION: us-east-1
+
+jobs:
+  fmt-validate:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra/terraform
+      - name: terraform validate
+        run: |
+          for dir in infra/terraform/bootstrap infra/terraform/environments/*; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+
+  plan:
+    name: plan (${{ matrix.environment }})
+    needs: fmt-validate
+    # Fork PRs do not receive an OIDC token; they get fmt/validate only.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, staging]
+    env:
+      TF_DIR: infra/terraform/environments/${{ matrix.environment }}
+      PLAN_ROLE_ARN: ${{ matrix.environment == 'dev' && vars.TF_PLAN_ROLE_ARN_DEV || vars.TF_PLAN_ROLE_ARN_STAGING }}
+      TF_VAR_db_master_username: ${{ secrets.TF_VAR_DB_MASTER_USERNAME }}
+      TF_VAR_db_master_password: ${{ secrets.TF_VAR_DB_MASTER_PASSWORD }}
+      TF_VAR_redis_auth_token: ${{ secrets.TF_VAR_REDIS_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Assume plan role (read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.PLAN_ROLE_ARN }}
+          role-session-name: tf-plan-pr${{ github.event.pull_request.number }}-${{ matrix.environment }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        run: terraform -chdir="$TF_DIR" init -input=false
+
+      # -lock=false: PR plans never hold the lock, so they cannot block (or be
+      # confused with) a real apply. The plan role has no lock-table write
+      # permission anyway.
+      - name: terraform plan
+        id: plan
+        run: |
+          set -o pipefail
+          terraform -chdir="$TF_DIR" plan -input=false -lock=false -no-color -out=tfplan \
+            | tee plan.txt
+
+      - name: Negative test — plan role cannot mutate state or locks
+        run: |
+          BUCKET="amana-terraform-state-${{ matrix.environment }}"
+          TABLE="amana-terraform-locks-${{ matrix.environment }}"
+          FAIL=0
+
+          echo "canary" > canary.txt
+          if aws s3api put-object --bucket "$BUCKET" --key "ci-negative-test/canary.txt" \
+               --body canary.txt --server-side-encryption aws:kms >/dev/null 2>&1; then
+            echo "::error::Plan role WROTE to the state bucket — least privilege violated."
+            FAIL=1
+          else
+            echo "✓ state bucket write denied"
+          fi
+
+          if aws dynamodb put-item --table-name "$TABLE" \
+               --item '{"LockID":{"S":"ci-negative-test"}}' >/dev/null 2>&1; then
+            echo "::error::Plan role WROTE to the lock table — least privilege violated."
+            aws dynamodb delete-item --table-name "$TABLE" --key '{"LockID":{"S":"ci-negative-test"}}' || true
+            FAIL=1
+          else
+            echo "✓ lock table write denied"
+          fi
+
+          if aws ec2 create-tags --resources "$(aws ec2 describe-vpcs --query 'Vpcs[0].VpcId' --output text)" \
+               --tags Key=ci-negative-test,Value=1 >/dev/null 2>&1; then
+            echo "::error::Plan role MUTATED infrastructure (ec2:CreateTags) — least privilege violated."
+            FAIL=1
+          else
+            echo "✓ infrastructure mutation denied"
+          fi
+
+          exit $FAIL
+
+      - name: Plan summary
+        if: always() && steps.plan.outcome != 'skipped'
+        run: |
+          {
+            echo "<!-- terraform-plan-${{ matrix.environment }} -->"
+            echo "### Terraform plan — \`${{ matrix.environment }}\` (${{ steps.plan.outcome }})"
+            echo ""
+            echo "Plan-only role; this PR cannot change infrastructure. Apply happens after merge via \`terraform-apply.yml\` behind the \`terraform-${{ matrix.environment }}\` environment."
+            echo ""
+            echo '<details><summary>Plan output</summary>'
+            echo ""
+            echo '```'
+            grep -E '^(Plan:|No changes|  [#~+-]|Error)' plan.txt | head -n 200 || true
+            echo '```'
+            echo '</details>'
+          } > plan-summary.md
+          cat plan-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment plan on PR
+        if: always() && hashFiles('plan-summary.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: terraform-plan-${{ matrix.environment }}
+          path: plan-summary.md

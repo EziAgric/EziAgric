@@ -1,0 +1,301 @@
+name: k6 Performance Budgets
+
+# Issue #237 — performance budgets enforced in CI.
+#
+#   * pull_request  → smoke-scale k6 run against an ephemeral backend when a
+#                     hot path changes; a budget breach fails the required
+#                     check and posts a readable diff table on the PR.
+#   * schedule      → nightly full-load run against staging; results are
+#                     appended to the `perf-trends` branch and a Markdown
+#                     trend dashboard is regenerated.
+#   * workflow_dispatch (mode=slowdown-experiment) → injects latency via a
+#                     proxy and asserts the gate trips. Proves the budgets
+#                     actually block regressions.
+#
+# Budgets: k6/budgets.json · Rationale: docs/performance-budgets.md
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/src/routes/**"
+      - "backend/src/controllers/**"
+      - "backend/src/services/**"
+      - "backend/src/middleware/**"
+      - "backend/src/lib/**"
+      - "backend/src/app.ts"
+      - "backend/prisma/schema.prisma"
+      - "backend/package.json"
+      - "k6/**"
+      - "scripts/k6-*.mjs"
+      - ".github/workflows/perf-budgets.yml"
+  schedule:
+    # 02:30 UTC nightly — after the nightly E2E lifecycle, before business hours.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "smoke | full | slowdown-experiment"
+        required: true
+        default: smoke
+        type: choice
+        options: [smoke, full, slowdown-experiment]
+      inject_latency_ms:
+        description: "Latency injected by the proxy in slowdown-experiment mode"
+        required: false
+        default: "750"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-budgets-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  K6_VERSION: "0.52.0"
+  JWT_SECRET: test-jwt-secret-value-with-minimum-length-32
+
+jobs:
+  smoke:
+    name: k6 smoke budgets
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' &&
+        (inputs.mode == 'smoke' || inputs.mode == 'slowdown-experiment'))
+    runs-on: ubuntu-latest
+    # Budget for the whole job incl. install + boot; the k6 run itself is ~2m.
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: amana_perf
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/amana_perf
+      REDIS_URL: redis://localhost:6379
+      STELLAR_NETWORK: testnet
+      STELLAR_RPC_URL: https://soroban-testnet.stellar.org
+      # Placeholders: the smoke profile only exercises read paths.
+      AMANA_ESCROW_CONTRACT_ID: CPERFSMOKE000000000000000000000000000000000000000000000
+      USDC_CONTRACT_ID: CPERFSMOKEUSDC00000000000000000000000000000000000000000
+      SLOWDOWN: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'slowdown-experiment' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install backend deps
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build backend
+        working-directory: backend
+        run: pnpm build
+
+      - name: Apply migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          nohup node dist/index.js > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4000/health/live > /dev/null; then
+              echo "backend is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error title=Backend did not start::see backend log below"
+          cat /tmp/backend.log
+          exit 1
+
+      - name: Start latency proxy (slowdown experiment only)
+        if: env.SLOWDOWN == 'true'
+        run: |
+          nohup node scripts/k6-latency-proxy.mjs --target http://localhost:4000 \
+            --port 4100 --delay-ms "${{ inputs.inject_latency_ms }}" > /tmp/proxy.log 2>&1 &
+          sleep 2
+
+      - name: Install k6
+        run: |
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin "k6-v${K6_VERSION}-linux-amd64/k6"
+          k6 version
+
+      - name: Run k6 smoke
+        id: k6
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ env.SLOWDOWN == 'true' && 'http://localhost:4100' || 'http://localhost:4000' }}
+          K6_JWT_SECRET: ${{ env.JWT_SECRET }}
+          K6_SUMMARY_PATH: k6-summary-smoke.json
+        run: k6 run k6/smoke.js
+
+      - name: Budget report
+        id: report
+        continue-on-error: true
+        run: |
+          node scripts/k6-budget-report.mjs \
+            --summary k6-summary-smoke.json \
+            --profile smoke \
+            --output k6-budget-report.md
+
+      - name: Publish report to job summary
+        if: always()
+        run: |
+          if [ -f k6-budget-report.md ]; then
+            cat k6-budget-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "k6 did not produce a summary — see the 'Run k6 smoke' step log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('k6-budget-report.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: k6-budget-report
+          path: k6-budget-report.md
+
+      - name: Upload k6 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-smoke-${{ github.run_number }}
+          path: |
+            k6-summary-smoke.json
+            k6-budget-report.md
+            /tmp/backend.log
+          retention-days: 14
+
+      - name: Enforce budgets
+        if: env.SLOWDOWN != 'true'
+        run: |
+          if [ "${{ steps.k6.outcome }}" != "success" ] || [ "${{ steps.report.outcome }}" != "success" ]; then
+            echo "::error title=Performance budget breached::See the k6 budget report in the job summary / PR comment. Rationale and triage: docs/performance-budgets.md"
+            exit 1
+          fi
+          echo "All performance budgets met."
+
+      - name: Assert gate tripped (slowdown experiment)
+        if: env.SLOWDOWN == 'true'
+        run: |
+          if [ "${{ steps.k6.outcome }}" = "success" ] && [ "${{ steps.report.outcome }}" = "success" ]; then
+            echo "::error title=Gate did not trip::Injected ${{ inputs.inject_latency_ms }}ms latency but budgets still passed. Budgets are too loose — tighten k6/budgets.json."
+            exit 1
+          fi
+          echo "✓ Gate tripped under +${{ inputs.inject_latency_ms }}ms injected latency, as expected." | tee -a "$GITHUB_STEP_SUMMARY"
+
+  nightly-full:
+    name: k6 nightly full load (staging)
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: write   # push to the perf-trends branch only
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin "k6-v${K6_VERSION}-linux-amd64/k6"
+
+      - name: Run k6 full load
+        id: k6
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          K6_JWT_SECRET: ${{ secrets.STAGING_K6_JWT_SECRET }}
+          K6_SUMMARY_PATH: k6-summary-full.json
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            echo "::error::STAGING_BASE_URL secret is not configured"; exit 1
+          fi
+          k6 run k6/load-test.js
+
+      - name: Fetch trend history
+        run: |
+          mkdir -p perf-trends
+          if git ls-remote --exit-code --heads origin perf-trends > /dev/null; then
+            git fetch origin perf-trends --depth=1
+            git show origin/perf-trends:full.jsonl > perf-trends/full.jsonl || true
+          fi
+
+      - name: Budget report + append trend
+        id: report
+        continue-on-error: true
+        run: |
+          node scripts/k6-budget-report.mjs \
+            --summary k6-summary-full.json \
+            --profile full \
+            --output k6-budget-report-full.md \
+            --trend-file perf-trends/full.jsonl \
+            --sha "$GITHUB_SHA"
+
+      - name: Render trend dashboard
+        if: always()
+        run: |
+          node scripts/k6-trend-dashboard.mjs perf-trends/full.jsonl perf-trends/README.md --last 30
+          cat k6-budget-report-full.md >> "$GITHUB_STEP_SUMMARY" || true
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat perf-trends/README.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish trends to perf-trends branch
+        if: always() && hashFiles('perf-trends/full.jsonl') != ''
+        run: |
+          cd perf-trends
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b perf-trends
+          git add full.jsonl README.md
+          git commit -q -m "perf: nightly k6 trend $(date -u +%Y-%m-%d) (${GITHUB_SHA::7})"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" perf-trends
+
+      - name: Upload k6 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-full-${{ github.run_number }}
+          path: |
+            k6-summary-full.json
+            k6-budget-report-full.md
+          retention-days: 90
+
+      - name: Flag breach for triage
+        if: steps.k6.outcome != 'success' || steps.report.outcome != 'success'
+        run: |
+          echo "::error title=Nightly performance budget breach::Triage per docs/performance-budgets.md and record the outcome in the capacity notes."
+          exit 1
