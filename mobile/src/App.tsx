@@ -16,11 +16,15 @@ import type { RootStackParamList } from './types/navigation';
 import { AppNavigator } from './navigation/AppNavigator';
 import type { NotificationData } from './services/notification.service';
 import { CrashErrorBoundary } from './components/CrashErrorBoundary';
+import { useAttestationSync } from './hooks/useAttestationSync';
 
 export default function App() {
   const { getToken, token } = useAuthStore();
   const [bootstrapped, setBootstrapped] = useState(false);
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList> | null>(null);
+
+  // Upload queued driver attestations as soon as the device is online again.
+  useAttestationSync(!!token);
 
   useEffect(() => {
     getToken().finally(() => setBootstrapped(true));
