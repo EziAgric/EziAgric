@@ -334,8 +334,11 @@ export class EvidenceService {
     }
 
     private resolveGatewayUrls(cid: string): string[] {
-        const explicit = env.IPFS_GATEWAY_URLS;
-        if (explicit && explicit.length > 0) {
+        const explicit = (env.IPFS_GATEWAY_URLS ?? "")
+            .split(",")
+            .map((base) => base.trim())
+            .filter(Boolean);
+        if (explicit.length > 0) {
             return explicit.map((base) => `${base.replace(/\/$/, "")}/ipfs/${cid}`);
         }
         return [this.resolveGatewayUrl(cid)];
@@ -356,8 +359,8 @@ export class EvidenceService {
     private onGatewayFailure(url: string): void {
         const state = this.gatewayCircuit.get(url) ?? { failures: 0, openUntil: 0 };
         state.failures += 1;
-        if (state.failures >= env.IPFS_GATEWAY_FAILURE_THRESHOLD) {
-            state.openUntil = Date.now() + env.IPFS_GATEWAY_CIRCUIT_OPEN_MS;
+        if (state.failures >= env.IPFS_GATEWAY_CIRCUIT_FAILURE_THRESHOLD) {
+            state.openUntil = Date.now() + env.IPFS_GATEWAY_CIRCUIT_COOLDOWN_MS;
         }
         this.gatewayCircuit.set(url, state);
     }
