@@ -179,7 +179,7 @@ jobs:
 
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request' && hashFiles('k6-budget-report.md') != ''
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: k6-budget-report
           path: k6-budget-report.md

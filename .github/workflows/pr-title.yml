@@ -44,7 +44,7 @@ jobs:
 
       - name: Explain how to fix the title
         if: always() && steps.lint.outputs.error_message != null
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: pr-title-lint
           message: |
@@ -66,7 +66,7 @@ jobs:
 
       - name: Clear lint comment
         if: steps.lint.outputs.error_message == null
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: pr-title-lint
           delete: true

@@ -140,7 +140,7 @@ jobs:
 
       - name: Comment plan on PR
         if: always() && hashFiles('plan-summary.md') != ''
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: terraform-plan-${{ matrix.environment }}
           path: plan-summary.md
