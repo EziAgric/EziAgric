@@ -214,9 +214,14 @@ export default function MarketplaceScreen({ navigation }: Props) {
           <Text style={styles.link}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Marketplace</Text>
-        <TouchableOpacity onPress={() => setSheetOpen(true)} testID="open-filters">
-          <Text style={styles.link}>Filters{activeCount > 0 ? ` (${activeCount})` : ''}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => navigation.navigate('CreateListing')} testID="open-create-listing">
+            <Text style={styles.link}>+ Sell</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setSheetOpen(true)} testID="open-filters">
+            <Text style={styles.link}>Filters{activeCount > 0 ? ` (${activeCount})` : ''}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <TextInput
@@ -268,6 +273,7 @@ export default function MarketplaceScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f9f5' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
+  headerActions: { flexDirection: 'row', gap: 16 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
   link: { color: '#2d6a2d', fontWeight: '600' },
   search: { marginHorizontal: 16, marginBottom: 8 },

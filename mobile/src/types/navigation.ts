@@ -11,6 +11,8 @@ export type RootStackParamList = {
   /** #432 — marketplace browse and listing detail. */
   Marketplace: undefined;
   ListingDetail: { listingId: string };
+  /** #434 — seller creates a listing with camera photos. */
+  CreateListing: undefined;
   EvidenceCapture: { tradeId: string };
   VaultDashboard: undefined;
   AdminStreamsOverview: undefined;
