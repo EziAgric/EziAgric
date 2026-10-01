@@ -9,9 +9,12 @@ import { api, apiConfig, ApiError } from "@/lib/api";
 import { createTradeInputSchema, fieldErrors } from "@/lib/domain-schemas/trade";
 import Link from "next/link";
 import { LegalDisclaimerModal } from "@/components/ui/LegalDisclaimerModal";
+import { FeeBreakdown } from "@/components/trade/FeeBreakdown";
 import { useOffline } from "@/hooks/useOffline";
 import { useOfflineQueueStore } from "@/stores/offlineQueueStore";
-import { useToast, TOAST_CONTRACT } from "@/hooks/useToast";
+import { useToast } from "@/hooks/useToast";
+import { useTransactionToast } from "@/hooks/useTransactionToast";
+import { submitSignedTransaction } from "@/lib/stellar/txStatus";
 import { shouldDedup, registerAction } from "@/lib/actionDedup";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 
@@ -33,7 +36,8 @@ export default function Step3Review() {
   const { isOffline } = useOffline();
   const enqueue = useOfflineQueueStore((s) => s.enqueue);
   const pendingCount = useOfflineQueueStore((s) => s.queue.length);
-  const { addToast, addToastWithCorrelation, updateToast } = useToast();
+  const { addToastWithCorrelation, updateToast } = useToast();
+  const { trackTransaction } = useTransactionToast();
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -146,26 +150,12 @@ export default function Step3Review() {
 
       const signedXdr = signResult.signedTxXdr;
 
-      const rpcUrl = apiConfig.getStellarRpcUrl();
-      const submitResponse = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "sendTransaction",
-          params: { transaction: signedXdr },
-        }),
-      });
+      const hash = await submitSignedTransaction(signedXdr);
 
-      const submitResult = await submitResponse.json();
-
-      if (submitResult.error) {
-        throw new Error(submitResult.error.message || "Transaction submission failed");
-      }
-
-      setTxHash(submitResult.result?.hash || createResponse.tradeId);
-      updateToast(correlationId, { type: "success", title: "Success", message: "Trade created — funds locked.", duration: 5000 });
+      setTxHash(hash);
+      // Keep the pending toast, then resolve it to confirmed/failed by polling
+      // stellar.tx.status — with a Stellar Expert link (#422).
+      trackTransaction(hash, { correlationId, label: "Trade created" });
       // Clear draft on success
       try { localStorage.removeItem("amana:draft-trade"); } catch {}
     } catch (err) {
@@ -266,6 +256,9 @@ export default function Step3Review() {
         <ReviewRow label="Delivery Window" value={`${data.deliveryDays} days`} />
         {data.notes && <ReviewRow label="Notes" value={data.notes} />}
       </div>
+
+      {/* Always surface the 1% platform fee and the seller's net (#423) */}
+      <FeeBreakdown gross={amountUsdc} />
 
       <div className="rounded-lg bg-gold-muted border border-gold/20 px-4 py-3 text-sm text-gold">
         By submitting, you authorize a Stellar transaction to create an escrow trade,

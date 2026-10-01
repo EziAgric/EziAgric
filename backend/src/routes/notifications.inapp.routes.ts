@@ -8,6 +8,7 @@ import { AuthRequest } from "../services/auth.service";
 
 const listNotificationsQuerySchema = z.object({
   unreadOnly: z.coerce.boolean().default(false),
+  type: z.string().trim().min(1).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
@@ -25,6 +26,16 @@ function caller(req: AuthRequest, res: Response): string | null {
   return walletAddress;
 }
 
+function tradeDeepLink(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const record = metadata as Record<string, unknown>;
+  const tradeId = record.tradeId ?? record.trade_id;
+  if (tradeId === undefined || tradeId === null) return null;
+  const id = String(tradeId).trim();
+  if (!id) return null;
+  return `/trades/${encodeURIComponent(id)}`;
+}
+
 export function createNotificationsRouter(prisma: PrismaClient = defaultPrisma) {
   const router = Router();
 
@@ -37,16 +48,20 @@ export function createNotificationsRouter(prisma: PrismaClient = defaultPrisma) 
         const walletAddress = caller(req, res);
         if (!walletAddress) return;
 
-        const { unreadOnly, page, limit } = req.query as unknown as {
+        const { unreadOnly, type, page, limit } = req.query as unknown as {
           unreadOnly: boolean;
+          type?: string;
           page: number;
           limit: number;
         };
         const skip = (page - 1) * limit;
 
-        const where = { userAddress: walletAddress };
+        const where: Record<string, unknown> = { userAddress: walletAddress };
         if (unreadOnly) {
-          (where as Record<string, unknown>).isRead = false;
+          where.isRead = false;
+        }
+        if (type) {
+          where.type = type;
         }
 
         const [notifications, total, unreadCount] = await Promise.all([
@@ -72,7 +87,10 @@ export function createNotificationsRouter(prisma: PrismaClient = defaultPrisma) 
         ]);
 
         res.status(200).json({
-          notifications,
+          notifications: notifications.map((notification) => ({
+            ...notification,
+            deepLink: tradeDeepLink(notification.metadata),
+          })),
           pagination: {
             page,
             limit,

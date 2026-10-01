@@ -15,6 +15,7 @@ import {
   NetworkBackboneCard,
   VaultFooter,
 } from "@/components/vault";
+import { FeeBreakdown } from "@/components/trade/FeeBreakdown";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -181,6 +182,11 @@ function ConfirmModal({
         <p className="text-sm text-text-secondary mb-5">
           {descriptions[modal.type]}
         </p>
+
+        {/* Fund / release views show the gross, 1% fee and seller net (#423) */}
+        {modal.type !== "dispute" && (
+          <FeeBreakdown gross={modal.trade.amountCngn} className="mb-5" />
+        )}
 
         {modal.type === "dispute" && (
           <div className="space-y-3 mb-5">
