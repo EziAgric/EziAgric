@@ -216,6 +216,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-408 -->
+- #408: [Frontend] Loss-ratio negotiation UI with visual risk explainer
 <!-- handsoff-issue-404 -->
 - #404: [Frontend] Marketplace page: browse and search listings
 <!-- handsoff-issue-398 -->
