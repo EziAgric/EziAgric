@@ -695,7 +695,7 @@ jobs:
 
       - name: Upload WASM release artifact
         if: needs.changes.outputs.contracts == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: amana-escrow-wasm
           path: |
