@@ -1,0 +1,164 @@
+name: Contract Coverage
+
+# Issue #240 — contract test coverage report per PR.
+#
+#   * PRs touching contracts/**/src → run tests under llvm-cov, post a sticky
+#     coverage comment, upload the browsable HTML report, and enforce a
+#     no-decrease ratchet vs the latest main run (waivable by label).
+#   * push to main → refresh the main-branch coverage artifact that PRs
+#     ratchet against.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - "contracts/**"
+      - "scripts/coverage-ratchet.mjs"
+      - ".github/workflows/contract-coverage.yml"
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+      - "scripts/coverage-ratchet.mjs"
+      - ".github/workflows/contract-coverage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-coverage-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: Contract coverage (llvm-cov)
+    # Label changes other than the waiver label don't need a re-run.
+    if: >-
+      github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
+      github.event.label.name == 'coverage-waiver'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read          # download the main-branch baseline artifact
+      pull-requests: write   # sticky coverage comment
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust (with llvm-tools)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: cov-${{ runner.os }}-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: cov-${{ runner.os }}-
+
+      - name: Build exclusion regex
+        id: excl
+        run: |
+          # Strip comments/blank lines and join with | (see the justification
+          # comments in the exclusions file).
+          RE=$(grep -vE '^\s*(#|$)' contracts/coverage/exclusions.txt | paste -sd '|' -)
+          echo "regex=$RE" >> "$GITHUB_OUTPUT"
+          echo "Ignoring: $RE"
+
+      - name: Run tests with coverage instrumentation
+        working-directory: contracts
+        run: cargo llvm-cov --workspace --locked --no-report
+
+      - name: Generate reports
+        working-directory: contracts
+        env:
+          IGNORE_RE: ${{ steps.excl.outputs.regex }}
+        run: |
+          cargo llvm-cov report --json --summary-only \
+            --ignore-filename-regex "$IGNORE_RE" --output-path ../coverage-summary.json
+          cargo llvm-cov report --html \
+            --ignore-filename-regex "$IGNORE_RE" --output-dir ../coverage-html
+          cargo llvm-cov report --lcov \
+            --ignore-filename-regex "$IGNORE_RE" --output-path ../lcov.info
+
+      - name: Upload HTML report
+        id: html
+        uses: actions/upload-artifact@v7
+        with:
+          name: contract-coverage-html
+          path: coverage-html/
+          retention-days: 30
+
+      - name: Upload summary (+ lcov)
+        uses: actions/upload-artifact@v7
+        with:
+          # The main-branch copy of this artifact is the ratchet baseline.
+          name: contract-coverage-summary
+          path: |
+            coverage-summary.json
+            lcov.info
+          retention-days: 90
+
+      - name: Download main baseline
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: contract-coverage.yml
+          branch: main
+          event: push
+          name: contract-coverage-summary
+          path: baseline
+          if_no_artifact_found: warn
+
+      - name: Changed contract files
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.sha }}" \
+            -- 'contracts/**/src/**' > changed-files.txt || true
+          cat changed-files.txt
+
+      - name: Coverage ratchet
+        id: ratchet
+        continue-on-error: true
+        env:
+          # Treated as data by the script, never evaluated as shell.
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          node scripts/coverage-ratchet.mjs \
+            --summary coverage-summary.json \
+            --baseline baseline/coverage-summary.json \
+            --fallback-baseline contracts/coverage/baseline.json \
+            --changed-files changed-files.txt \
+            --artifact-url "${{ steps.html.outputs.artifact-url }}" \
+            --output coverage-report.md
+
+      - name: Job summary
+        if: always()
+        run: cat coverage-report.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('coverage-report.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: contract-coverage-report
+          path: coverage-report.md
+
+      - name: Enforce ratchet
+        if: steps.ratchet.outcome != 'success'
+        run: |
+          echo "::error title=Contract coverage decreased::Add tests or apply the coverage-waiver label with a justification (docs/contract-coverage.md)."
+          exit 1

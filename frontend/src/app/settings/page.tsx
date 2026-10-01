@@ -23,6 +23,64 @@ interface ValidationErrors {
   [key: string]: string;
 }
 
+// ─── Notification matrix ──────────────────────────────────────────────────────
+
+type NotificationChannel = "inApp" | "email" | "sms" | "push";
+
+type NotificationEventKey =
+  | "tradeUpdates"
+  | "disputeAlerts"
+  | "vaultActivity"
+  | "systemAnnouncements";
+
+interface NotificationEvent {
+  key: NotificationEventKey;
+  label: string;
+  description: string;
+}
+
+const NOTIFICATION_CHANNELS: { key: NotificationChannel; label: string }[] = [
+  { key: "inApp", label: "In-app" },
+  { key: "email", label: "Email" },
+  { key: "sms", label: "SMS" },
+  { key: "push", label: "Push" },
+];
+
+const NOTIFICATION_EVENTS: NotificationEvent[] = [
+  {
+    key: "tradeUpdates",
+    label: "Trade updates",
+    description: "Status changes on your trades and escrows.",
+  },
+  {
+    key: "disputeAlerts",
+    label: "Dispute alerts",
+    description: "New messages and rulings on open disputes.",
+  },
+  {
+    key: "vaultActivity",
+    label: "Vault activity",
+    description: "Deposits, withdrawals, and vault events.",
+  },
+  {
+    key: "systemAnnouncements",
+    label: "System announcements",
+    description: "Product news and maintenance notices.",
+  },
+];
+
+type NotificationMatrix = Record<
+  NotificationEventKey,
+  Record<NotificationChannel, boolean>
+>;
+
+const DEFAULT_NOTIFICATION_MATRIX: NotificationMatrix = {
+  tradeUpdates: { inApp: true, email: true, sms: false, push: true },
+  disputeAlerts: { inApp: true, email: true, sms: true, push: true },
+  vaultActivity: { inApp: true, email: false, sms: false, push: false },
+  systemAnnouncements: { inApp: true, email: true, sms: false, push: false },
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionCard({
@@ -137,6 +195,68 @@ function SelectField({
   );
 }
 
+function NotificationMatrixTable({
+  matrix,
+  disabled,
+  onToggle,
+}: {
+  matrix: NotificationMatrix;
+  disabled?: boolean;
+  onToggle: (event: NotificationEventKey, channel: NotificationChannel) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            <th className="text-left text-xs uppercase tracking-widest text-text-muted font-medium pb-3 pr-4">
+              Event
+            </th>
+            {NOTIFICATION_CHANNELS.map((channel) => (
+              <th
+                key={channel.key}
+                scope="col"
+                className="text-center text-xs uppercase tracking-widest text-text-muted font-medium pb-3 px-2"
+              >
+                {channel.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {NOTIFICATION_EVENTS.map((event) => (
+            <tr key={event.key} className="border-t border-border-default">
+              <th scope="row" className="text-left py-3 pr-4 font-normal align-top">
+                <p className="text-sm font-medium text-text-primary">
+                  {event.label}
+                </p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {event.description}
+                </p>
+              </th>
+              {NOTIFICATION_CHANNELS.map((channel) => {
+                const checked = matrix[event.key][channel.key];
+                return (
+                  <td key={channel.key} className="text-center py-3 px-2 align-top">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => onToggle(event.key, channel.key)}
+                      aria-label={`${event.label} via ${channel.label}`}
+                      className="h-4 w-4 cursor-pointer rounded border-border-default bg-bg-input accent-gold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -157,6 +277,13 @@ export default function SettingsPage() {
     vaultActivity: false,
     systemAnnouncements: true,
   });
+
+  const [notificationMatrix, setNotificationMatrix] =
+    useState<NotificationMatrix>(DEFAULT_NOTIFICATION_MATRIX);
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [notificationError, setNotificationError] = useState<string | null>(
+    null,
+  );
 
   const [prefs, setPrefs] = useState<AppPrefs>({
     network: "testnet",
@@ -206,6 +333,41 @@ export default function SettingsPage() {
     await navigator.clipboard.writeText(address);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleNotificationToggle(
+    event: NotificationEventKey,
+    channel: NotificationChannel,
+  ) {
+    const previous = notificationMatrix;
+    const next: NotificationMatrix = {
+      ...previous,
+      [event]: { ...previous[event], [channel]: !previous[event][channel] },
+    };
+
+    // Optimistic update — apply immediately, roll back on failure.
+    setNotificationMatrix(next);
+    setNotificationError(null);
+    setIsSavingNotifications(true);
+
+    try {
+      const response = await fetch("/api/preferences/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifications: next }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+    } catch {
+      setNotificationMatrix(previous);
+      setNotificationError(
+        "Could not save notification preferences. Please try again.",
+      );
+    } finally {
+      setIsSavingNotifications(false);
+    }
   }
 
   function handleSavePreferences() {
@@ -274,292 +436,169 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={handleCopyAddress}
-                  title="Copy address"
-                  className="shrink-0 p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors"
+                  className="shrink-0 rounded-lg border border-border-default px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary hover:border-border-focus transition-colors"
                 >
-                  {copied ? (
-                    <svg
-                      className="w-4 h-4 text-emerald"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <path d="M2 8l4 4 8-8" />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <rect x="5" y="5" width="9" height="9" rx="1" />
-                      <path d="M11 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v7a1 1 0 001 1h2" />
-                    </svg>
-                  )}
+                  {copied ? "Copied" : "Copy"}
                 </button>
               </div>
             ) : (
-              <p className="text-sm text-text-muted italic">{walletStatus}</p>
+              <p className="text-sm text-text-secondary">
+                Connect a Stellar wallet to link your identity.
+              </p>
             )}
-          </div>
 
-          <div className="flex flex-wrap gap-3">
-            {!isWalletConnected && (
-              <button
-                type="button"
-                onClick={connectWallet}
-                disabled={isLoading}
-                className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-text-inverse hover:bg-gold-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isLoading ? "Connecting…" : "Connect Freighter"}
-              </button>
-            )}
-            {isWalletConnected && !isAuthenticated && (
-              <button
-                type="button"
-                onClick={authenticate}
-                disabled={isLoading}
-                className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-text-inverse hover:bg-gold-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isLoading ? "Signing…" : "Sign In"}
-              </button>
-            )}
-            {isAuthenticated && (
-              <button
-                type="button"
-                onClick={logout}
-                className="rounded-lg border border-status-danger/40 text-status-danger px-4 py-2 text-sm font-semibold hover:bg-status-danger/10 transition-colors"
-              >
-                Sign Out
-              </button>
-            )}
-          </div>
-        </SectionCard>
+            <p className="text-xs text-text-muted">{walletStatus}</p>
 
-        {/* ── Appearance ── */}
-        <SectionCard
-          title="Appearance"
-          description="Switch between light, dark, or system-preference theme."
-        >
-          <ThemeToggle />
-          <p className="text-xs text-text-muted mt-2">
-            Your preference is saved locally and persists across sessions.
-            System mode follows your operating system setting.
-          </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {!isWalletConnected && (
+                <button
+                  type="button"
+                  onClick={connectWallet}
+                  className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-bg-primary hover:opacity-90 transition-opacity"
+                >
+                  Connect wallet
+                </button>
+              )}
+              {isWalletConnected && !isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={authenticate}
+                  className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-bg-primary hover:opacity-90 transition-opacity"
+                >
+                  Sign in
+                </button>
+              )}
+              {isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="rounded-lg border border-border-default px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:border-border-focus transition-colors"
+                >
+                  Sign out
+                </button>
+              )}
+            </div>
+          </div>
         </SectionCard>
 
         {/* ── Notifications ── */}
         <SectionCard
           title="Notifications"
-          description="Choose which events trigger in-app alerts."
+          description="Choose which channels deliver each type of notification."
         >
-          <div className="space-y-4">
-            <Toggle
-              label="Trade updates"
-              description="Status changes on your active trades."
-              checked={notifications.tradeUpdates}
-              onChange={(v) => setNotif("tradeUpdates", v)}
-            />
-            <Divider />
-            <Toggle
-              label="Dispute alerts"
-              description="New disputes or mediator decisions."
-              checked={notifications.disputeAlerts}
-              onChange={(v) => setNotif("disputeAlerts", v)}
-            />
-            <Divider />
-            <Toggle
-              label="Vault activity"
-              description="Deposits, releases, and lock events."
-              checked={notifications.vaultActivity}
-              onChange={(v) => setNotif("vaultActivity", v)}
-            />
-            <Divider />
-            <Toggle
-              label="System announcements"
-              description="Platform updates and maintenance notices."
-              checked={notifications.systemAnnouncements}
-              onChange={(v) => setNotif("systemAnnouncements", v)}
-            />
-          </div>
+          <NotificationMatrixTable
+            matrix={notificationMatrix}
+            disabled={isSavingNotifications}
+            onToggle={handleNotificationToggle}
+          />
+
+          {notificationError && (
+            <p className="text-xs text-status-danger flex items-center gap-1">
+              <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 10a1 1 0 110 2 1 1 0 010-2zm0-7a1 1 0 011 1v4a1 1 0 11-2 0V5a1 1 0 011-1z" />
+              </svg>
+              {notificationError}
+            </p>
+          )}
+
+          <Divider />
+
+          <Toggle
+            checked={notifications.tradeUpdates}
+            onChange={(v) => setNotif("tradeUpdates", v)}
+            label="Trade updates"
+            description="Status changes on your trades and escrows."
+          />
+          <Toggle
+            checked={notifications.disputeAlerts}
+            onChange={(v) => setNotif("disputeAlerts", v)}
+            label="Dispute alerts"
+            description="New messages and rulings on open disputes."
+          />
+          <Toggle
+            checked={notifications.vaultActivity}
+            onChange={(v) => setNotif("vaultActivity", v)}
+            label="Vault activity"
+            description="Deposits, withdrawals, and vault events."
+          />
+          <Toggle
+            checked={notifications.systemAnnouncements}
+            onChange={(v) => setNotif("systemAnnouncements", v)}
+            label="System announcements"
+            description="Product news and maintenance notices."
+          />
         </SectionCard>
 
-        {/* ── Application Preferences ── */}
+        {/* ── Application preferences ── */}
         <SectionCard
-          title="Application Preferences"
-          description="Network, display currency, and session settings."
+          title="Application preferences"
+          description="Defaults applied across the app."
         >
-          <div className="space-y-5">
-            <SelectField
-              label="Network"
-              description="The Stellar network your wallet interacts with."
-              value={prefs.network}
-              onChange={(v) => setPref("network", v as AppPrefs["network"])}
-              error={validationErrors.network}
-              options={[
-                { value: "mainnet", label: "Mainnet" },
-                { value: "testnet", label: "Testnet" },
-              ]}
-            />
-            <Divider />
-            <SelectField
-              label="Preferred currency"
-              description="Fiat currency used for value estimates."
-              value={prefs.currency}
-              onChange={(v) => setPref("currency", v as AppPrefs["currency"])}
-              options={[
-                { value: "USD", label: "USD — US Dollar" },
-                { value: "EUR", label: "EUR — Euro" },
-                { value: "GBP", label: "GBP — British Pound" },
-              ]}
-            />
-            <Divider />
-            <SelectField
-              label="Auto sign-out"
-              description="Automatically end your session after inactivity."
-              value={prefs.autoSignOut}
-              onChange={(v) =>
-                setPref("autoSignOut", v as AppPrefs["autoSignOut"])
-              }
-              options={[
-                { value: "15", label: "15 minutes" },
-                { value: "30", label: "30 minutes" },
-                { value: "60", label: "1 hour" },
-                { value: "never", label: "Never" },
-              ]}
-            />
+          <SelectField
+            label="Network"
+            description="Network used for new transactions."
+            value={prefs.network}
+            onChange={(v) => setPref("network", v as AppPrefs["network"])}
+            options={[
+              { value: "mainnet", label: "Mainnet" },
+              { value: "testnet", label: "Testnet" },
+            ]}
+            error={validationErrors.network}
+          />
+          <SelectField
+            label="Currency"
+            description="Display currency for balances and prices."
+            value={prefs.currency}
+            onChange={(v) => setPref("currency", v as AppPrefs["currency"])}
+            options={[
+              { value: "USD", label: "USD" },
+              { value: "EUR", label: "EUR" },
+              { value: "GBP", label: "GBP" },
+            ]}
+            error={validationErrors.currency}
+          />
+          <SelectField
+            label="Auto sign-out"
+            description="Sign out automatically after inactivity."
+            value={prefs.autoSignOut}
+            onChange={(v) => setPref("autoSignOut", v as AppPrefs["autoSignOut"])}
+            options={[
+              { value: "15", label: "15 minutes" },
+              { value: "30", label: "30 minutes" },
+              { value: "60", label: "60 minutes" },
+              { value: "never", label: "Never" },
+            ]}
+            error={validationErrors.autoSignOut}
+          />
+
+          <Divider />
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-text-primary">Theme</p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Switch between light and dark appearance.
+              </p>
+            </div>
+            <ThemeToggle />
           </div>
 
-          <div className="flex items-center gap-3 pt-1">
+          <Divider />
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              {saveSuccess && (
+                <p className="text-xs text-emerald">Preferences saved.</p>
+              )}
+            </div>
             <button
               type="button"
               onClick={handleSavePreferences}
-              className="rounded-lg bg-gold px-5 py-2 text-sm font-semibold text-text-inverse hover:bg-gold-hover transition-colors"
+              className="rounded-lg bg-gold px-4 py-2 text-sm font-medium text-bg-primary hover:opacity-90 transition-opacity"
             >
               Save preferences
             </button>
-            {saveSuccess && (
-              <span className="text-sm text-emerald flex items-center gap-1.5">
-                <svg
-                  className="w-4 h-4"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                >
-                  <path d="M2 8l4 4 8-8" />
-                </svg>
-                Saved
-              </span>
-            )}
           </div>
-        </SectionCard>
-
-        {/* ── Security ── */}
-        <SectionCard
-          title="Security"
-          description="Information about how your session and keys are protected."
-        >
-          <ul className="space-y-3">
-            {[
-              {
-                icon: (
-                  <svg
-                    className="w-4 h-4"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  >
-                    <path d="M8 1l5 2.2V7c0 3.3-2.3 5.8-5 6.8C3.3 12.8 1 10.3 1 7V3.2L8 1z" />
-                  </svg>
-                ),
-                label: "Non-custodial",
-                detail:
-                  "Amana never holds your private keys. All signing happens in Freighter.",
-              },
-              {
-                icon: (
-                  <svg
-                    className="w-4 h-4"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  >
-                    <rect x="3" y="7" width="10" height="7" rx="1" />
-                    <path d="M5 7V5a3 3 0 016 0v2" />
-                  </svg>
-                ),
-                label: "Session token",
-                detail: isAuthenticated
-                  ? "Active — stored in sessionStorage, cleared on tab close."
-                  : "No active session.",
-              },
-              {
-                icon: (
-                  <svg
-                    className="w-4 h-4"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  >
-                    <circle cx="8" cy="8" r="6" />
-                    <path d="M8 5v3l2 2" />
-                  </svg>
-                ),
-                label: "Challenge-response auth",
-                detail:
-                  "Sign-in uses a one-time challenge signed by your wallet — no passwords.",
-              },
-            ].map((item) => (
-              <li
-                key={item.label}
-                className="flex items-start gap-3 rounded-xl border border-border-default bg-bg-elevated px-4 py-3"
-              >
-                <span className="mt-0.5 shrink-0 text-gold">{item.icon}</span>
-                <div>
-                  <p className="text-sm font-medium text-text-primary">
-                    {item.label}
-                  </p>
-                  <p className="text-xs text-text-secondary mt-0.5">
-                    {item.detail}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-
-        {/* ── About ── */}
-        <SectionCard title="About">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            {[
-              { label: "Platform", value: "Amana" },
-              { label: "Version", value: "V4.8.2" },
-              {
-                label: "Network",
-                value:
-                  prefs.network === "mainnet"
-                    ? "Stellar Mainnet"
-                    : "Stellar Testnet",
-              },
-              { label: "Smart contracts", value: "Soroban" },
-              { label: "Storage", value: "IPFS" },
-              { label: "Wallet", value: "Freighter" },
-            ].map((row) => (
-              <div key={row.label}>
-                <dt className="text-text-muted">{row.label}</dt>
-                <dd className="text-text-primary font-medium mt-0.5">
-                  {row.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
         </SectionCard>
       </div>
     </section>

@@ -47,6 +47,15 @@ const config: ExpoConfig = {
   web: {
     favicon: './assets/favicon.png',
   },
+  plugins: [
+    [
+      'expo-image-picker',
+      {
+        cameraPermission: 'Amana uses the camera so you can photograph produce for your listings.',
+        photosPermission: 'Amana accesses your photos so you can add pictures to your listings.',
+      },
+    ],
+  ],
 };
 
 export default config;

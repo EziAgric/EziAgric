@@ -56,6 +56,13 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Amana uses the camera so you can photograph produce for your listings.",
+          "photosPermission": "Amana accesses your photos so you can add pictures to your listings."
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
