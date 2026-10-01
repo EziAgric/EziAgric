@@ -7,6 +7,7 @@ import {
     EvidenceAccessDeniedError,
     EvidenceTradeNotFoundError,
     EvidenceScanError,
+    EvidenceHashMismatchError,
 } from "../services/evidence.service";
 import { appLogger } from "../middleware/logger";
 import { validateRequest } from "../middleware/validateRequest";
@@ -144,10 +145,15 @@ export function createEvidenceRouter(evidenceService = new EvidenceService()) {
                 return;
             }
 
-            const { tradeId } = req.body;
+            const { tradeId, contentHash } = req.body;
 
             try {
-                const result = await evidenceService.uploadVideoEvidence(tradeId, callerAddress, req.file);
+                const result = await evidenceService.uploadVideoEvidence(
+                    tradeId,
+                    callerAddress,
+                    req.file,
+                    contentHash,
+                );
                 res.status(201).json(result);
             } catch (err) {
                 if (err instanceof EvidenceTradeNotFoundError) {
@@ -156,6 +162,10 @@ export function createEvidenceRouter(evidenceService = new EvidenceService()) {
                 }
                 if (err instanceof EvidenceAccessDeniedError) {
                     res.status(403).json({ error: err.message });
+                    return;
+                }
+                if (err instanceof EvidenceHashMismatchError) {
+                    res.status(422).json({ error: err.message });
                     return;
                 }
                 if (err instanceof EvidenceScanError) {

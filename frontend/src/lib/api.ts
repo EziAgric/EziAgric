@@ -1,71 +1,73 @@
-import { adminAuditApi } from "./api/adminAudit";
-import { adminStreamsApi } from "./api/adminStreams";
-import { authApi } from "./api/auth";
-import { ApiError } from "./api/client";
-import { disputesApi } from "./api/disputes";
-import { getApiBaseUrl, getStellarNetworkPassphrase, getStellarRpcUrl } from "./api/env";
-import { reputationApi } from "./api/reputation";
-import { searchApi } from "./api/search";
-import { streamsApi } from "./api/streams";
-import { tradesApi } from "./api/trades";
-import { walletApi } from "./api/wallet";
+import { getApiBaseUrl } from './config';
 
-export type {
-  AdminAuditEntry,
-  AdminAuditListResponse,
-  AdminStreamSummary,
-  AdminStreamListResponse,
-  StreamClawbackPreviewResponse,
-  StreamStatus,
-  VestingState,
-  ChallengeResponse,
-  CreateTradeRequest,
-  CreateTradeResponse,
-  DepositResponse,
-  DisputeListResponse,
-  DisputeResponse,
-  EvidenceRecord,
-  EvidenceResponse,
-  PathPaymentQuote,
-  ReputationEvent,
-  ReputationResponse,
-  SearchResponse,
-  SearchResultItem,
-  TradeHistoryEvent,
-  TradeHistoryResponse,
-  TradeListResponse,
-  TradeResponse,
-  TradeStatsResponse,
-  VerifyResponse,
-} from "./api/types";
+export type NotificationChannel = 'in_app' | 'email' | 'sms' | 'push';
 
-export type {
-  ClawbackPreviewRequest,
-  ClawbackPreviewResponse,
-  ResumeStreamRequest,
-  ResumeStreamResponse,
-  StreamRemainingResponse,
-  StreamResponse,
-  SuspendStreamRequest,
-  SuspendStreamResponse,
-} from "./api/streams";
+export type NotificationEventType =
+  | 'transaction_sent'
+  | 'transaction_received'
+  | 'payment_failed'
+  | 'security_alert'
+  | 'account_update'
+  | 'marketing';
 
-export const api = {
-  auth: authApi,
-  adminAudit: adminAuditApi,
-  adminStreams: adminStreamsApi,
-  disputes: disputesApi,
-  reputation: reputationApi,
-  search: searchApi,
-  streams: streamsApi,
-  trades: tradesApi,
-  wallet: walletApi,
-};
+export type NotificationPreferences = Record<
+  NotificationEventType,
+  Record<NotificationChannel, boolean>
+>;
 
-export const apiConfig = {
-  getBaseUrl: getApiBaseUrl,
-  getStellarRpcUrl,
-  getStellarNetworkPassphrase,
-};
+export const NOTIFICATION_CHANNELS: NotificationChannel[] = [
+  'in_app',
+  'email',
+  'sms',
+  'push',
+];
 
-export { ApiError };
+export const NOTIFICATION_EVENT_TYPES: NotificationEventType[] = [
+  'transaction_sent',
+  'transaction_received',
+  'payment_failed',
+  'security_alert',
+  'account_update',
+  'marketing',
+];
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences =
+  NOTIFICATION_EVENT_TYPES.reduce((prefs, eventType) => {
+    prefs[eventType] = NOTIFICATION_CHANNELS.reduce(
+      (channels, channel) => {
+        channels[channel] = channel === 'in_app';
+        return channels;
+      },
+      {} as Record<NotificationChannel, boolean>,
+    );
+    return prefs;
+  }, {} as NotificationPreferences);
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+export async function getNotificationPreferences(): Promise<NotificationPreferences> {
+  return request<NotificationPreferences>('/preferences/notifications');
+}
+
+export async function updateNotificationPreferences(
+  preferences: NotificationPreferences,
+): Promise<NotificationPreferences> {
+  return request<NotificationPreferences>('/preferences/notifications', {
+    method: 'PUT',
+    body: JSON.stringify(preferences),
+  });
+}

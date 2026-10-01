@@ -31,14 +31,14 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Amana — Secure Agricultural Escrow",
+  title: "EziAgric — Secure Agricultural Escrow",
   description: "Blockchain-powered agricultural trade settlement",
   manifest: "/manifest.json",
   themeColor: "#1a3a1a",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Amana",
+    title: "EziAgric",
   },
   other: {
     "mobile-web-app-capable": "yes",

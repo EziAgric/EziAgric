@@ -79,7 +79,7 @@ export interface ReputationEvent {
   impact: number;
   impactLabel: string;
   timestamp: string;
-  type: "trade_completed" | "trade_initiated" | "dispute_initiated" | "dispute_resolved" | "dispute_involved" | "account_created";
+  type: "trade_completed" | "trade_initiated" | "dispute_initiated" | "dispute_resolved" | "dispute_involved" | "account_created" | "trade_review";
 }
 
 export interface ReputationResponse {
@@ -89,6 +89,54 @@ export interface ReputationResponse {
   disputedTrades: number;
   successRate: number;
   history: ReputationEvent[];
+}
+
+export interface TradeReviewInput {
+  tradeId: string;
+  reviewerAddress: string;
+  rating: number;
+  comment?: string;
+}
+
+export interface TradeReviewResult {
+  id: string;
+  tradeId: string;
+  reviewerAddress: string;
+  revieweeAddress: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+const MAX_COMMENT_LENGTH = 500;
+const REVIEW_WEIGHT = 2;
+
+const PROFANITY_PATTERNS: RegExp[] = [
+  /\bf+u+c+k+\w*/gi,
+  /\bs+h+i+t+\w*/gi,
+  /\bb+i+t+c+h+\w*/gi,
+  /\ba+s+s+h+o+l+e+\w*/gi,
+  /\bb+a+s+t+a+r+d+\w*/gi,
+  /\bd+a+m+n+\w*/gi,
+];
+
+const PII_PATTERNS: RegExp[] = [
+  /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+  /\b(?:\+?\d[\s-]?){7,}\b/g,
+  /\b0x[a-fA-F0-9]{40}\b/g,
+  /\bG[A-Z2-7]{55}\b/g,
+];
+
+export function sanitizeReviewComment(comment: string): string {
+  let sanitized = comment;
+  for (const pattern of PII_PATTERNS) {
+    sanitized = sanitized.replace(pattern, "[redacted]");
+  }
+  for (const pattern of PROFANITY_PATTERNS) {
+    sanitized = sanitized.replace(pattern, (match) => "*".repeat(match.length));
+  }
+  sanitized = sanitized.replace(/\s+/g, " ").trim();
+  return sanitized.slice(0, MAX_COMMENT_LENGTH);
 }
 
 export class ReputationService {
@@ -231,12 +279,31 @@ export class ReputationService {
     const disputesLost =
       disputesInitiated.filter((d) => d.status === "RESOLVED" || d.status === "CLOSED").length;
 
-    const { score: trustScore } = ReputationService.calculateTrustScore({
+    const reviewsReceived = await this.prisma.tradeReview.findMany({
+      where: { revieweeAddress: normalized },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const breakdown = ReputationService.calculateTrustScore({
       completedTrades: completedCount,
       disputesLost,
       disputesInitiated: disputesInitiated.length,
       totalTrades,
     });
+
+    // Reviews adjust the unclamped total so the final clamp applies once.
+    let trustScore =
+      breakdown.base +
+      breakdown.completedTrades +
+      breakdown.disputesLost +
+      breakdown.disputesInitiated +
+      breakdown.volumeBonus;
+
+    for (const review of reviewsReceived) {
+      trustScore += (review.rating - 3) * REVIEW_WEIGHT;
+    }
+
+    trustScore = Math.max(TRUST_SCORE_SPEC.min, Math.min(TRUST_SCORE_SPEC.max, trustScore));
 
     const successRate =
       totalTrades > 0
@@ -271,6 +338,18 @@ export class ReputationService {
       });
     }
 
+    for (const review of reviewsReceived.slice(0, 5)) {
+      const impact = (review.rating - 3) * REVIEW_WEIGHT;
+      history.push({
+        id: `review-${review.id}`,
+        event: `Received ${review.rating}-star review on trade ${review.tradeId.slice(0, 8)}...`,
+        impact,
+        impactLabel: impact >= 0 ? `+${impact}` : `${impact}`,
+        timestamp: review.createdAt.toISOString(),
+        type: "trade_review",
+      });
+    }
+
     history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     return {
@@ -280,6 +359,75 @@ export class ReputationService {
       disputedTrades: disputedCount,
       successRate,
       history: history.slice(0, 20),
+    };
+  }
+
+  async submitTradeReview(input: TradeReviewInput): Promise<TradeReviewResult> {
+    const reviewerAddress = input.reviewerAddress.toLowerCase();
+
+    if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
+      throw new Error("Rating must be an integer between 1 and 5");
+    }
+
+    const trade = await this.prisma.trade.findUnique({
+      where: { tradeId: input.tradeId },
+    });
+
+    if (!trade) {
+      throw new Error("Trade not found");
+    }
+
+    const isBuyer = trade.buyerAddress === reviewerAddress;
+    const isSeller = trade.sellerAddress === reviewerAddress;
+
+    if (!isBuyer && !isSeller) {
+      throw new Error("Only trade counterparties may submit a review");
+    }
+
+    const dispute = await this.prisma.dispute.findFirst({
+      where: { tradeId: input.tradeId },
+    });
+    const disputeResolved =
+      dispute !== null && (dispute.status === "RESOLVED" || dispute.status === "CLOSED");
+
+    if (trade.status !== TradeStatus.COMPLETED && !disputeResolved) {
+      throw new Error("Reviews are only allowed after completion or a resolved dispute");
+    }
+
+    const existing = await this.prisma.tradeReview.findUnique({
+      where: {
+        tradeId_reviewerAddress: {
+          tradeId: input.tradeId,
+          reviewerAddress,
+        },
+      },
+    });
+
+    if (existing) {
+      throw new Error("A review has already been submitted for this trade");
+    }
+
+    const revieweeAddress = isBuyer ? trade.sellerAddress : trade.buyerAddress;
+    const comment = input.comment ? sanitizeReviewComment(input.comment) : null;
+
+    const review = await this.prisma.tradeReview.create({
+      data: {
+        tradeId: input.tradeId,
+        reviewerAddress,
+        revieweeAddress,
+        rating: input.rating,
+        comment,
+      },
+    });
+
+    return {
+      id: review.id,
+      tradeId: review.tradeId,
+      reviewerAddress: review.reviewerAddress,
+      revieweeAddress: review.revieweeAddress,
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt.toISOString(),
     };
   }
 }
