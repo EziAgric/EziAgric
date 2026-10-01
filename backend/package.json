@@ -11,7 +11,10 @@
     "postinstall": "npx prisma generate",
     "seed:anon": "tsx prisma/seed.anonymized.ts",
     "mutation": "stryker run stryker.money-math.config.json",
-    "mutation:ci": "stryker run stryker.money-math.config.json --reporters html,json,progress"
+    "mutation:ci": "stryker run stryker.money-math.config.json --reporters html,json,progress",
+    "spec:package": "node scripts/package-openapi.js",
+    "codegen:client": "npm run spec:package && openapi-typescript dist/openapi.json -o ../frontend/src/lib/generated/api.ts && openapi-typescript dist/openapi.json -o ../mobile/src/api/generated/api.ts",
+    "codegen:check": "npm run codegen:client && git diff --exit-code -- ../frontend/src/lib/generated/api.ts ../mobile/src/api/generated/api.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -71,6 +74,7 @@
     "@types/swagger-ui-express": "4.1.8",
     "eslint": "9.39.4",
     "jest": "30.3.0",
+    "openapi-typescript": "7.4.4",
     "prisma": "5.22.0",
     "supertest": "7.2.2",
     "ts-jest": "29.4.11",
