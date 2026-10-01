@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { CreditCard } from "lucide-react";
 import { BentoCard } from "@/components/ui/BentoCard";
+import {
+  computeFeeBreakdownFromDecimal,
+  DEFAULT_PLATFORM_FEE_BPS,
+  formatFeePercent,
+} from "@/lib/feeBreakdown";
 
 interface PaymentOverviewCardProps {
   totalCngn: number;
@@ -24,21 +29,25 @@ const LINE_ITEMS: CostLineItem[] = [
         : `${total.toLocaleString()} cNGN`,
   },
   {
-    label: "Amana Platform Fee (1%)",
+    // Fee math comes from the shared util so the card can never drift from the
+    // backend/on-chain 1% (truncating) calculation (#423).
+    label: `Amana Platform Fee (${formatFeePercent(DEFAULT_PLATFORM_FEE_BPS)})`,
     getValue: (total, currency, rate) => {
-      const fee = parseFloat((total * 0.01).toFixed(2));
+      const { fee } = computeFeeBreakdownFromDecimal(total);
+      const feeValue = parseFloat(fee);
       return currency === "NGN"
-        ? `₦${(fee * rate).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`
-        : `${fee.toLocaleString()} cNGN`;
+        ? `₦${(feeValue * rate).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`
+        : `${feeValue.toLocaleString()} cNGN`;
     },
   },
   {
     label: "Net Payout",
     getValue: (total, currency, rate) => {
-      const net = parseFloat((total - total * 0.01).toFixed(2));
+      const { net } = computeFeeBreakdownFromDecimal(total);
+      const netValue = parseFloat(net);
       return currency === "NGN"
-        ? `₦${(net * rate).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`
-        : `${net.toLocaleString()} cNGN`;
+        ? `₦${(netValue * rate).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`
+        : `${netValue.toLocaleString()} cNGN`;
     },
     dimmed: true,
   },
