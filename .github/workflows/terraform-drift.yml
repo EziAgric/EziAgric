@@ -52,7 +52,7 @@ jobs:
       TF_VAR_db_master_password: ${{ secrets.TF_VAR_DB_MASTER_PASSWORD }}
       TF_VAR_redis_auth_token: ${{ secrets.TF_VAR_REDIS_AUTH_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v4
         with:
@@ -128,7 +128,7 @@ jobs:
       TF_VAR_db_master_password: ${{ secrets.TF_VAR_DB_MASTER_PASSWORD }}
       TF_VAR_redis_auth_token: ${{ secrets.TF_VAR_REDIS_AUTH_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: hashicorp/setup-terraform@v4
         with:
