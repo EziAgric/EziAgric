@@ -91,6 +91,13 @@ export function computeSlaDueAt(reason: string, createdAt: Date): Date {
   return new Date(createdAt.getTime() + hours * 60 * 60 * 1000);
 }
 
+export interface MediatorAssignment {
+  tradeId: string;
+  mediatorAddress: string;
+  assignedAt: string;
+  reason: "created" | "sla_breach";
+}
+
 const disputeInclude = {
   trade: {
     select: { buyerAddress: true, sellerAddress: true, amountUsdc: true },
@@ -378,5 +385,157 @@ export class DisputeService {
 
       return toDisputeResponse(updated);
     });
+  }
+
+  /**
+   * Assign a mediator to a dispute using least-loaded load balancing.
+   *
+   * Candidates are drawn from the mediator allowlist. Any mediator who is a
+   * party to the trade (buyer/seller) or a member of the trade's co-op is
+   * excluded to avoid conflicts of interest. Among the remaining candidates the
+   * one with the fewest open (non-terminal) disputes is selected; ties are
+   * broken deterministically by address so assignment is reproducible.
+   *
+   * The assignment is persisted on the dispute and an assignment event is
+   * logged. Returns null when no eligible mediator exists.
+   */
+  async assignMediator(
+    tradeId: string,
+    reason: "created" | "sla_breach" = "created",
+  ): Promise<MediatorAssignment | null> {
+    const dispute = await this.prisma.dispute.findFirst({
+      where: { tradeId },
+      include: disputeInclude,
+    });
+
+    if (!dispute) {
+      throw new AppError(
+        ErrorCode.DISPUTE_NOT_FOUND,
+        `No dispute found for trade: ${tradeId}`,
+        404,
+      );
+    }
+
+    const candidates = await this.eligibleMediators(
+      dispute.trade.buyerAddress,
+      dispute.trade.sellerAddress,
+    );
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const loads = await this.prisma.dispute.groupBy({
+      by: ["mediatorAddress"],
+      where: {
+        mediatorAddress: { in: candidates },
+        status: { notIn: COMPLETED_DISPUTE_STATUSES },
+      },
+      _count: { _all: true },
+    });
+
+    const loadByAddress = new Map<string, number>();
+    for (const row of loads) {
+      if (row.mediatorAddress) {
+        loadByAddress.set(row.mediatorAddress, row._count._all);
+      }
+    }
+
+    const selected = candidates.reduce((best, current) => {
+      const bestLoad = loadByAddress.get(best) ?? 0;
+      const currentLoad = loadByAddress.get(current) ?? 0;
+      if (currentLoad < bestLoad) return current;
+      if (currentLoad === bestLoad && current < best) return current;
+      return best;
+    });
+
+    const assignedAt = new Date();
+
+    await this.prisma.dispute.update({
+      where: { id: dispute.id },
+      data: { mediatorAddress: selected },
+    });
+
+    console.info(
+      JSON.stringify({
+        event: "dispute.mediator_assigned",
+        tradeId,
+        mediatorAddress: selected,
+        reason,
+        assignedAt: assignedAt.toISOString(),
+      }),
+    );
+
+    return {
+      tradeId,
+      mediatorAddress: selected,
+      assignedAt: assignedAt.toISOString(),
+      reason,
+    };
+  }
+
+  /**
+   * Reassign disputes whose assignment has breached the SLA window to a fresh
+   * mediator, excluding the currently assigned one. Returns the reassignments
+   * that were applied.
+   */
+  async reassignOnSlaBreach(
+    slaHours = 24,
+    now: Date = new Date(),
+  ): Promise<MediatorAssignment[]> {
+    const cutoff = new Date(now.getTime() - slaHours * 60 * 60 * 1000);
+
+    const breached = await this.prisma.dispute.findMany({
+      where: {
+        status: { notIn: COMPLETED_DISPUTE_STATUSES },
+        mediatorAddress: { not: null },
+        updatedAt: { lte: cutoff },
+      },
+      select: { tradeId: true, mediatorAddress: true },
+    });
+
+    const reassignments: MediatorAssignment[] = [];
+
+    for (const dispute of breached) {
+      const assignment = await this.assignMediator(dispute.tradeId, "sla_breach");
+      if (assignment && assignment.mediatorAddress !== dispute.mediatorAddress) {
+        reassignments.push(assignment);
+      }
+    }
+
+    return reassignments;
+  }
+
+  /**
+   * Resolve the set of mediators eligible to handle a trade, excluding any
+   * mediator who is a party to the trade or a member of the trade's co-op.
+   */
+  private async eligibleMediators(
+    buyerAddress: string,
+    sellerAddress: string,
+  ): Promise<string[]> {
+    const allowlist = getMediatorAllowlist();
+    const excluded = new Set<string>([buyerAddress, sellerAddress]);
+
+    const coopMembers = await this.prisma.coopMember.findMany({
+      where: { address: { in: [buyerAddress, sellerAddress] } },
+      select: { coopId: true },
+    });
+
+    const coopIds = coopMembers.map((m: { coopId: string }) => m.coopId);
+
+    if (coopIds.length > 0) {
+      const members = await this.prisma.coopMember.findMany({
+        where: { coopId: { in: coopIds } },
+        select: { address: true },
+      });
+      for (const member of members) {
+        excluded.add(member.address);
+      }
+    }
+
+    return Array.from(allowlist)
+      .filter((address) => !excluded.has(address))
+      .sort();
   }
 }

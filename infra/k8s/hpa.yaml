@@ -1,3 +1,6 @@
+# Autoscaling policies (see docs/k8s-capacity.md for the load evidence and rationale).
+# CPU is the primary signal; backend also scales on event-queue depth exposed via
+# prometheus-adapter as the `amana_event_queue_depth` pods metric.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -9,6 +12,7 @@ spec:
     kind: Deployment
     name: backend
   minReplicas: 2
+  # 3x expected pilot peak (~60 rps) is served by ~6 pods at 70% CPU; 10 leaves headroom.
   maxReplicas: 10
   metrics:
     - type: Resource
@@ -16,13 +20,28 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 75
-    - type: Resource
-      resource:
-        name: memory
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: amana_event_queue_depth
         target:
-          type: Utilization
-          averageUtilization: 80
+          type: AverageValue
+          averageValue: "50"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      # Avoid flapping after bursty k6 ramps; release at most 1 pod per 2 minutes.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -42,10 +61,13 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 80
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 85
+          averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

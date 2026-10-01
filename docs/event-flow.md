@@ -461,3 +461,99 @@ overridable via environment variables.
 | `backend/src/__tests__/event.ingestion.test.ts` | Event ingestion pipeline | — |
 | `contracts/amana_escrow/tests/event_emission_tests.rs` | Contract-level event emission validation | 469 |
 | `contracts/amana_escrow/src/tests/event_schema_tests.rs` | Unit-level event schema validation | — |
+
+---
+
+## 10. Trade Lifecycle Sequence Diagrams
+
+The diagrams below cover the full end-to-end flow from the perspective of all participants: **Buyer**, **Seller**, **Driver**, **Backend**, **Soroban Contract**, and **IPFS**.
+
+### 10.1 Happy Path
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer
+    actor Seller
+    actor Driver
+    participant Backend
+    participant Contract as Soroban Contract
+    participant IPFS
+
+    Buyer->>Backend: POST /trades (create trade intent)
+    Backend->>Contract: invoke create_trade(buyer, seller, amount, ratio)
+    Contract-->>Backend: TradeCreated event (trade_id)
+    Backend-->>Buyer: 201 { tradeId }
+
+    Buyer->>Contract: invoke fund_trade(trade_id, cNGN amount)
+    Contract-->>Backend: TradeFunded event
+    Backend-->>Seller: push notification — trade funded, prepare shipment
+
+    Seller->>Driver: hand over goods
+    Driver->>Backend: POST /trades/:id/pickup (driver confirms pickup)
+    Backend->>Contract: invoke record_pickup(trade_id, driver_id)
+    Contract-->>Backend: PickupRecorded event
+
+    Driver->>Backend: POST /trades/:id/delivery (driver confirms delivery)
+    Driver->>IPFS: upload delivery video evidence
+    IPFS-->>Driver: CID
+    Driver->>Backend: POST /trades/:id/evidence { cid }
+    Backend->>Contract: invoke submit_evidence(trade_id, cid)
+    Contract-->>Backend: EvidenceSubmitted event
+
+    Buyer->>Backend: POST /trades/:id/confirm (buyer confirms receipt)
+    Backend->>Contract: invoke confirm_delivery(trade_id)
+    Contract-->>Backend: TradeCompleted event
+    Contract->>Seller: release funds (minus 1% platform fee)
+    Contract->>Backend: FundsReleased event
+    Backend-->>Buyer: push notification — trade complete
+    Backend-->>Seller: push notification — funds released
+```
+
+### 10.2 Dispute Path
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer
+    actor Seller
+    actor Driver
+    participant Backend
+    participant Contract as Soroban Contract
+    participant IPFS
+
+    Note over Buyer,Contract: Trade is in Funded state (steps 1-6 from happy path already complete)
+
+    Buyer->>Backend: POST /trades/:id/dispute (buyer raises dispute)
+    Backend->>Contract: invoke raise_dispute(trade_id, reason)
+    Contract-->>Backend: DisputeRaised event
+    Backend-->>Seller: push notification — dispute raised
+
+    Seller->>IPFS: upload counter-evidence (video/photos)
+    IPFS-->>Seller: CID
+    Seller->>Backend: POST /trades/:id/evidence { cid, party: "seller" }
+    Backend->>Contract: invoke submit_evidence(trade_id, cid, party)
+    Contract-->>Backend: EvidenceSubmitted event
+
+    Driver->>IPFS: upload delivery confirmation video
+    IPFS-->>Driver: CID
+    Driver->>Backend: POST /trades/:id/evidence { cid, party: "driver" }
+    Backend->>Contract: invoke submit_evidence(trade_id, cid, party)
+    Contract-->>Backend: EvidenceSubmitted event
+
+    Note over Backend,Contract: Mediator quorum reviews evidence (see docs/mediator-quorum.md)
+
+    Backend->>Contract: invoke resolve_dispute(trade_id, verdict, loss_ratio)
+    Contract-->>Backend: DisputeResolved event
+
+    alt Verdict: buyer wins
+        Contract->>Buyer: refund per negotiated loss-sharing ratio
+        Contract->>Seller: partial payment (remaining ratio)
+    else Verdict: seller wins
+        Contract->>Seller: full payment (minus 1% platform fee)
+    end
+
+    Contract-->>Backend: FundsReleased event
+    Backend-->>Buyer: push notification — dispute resolved
+    Backend-->>Seller: push notification — dispute resolved
+```

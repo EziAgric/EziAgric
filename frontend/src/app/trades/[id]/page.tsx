@@ -303,14 +303,14 @@ export default function TradeDetailPage() {
                 )}
 
                 {(role === "buyer" || role === "seller") && status === "FUNDED" && (
-                  <button
-                    onClick={handleInitiateDispute}
-                    disabled={actionLoading}
-                    data-testid="action-dispute"
-                    className="rounded-lg border border-red-500/50 px-4 py-2 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Initiate Dispute
-                  </button>
+                  <Link href={`/trades/${tradeId}/dispute`} data-testid="action-dispute">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-red-500/50 px-4 py-2 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/10"
+                    >
+                      Initiate Dispute
+                    </button>
+                  </Link>
                 )}
 
                 {role === "mediator" && status === "DISPUTED" && (

@@ -17,6 +17,7 @@ import type { RootStackParamList } from '../types/navigation';
 import type { Trade, TradeStatus } from '../types/trade';
 import { useTradeStore } from '../stores/tradeStore';
 import { useAuthStore } from '../stores/authStore';
+import apiClient from '../api/client';
 import { AdminErrorBanner } from '../components/AdminErrorBanner';
 import { buildSupportMailto } from '../constants/support';
 import type { AdminErrorView } from '../api/errors';
@@ -43,11 +44,12 @@ const STATUS_LABELS: Record<TradeStatus, string> = {
   REFUNDED: 'Refunded',
 };
 
-type TimelineStep = {
-  label: string;
-  done: boolean;
-  active: boolean;
-};
+interface TimelineEvent {
+  eventType: string;
+  timestamp: string;
+  actor: string;
+  metadata: Record<string, unknown>;
+}
 
 function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -71,36 +73,61 @@ function ContractCard({ trade }: { trade: Trade }) {
   );
 }
 
-function TradeTimeline({ trade }: { trade: Trade }) {
-  const statusOrder: TradeStatus[] = ['PENDING', 'FUNDED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED'];
-  const currentIdx = statusOrder.indexOf(trade.status);
+function eventLabel(eventType: string): string {
+  const map: Record<string, string> = {
+    TRADE_CREATED: 'Trade Created',
+    FUNDED: 'Funded',
+    IN_TRANSIT: 'In Transit',
+    DELIVERED: 'Delivered',
+    COMPLETED: 'Completed',
+    DISPUTED: 'Dispute Opened',
+    REFUNDED: 'Refunded',
+    EVIDENCE_UPLOADED: 'Evidence Uploaded',
+    MEDIATOR_ASSIGNED: 'Mediator Assigned',
+    DISPUTE_RESOLVED: 'Dispute Resolved',
+  };
+  return map[eventType] ?? eventType.replace(/_/g, ' ');
+}
 
-  const steps: TimelineStep[] = [
-    { label: 'Created', done: true, active: false },
-    { label: 'Funded', done: currentIdx >= 1, active: currentIdx === 1 },
-    { label: 'In Transit', done: currentIdx >= 2, active: currentIdx === 2 },
-    { label: 'Delivered', done: currentIdx >= 3, active: currentIdx === 3 },
-    { label: 'Completed', done: currentIdx >= 4, active: currentIdx === 4 },
-  ];
+function TradeTimeline({ tradeId, token }: { tradeId: string; token: string | null }) {
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (trade.status === 'DISPUTED') {
-    steps.push({ label: 'Disputed', done: true, active: true });
-  }
-  if (trade.status === 'REFUNDED') {
-    steps.push({ label: 'Refunded', done: true, active: true });
-  }
+  useEffect(() => {
+    if (!token) { setLoading(false); return; }
+    apiClient
+      .get(`/trades/${tradeId}/timeline`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((r) => setEvents(r.data?.events ?? r.data ?? []))
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false));
+  }, [tradeId, token]);
 
   return (
-    <View style={styles.section}>
+    <View style={styles.section} accessibilityLabel="Trade timeline">
       <Text style={styles.sectionTitle}>Timeline</Text>
-      {steps.map((step, i) => (
-        <View key={i} style={styles.timelineRow}>
+      {loading && <ActivityIndicator color="#2d6a2d" />}
+      {!loading && events.length === 0 && (
+        <Text style={styles.timelineLabel}>No timeline events yet.</Text>
+      )}
+      {events.map((ev, i) => (
+        <View
+          key={`${ev.eventType}-${i}`}
+          style={styles.timelineRow}
+          accessibilityLabel={`${eventLabel(ev.eventType)} at ${new Date(ev.timestamp).toLocaleString()}`}
+        >
           <View style={styles.timelineDot}>
-            {step.done && <View style={[styles.timelineDotInner, step.active && styles.timelineDotActive]} />}
+            <View style={[styles.timelineDotInner, i === 0 && styles.timelineDotActive]} />
           </View>
-          <Text style={[styles.timelineLabel, step.active && styles.timelineLabelActive]}>
-            {step.label}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.timelineLabel, i === 0 && styles.timelineLabelActive]}>
+              {eventLabel(ev.eventType)}
+            </Text>
+            <Text style={styles.timelineMeta}>
+              {new Date(ev.timestamp).toLocaleString()} · {ev.actor.slice(0, 10)}…
+            </Text>
+          </View>
         </View>
       ))}
     </View>
@@ -122,7 +149,7 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
     deposit,
     clearErrorView,
   } = useTradeStore();
-  const { clearAuth } = useAuthStore();
+  const { clearAuth, token } = useAuthStore();
 
   const [disputeModalVisible, setDisputeModalVisible] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
@@ -349,7 +376,7 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
         <ContractCard trade={currentTrade} />
 
         {/* Timeline */}
-        <TradeTimeline trade={currentTrade} />
+        <TradeTimeline tradeId={currentTrade.tradeId} token={token} />
 
         {/* Actions */}
         <View style={styles.section}>
@@ -537,6 +564,7 @@ const styles = StyleSheet.create({
   },
   timelineLabel: { fontSize: 13, color: '#888' },
   timelineLabelActive: { color: '#1a3a1a', fontWeight: '600' },
+  timelineMeta: { fontSize: 11, color: '#aaa', marginTop: 2 },
   actionBtn: {
     borderRadius: 10,
     paddingVertical: 14,

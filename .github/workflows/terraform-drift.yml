@@ -1,0 +1,148 @@
+name: Terraform Drift Detection
+
+# Issue #267
+#   * Weekly: read-only `plan -detailed-exitcode` per environment using the
+#     plan role. Any diff between code and real infrastructure opens (or
+#     updates) a `terraform-drift` issue for triage.
+#   * Manual `lock-test`: proves a concurrent apply is blocked by the state
+#     lock (scripts/terraform-lock-test.sh). Runs in the protected
+#     `terraform-<env>` environment because it needs lock-table write access.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "drift | lock-test"
+        required: true
+        default: drift
+        type: choice
+        options: [drift, lock-test]
+      environment:
+        description: "Environment for lock-test"
+        required: false
+        default: dev
+        type: choice
+        options: [dev, staging]
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+env:
+  TF_VERSION: "1.9.8"
+  TF_IN_AUTOMATION: "true"
+  AWS_REGION: us-east-1
+
+jobs:
+  drift:
+    name: drift (${{ matrix.environment }})
+    if: github.event_name == 'schedule' || inputs.mode == 'drift'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, staging]
+    env:
+      TF_DIR: infra/terraform/environments/${{ matrix.environment }}
+      PLAN_ROLE_ARN: ${{ matrix.environment == 'dev' && vars.TF_PLAN_ROLE_ARN_DEV || vars.TF_PLAN_ROLE_ARN_STAGING }}
+      TF_VAR_db_master_username: ${{ secrets.TF_VAR_DB_MASTER_USERNAME }}
+      TF_VAR_db_master_password: ${{ secrets.TF_VAR_DB_MASTER_PASSWORD }}
+      TF_VAR_redis_auth_token: ${{ secrets.TF_VAR_REDIS_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Assume plan role (read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.PLAN_ROLE_ARN }}
+          role-session-name: tf-drift-${{ matrix.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform init
+        run: terraform -chdir="$TF_DIR" init -input=false
+
+      - name: Detect drift
+        id: drift
+        run: |
+          set +e
+          terraform -chdir="$TF_DIR" plan -input=false -lock=false -no-color -detailed-exitcode > drift.txt 2>&1
+          CODE=$?
+          set -e
+          # 0 = no changes, 1 = error, 2 = drift
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          grep -E '^(Plan:|No changes|  [#~+-]|Error)' drift.txt | head -n 200 > drift-summary.txt || true
+          {
+            echo "### Drift — \`${{ matrix.environment }}\` (exit $CODE)"
+            echo '```'
+            cat drift-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CODE" = "1" ]; then exit 1; fi
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: terraform-drift-${{ matrix.environment }}-${{ github.run_number }}
+          path: drift.txt
+          retention-days: 90
+
+      - name: Open / update drift issue
+        if: steps.drift.outputs.code == '2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT: ${{ matrix.environment }}
+        run: |
+          TITLE="Terraform drift detected: ${ENVIRONMENT}"
+          BODY=$(printf '%s\n\n%s\n\n```\n%s\n```\n\n%s\n' \
+            "Weekly drift detection found differences between \`infra/terraform/environments/${ENVIRONMENT}\` and live infrastructure." \
+            "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "$(cat drift-summary.txt)" \
+            "Triage per docs/terraform-remote-state.md#drift-triage: reconcile in code (preferred) or revert the manual change, then close this issue with the outcome.")
+          gh label create terraform-drift --color D93F0B --description "Infra drift from Terraform" 2>/dev/null || true
+          EXISTING=$(gh issue list --label terraform-drift --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --label terraform-drift --body "$BODY"
+          fi
+
+  lock-test:
+    name: state lock test (${{ inputs.environment }})
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'lock-test'
+    runs-on: ubuntu-latest
+    environment: terraform-${{ inputs.environment }}
+    concurrency:
+      group: terraform-apply-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      TF_VAR_db_master_username: ${{ secrets.TF_VAR_DB_MASTER_USERNAME }}
+      TF_VAR_db_master_password: ${{ secrets.TF_VAR_DB_MASTER_PASSWORD }}
+      TF_VAR_redis_auth_token: ${{ secrets.TF_VAR_REDIS_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Assume apply role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          role-session-name: tf-lock-test-${{ inputs.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify concurrent apply is blocked
+        run: |
+          chmod +x scripts/terraform-lock-test.sh
+          scripts/terraform-lock-test.sh "${{ inputs.environment }}" | tee -a "$GITHUB_STEP_SUMMARY"
