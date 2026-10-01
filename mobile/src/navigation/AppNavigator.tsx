@@ -22,6 +22,7 @@ import AdminTradesBatchScreen from '../screens/AdminTradesBatchScreen';
 import AdminContractScreen from '../screens/AdminContractScreen';
 import AdminFeaturesScreen from '../screens/AdminFeaturesScreen';
 import AdminActionSuccessScreen from '../screens/AdminActionSuccessScreen';
+import CoopHomeScreen from '../screens/CoopHomeScreen';
 import MediatorDisputeListScreen from '../screens/MediatorDisputeListScreen';
 import MediatorDisputeReviewScreen from '../screens/MediatorDisputeReviewScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -122,6 +123,7 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="AdminContract" component={AdminContractScreen} />
         <Stack.Screen name="AdminFeatures" component={AdminFeaturesScreen} />
         <Stack.Screen name="AdminActionSuccess" component={AdminActionSuccessScreen} />
+        <Stack.Screen name="CoopHome" component={CoopHomeScreen} />
         <Stack.Screen name="MediatorDisputeList" component={MediatorDisputeListScreen} />
         <Stack.Screen name="MediatorDisputeReview" component={MediatorDisputeReviewScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />

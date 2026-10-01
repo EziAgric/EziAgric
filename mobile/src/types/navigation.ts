@@ -4,6 +4,7 @@ import type { AdminActionType } from '../screens/AdminActionSuccessScreen';
 export type RootStackParamList = {
   WalletConnect: undefined;
   TradeList: undefined;
+  CoopHome: { coopId: string };
   TradeDetail: { tradeId: string };
   DisputeDetail: { id: string };
   /** #433 — optional prefill when starting a trade from a listing. */

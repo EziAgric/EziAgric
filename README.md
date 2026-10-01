@@ -115,6 +115,82 @@ For the protected branch (`main`), set these required status checks:
    - **Dispute:** Buyer uploads a video of loss/damage with driver affirmation. A mediator reviews the evidence.
 5. **Settlement:** Based on the outcome, funds are distributed (either 100% to one party or split via the `Loss_Ratio`).
 
+### Happy Path Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer
+    actor Seller
+    actor Driver
+    participant Backend
+    participant Contract as Soroban Contract
+    participant IPFS
+
+    Buyer->>Backend: POST /trades (create trade intent)
+    Backend->>Contract: invoke create_trade(buyer, seller, amount, ratio)
+    Contract-->>Backend: TradeCreated event (trade_id)
+    Backend-->>Buyer: 201 { tradeId }
+
+    Buyer->>Contract: invoke fund_trade(trade_id, cNGN amount)
+    Contract-->>Backend: TradeFunded event
+    Backend-->>Seller: push notification — trade funded, prepare shipment
+
+    Seller->>Driver: hand over goods
+    Driver->>Backend: POST /trades/:id/delivery (driver confirms delivery)
+    Driver->>IPFS: upload delivery video evidence
+    IPFS-->>Driver: CID
+    Driver->>Backend: POST /trades/:id/evidence { cid }
+    Backend->>Contract: invoke submit_evidence(trade_id, cid)
+    Contract-->>Backend: EvidenceSubmitted event
+
+    Buyer->>Backend: POST /trades/:id/confirm (buyer confirms receipt)
+    Backend->>Contract: invoke confirm_delivery(trade_id)
+    Contract-->>Backend: TradeCompleted event
+    Contract->>Seller: release funds (minus 1% platform fee)
+```
+
+### Dispute Path Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer
+    actor Seller
+    actor Driver
+    participant Backend
+    participant Contract as Soroban Contract
+    participant IPFS
+
+    Note over Buyer,Contract: Trade is in Funded state
+
+    Buyer->>Backend: POST /trades/:id/dispute (buyer raises dispute)
+    Backend->>Contract: invoke raise_dispute(trade_id, reason)
+    Contract-->>Backend: DisputeRaised event
+
+    Seller->>IPFS: upload counter-evidence
+    IPFS-->>Seller: CID
+    Seller->>Backend: POST /trades/:id/evidence { cid, party: "seller" }
+
+    Driver->>IPFS: upload delivery confirmation
+    IPFS-->>Driver: CID
+    Driver->>Backend: POST /trades/:id/evidence { cid, party: "driver" }
+
+    Note over Backend,Contract: Mediator quorum reviews evidence
+
+    Backend->>Contract: invoke resolve_dispute(trade_id, verdict, loss_ratio)
+    Contract-->>Backend: DisputeResolved event
+
+    alt Verdict: buyer wins
+        Contract->>Buyer: refund per loss-sharing ratio
+        Contract->>Seller: partial payment
+    else Verdict: seller wins
+        Contract->>Seller: full payment (minus 1% fee)
+    end
+```
+
+> Full diagrams with all events and edge cases are in [`docs/event-flow.md`](docs/event-flow.md).
+
 ---
 
 ## 🗺 Roadmap

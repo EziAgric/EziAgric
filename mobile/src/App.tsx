@@ -4,6 +4,7 @@ import { NavigationContainerRef } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 import { useAuthStore } from './stores/authStore';
 import {
@@ -16,18 +17,28 @@ import type { RootStackParamList } from './types/navigation';
 import { AppNavigator } from './navigation/AppNavigator';
 import type { NotificationData } from './services/notification.service';
 import { CrashErrorBoundary } from './components/CrashErrorBoundary';
+import OnboardingScreen, { ONBOARDING_SEEN_KEY } from './screens/OnboardingScreen';
 import { useAttestationSync } from './hooks/useAttestationSync';
 
 export default function App() {
   const { getToken, token } = useAuthStore();
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [onboardingSeen, setOnboardingSeen] = useState<boolean | null>(null);
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList> | null>(null);
 
   // Upload queued driver attestations as soon as the device is online again.
   useAttestationSync(!!token);
 
   useEffect(() => {
-    getToken().finally(() => setBootstrapped(true));
+    const bootstrap = async () => {
+      const [, seen] = await Promise.all([
+        getToken(),
+        SecureStore.getItemAsync(ONBOARDING_SEEN_KEY),
+      ]);
+      setOnboardingSeen(seen === 'true');
+      setBootstrapped(true);
+    };
+    bootstrap();
   }, [getToken]);
 
   useEffect(() => {
@@ -61,6 +72,16 @@ export default function App() {
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f4f0' }}>
         <ActivityIndicator size="large" color="#2d6a2d" />
       </View>
+    );
+  }
+
+  if (!onboardingSeen) {
+    return (
+      <CrashErrorBoundary>
+        <SafeAreaProvider>
+          <OnboardingScreen onDone={() => setOnboardingSeen(true)} />
+        </SafeAreaProvider>
+      </CrashErrorBoundary>
     );
   }
 
