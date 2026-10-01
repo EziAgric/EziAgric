@@ -99,7 +99,7 @@ jobs:
       SLOWDOWN: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'slowdown-experiment' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -225,7 +225,7 @@ jobs:
       contents: write   # push to the perf-trends branch only
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install k6
         run: |
