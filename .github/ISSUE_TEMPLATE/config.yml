@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing guide
+    url: https://github.com/EziAgric/EziAgric/blob/main/CONTRIBUTING.md
+    about: Read how to pick up Drips Wave issues, branch, commit and open PRs.
+  - name: Required PR CI gates
+    url: https://github.com/EziAgric/EziAgric#-required-pr-ci-gates
+    about: The CI gates every PR must pass before merge.

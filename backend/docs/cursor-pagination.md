@@ -59,6 +59,9 @@ endpoints.
 
 - `GET /api/admin/audit` ([adminAudit.service.ts](../src/services/adminAudit.service.ts))
 - `GET /webhooks/:id/logs` ([webhooks.logs.routes.ts](../src/routes/webhooks.logs.routes.ts))
+- `GET /listings` ([listings.routes.ts](../src/routes/listings.routes.ts)) —
+  supports `commodity`, `region`, `minPrice`, `maxPrice`, and `minQuantity`
+  filters (combined with AND semantics) alongside `cursor`/`limit`.
 
 ## Endpoints intentionally not migrated yet
 
