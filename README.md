@@ -216,6 +216,17 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-354 -->
+- #354: [Contract] Milestone-based release for multi-drop deliveries
+
+<!-- handsoff-issue-356 -->
+- #356: [Contract] Per-token minimum trade amount to prevent dust trades
+
+<!-- handsoff-issue-357 -->
+- #357: [Contract] Mediator fee share on resolved disputes
+
+<!-- handsoff-issue-358 -->
+- #358: [Contract] Dispute evidence submission deadline
 <!-- handsoff-issue-367 -->
 - #367: [Backend] Product listing model and CRUD API for sellers
 <!-- handsoff-issue-359 -->
