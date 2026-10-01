@@ -216,6 +216,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-412 -->
+- #412: [Frontend] Mediator dispute review: side-by-side evidence viewer
 <!-- handsoff-issue-389 -->
 - #389: [Backend] Indicative commodity price feed (off-chain) for listings
 <!-- handsoff-issue-354 -->
