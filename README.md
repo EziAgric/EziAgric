@@ -216,6 +216,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## Handsoff notes
 
+<!-- handsoff-issue-389 -->
+- #389: [Backend] Indicative commodity price feed (off-chain) for listings
 <!-- handsoff-issue-354 -->
 - #354: [Contract] Milestone-based release for multi-drop deliveries
 
