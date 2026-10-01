@@ -1,6 +1,6 @@
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../services/auth.service";
-import { findOrCreateUser, updateUser, getPublicProfile } from "../services/user.service";
+import { findOrCreateUser, updateUser, getPublicProfile, deactivateUser } from "../services/user.service";
 import { AppError, ErrorCode } from "../errors/errorCodes";
 
 /**
@@ -34,6 +34,28 @@ export async function updateMe(req: AuthRequest, res: Response, next: NextFuncti
   try {
     const user = await updateUser(callerWalletAddress, req.body);
     res.json(user);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Deactivate current user account.
+ * POST /users/me/deactivate
+ *
+ * Blocked while the user has open trades or disputes. On success the profile
+ * is anonymized (PII scrubbed) while trade records are retained for audit,
+ * and all active sessions are revoked.
+ */
+export async function deactivateMe(req: AuthRequest, res: Response, next: NextFunction) {
+  const callerWalletAddress = req.user?.walletAddress;
+  if (!callerWalletAddress) {
+    return next(new AppError(ErrorCode.AUTH_ERROR, "Unauthorized", 401));
+  }
+
+  try {
+    const result = await deactivateUser(callerWalletAddress);
+    res.json(result);
   } catch (err) {
     next(err);
   }
