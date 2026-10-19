@@ -57,8 +57,8 @@ importers:
         specifier: ^57.0.22
         version: 57.0.23(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       expo-secure-store:
-        specifier: ^13.0.2
-        version: 13.0.2(expo@58.0.10)
+        specifier: ^58.0.2
+        version: 58.0.2(expo@58.0.10)
       expo-sqlite:
         specifier: 57.0.3
         version: 57.0.3(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
@@ -2367,8 +2367,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-secure-store@13.0.2:
-    resolution: {integrity: sha512-3QYgoneo8p8yeeBPBiAfokNNc2xq6+n8+Ob4fAlErEcf4H7Y72LH+K/dx0nQyWau2ZKZUXBxyyfuHFyVKrEVLg==}
+  expo-secure-store@58.0.2:
+    resolution: {integrity: sha512-VupWWEuQF6IiQ06McSymtn7/tehs8ifThhFwAU4UK8poomZcaa2S0UVt/y7G2XozBdkI3xpiPSx+r0pS2zsuYQ==}
     peerDependencies:
       expo: '*'
 
@@ -7732,7 +7732,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-secure-store@13.0.2(expo@58.0.10):
+  expo-secure-store@58.0.2(expo@58.0.10):
     dependencies:
       expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
 
