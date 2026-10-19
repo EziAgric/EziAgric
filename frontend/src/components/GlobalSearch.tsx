@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api, type SearchResultItem } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,6 +25,9 @@ const CATEGORY_PATHS: Record<keyof GroupedResults, string> = {
   contracts: "/contracts",
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 interface GlobalSearchProps {
   /** Called when the overlay is dismissed without a selection */
   onClose?: () => void;
@@ -41,13 +44,19 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
   const [activeIndex, setActiveIndex] = useState(-1);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const allItems = [
-    ...results.trades.map((r) => ({ ...r, category: "trades" as const })),
-    ...results.users.map((r) => ({ ...r, category: "users" as const })),
-    ...results.contracts.map((r) => ({ ...r, category: "contracts" as const })),
-  ];
+  const allItems = useMemo(
+    () => [
+      ...results.trades.map((r) => ({ ...r, category: "trades" as const })),
+      ...results.users.map((r) => ({ ...r, category: "users" as const })),
+      ...results.contracts.map((r) => ({ ...r, category: "contracts" as const })),
+    ],
+    [results]
+  );
 
   const open = useCallback(() => {
     setIsOpen(true);
@@ -85,6 +94,50 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, open, close]);
+
+  // Keep Tab / Shift+Tab focus cycling within the dialog while open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleFocusTrap(e: KeyboardEvent) {
+      const dialog = dialogRef.current;
+      if (e.key !== "Tab" || !dialog) return;
+
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      const focusInside = active instanceof Node && dialog.contains(active);
+
+      if (e.shiftKey) {
+        if (!focusInside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!focusInside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleFocusTrap);
+    return () => document.removeEventListener("keydown", handleFocusTrap);
+  }, [isOpen]);
+
+  // Return focus to the trigger button once the dialog closes
+  useEffect(() => {
+    if (isOpen) {
+      wasOpenRef.current = true;
+    } else if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      triggerRef.current?.focus();
+    }
+  }, [isOpen]);
 
   // Debounced search
   useEffect(() => {
@@ -150,6 +203,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
   if (!isOpen) {
     return (
       <button
+        ref={triggerRef}
         onClick={open}
         aria-label="Open global search"
         className="flex items-center gap-2 rounded-lg border border-border-default bg-bg-elevated px-3 py-1.5 text-sm text-text-muted hover:border-border-hover hover:text-text-secondary transition-colors"
@@ -168,6 +222,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="Global search"
