@@ -3,6 +3,7 @@
 import React from "react";
 import type { TradeDetail } from "@/types/trade";
 import { WalletAddressBadge } from "@/components/ui/WalletAddressBadge";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface ContractInfoProps {
   trade: TradeDetail;
@@ -38,21 +39,22 @@ function LossRatioBar({
 }
 
 export function ContractInfo({ trade }: ContractInfoProps) {
+  const { t } = useTranslation();
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card">
       <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase mb-4">
-        Contract Details
+        {t("tradeDetail.contractTitle")}
       </h2>
 
       {/* Contract meta */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         {[
-          { label: "Contract ID", value: trade.contractId },
-          { label: "Incoterms", value: trade.incoterms },
-          { label: "Origin Port", value: trade.originPort },
-          { label: "Dest. Port", value: trade.destinationPort },
-          { label: "ETA", value: trade.eta },
-          { label: "Carrier", value: trade.carrier },
+          { label: t("tradeDetail.contractId"), value: trade.contractId },
+          { label: t("tradeDetail.incoterms"), value: trade.incoterms },
+          { label: t("tradeDetail.originPort"), value: trade.originPort },
+          { label: t("tradeDetail.destinationPort"), value: trade.destinationPort },
+          { label: t("tradeDetail.eta"), value: trade.eta },
+          { label: t("tradeDetail.carrier"), value: trade.carrier },
         ].map(({ label, value }) => (
           <div key={label}>
             <p className="text-xs text-text-muted mb-0.5">{label}</p>
@@ -65,7 +67,7 @@ export function ContractInfo({ trade }: ContractInfoProps) {
 
       <div className="mb-5 grid grid-cols-1 gap-3">
         <div>
-          <p className="text-xs text-text-muted mb-1">Buyer Wallet</p>
+          <p className="text-xs text-text-muted mb-1">{t("tradeDetail.buyerWallet")}</p>
           <WalletAddressBadge
             address={trade.buyer.walletAddress}
             truncate="middle"
@@ -75,7 +77,7 @@ export function ContractInfo({ trade }: ContractInfoProps) {
           />
         </div>
         <div>
-          <p className="text-xs text-text-muted mb-1">Seller Wallet</p>
+          <p className="text-xs text-text-muted mb-1">{t("tradeDetail.sellerWallet")}</p>
           <WalletAddressBadge
             address={trade.seller.walletAddress}
             truncate="middle"
@@ -90,7 +92,7 @@ export function ContractInfo({ trade }: ContractInfoProps) {
       {trade.lossRatios && trade.lossRatios.length > 0 && (
         <div className="border-t border-border-default pt-4">
           <p className="text-xs font-semibold text-text-muted mb-3 tracking-wide uppercase">
-            Loss Ratios
+            {t("tradeDetail.lossRatios")}
           </p>
           {trade.lossRatios.map((ratio) => (
             <LossRatioBar
@@ -134,14 +136,14 @@ export function ContractInfo({ trade }: ContractInfoProps) {
 
           <div className="relative z-10">
             <p className="text-xs font-semibold tracking-widest text-gold mb-0.5">
-              DESTINATION
+              {t("tradeDetail.destination")}
             </p>
             <p className="text-sm font-bold text-text-primary">
               {trade.destinationPort}
             </p>
             {trade.etaLabel && (
               <p className="text-xs text-text-secondary mt-0.5">
-                ETA: {trade.etaLabel}
+                {t("tradeDetail.etaValue", { eta: trade.etaLabel })}
               </p>
             )}
           </div>

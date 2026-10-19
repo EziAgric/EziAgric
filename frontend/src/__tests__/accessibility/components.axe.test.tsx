@@ -88,7 +88,7 @@ describe("Accessibility audit — WCAG 2.1 AA", () => {
 
   describe("StatusBadge", () => {
     it("has no axe violations", async () => {
-      const { container } = render(<StatusBadge status="pending" />);
+      const { container } = render(<StatusBadge status="PENDING" />);
       expect(await axe(container)).toHaveNoViolations();
     });
   });

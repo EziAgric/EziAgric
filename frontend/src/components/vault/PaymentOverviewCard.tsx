@@ -8,6 +8,8 @@ import {
   DEFAULT_PLATFORM_FEE_BPS,
   formatFeePercent,
 } from "@/lib/feeBreakdown";
+import type { MessageKey, TranslateParams } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface PaymentOverviewCardProps {
   totalCngn: number;
@@ -15,14 +17,15 @@ interface PaymentOverviewCardProps {
 }
 
 interface CostLineItem {
-  label: string;
+  labelKey: MessageKey;
+  labelParams?: TranslateParams;
   getValue: (total: number, currency: "cNGN" | "NGN", rate: number) => string;
   dimmed?: boolean;
 }
 
 const LINE_ITEMS: CostLineItem[] = [
   {
-    label: "Total Trade Value",
+    labelKey: "vault.totalTradeValue",
     getValue: (total, currency, rate) =>
       currency === "NGN"
         ? `₦${(total * rate).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`
@@ -31,7 +34,8 @@ const LINE_ITEMS: CostLineItem[] = [
   {
     // Fee math comes from the shared util so the card can never drift from the
     // backend/on-chain 1% (truncating) calculation (#423).
-    label: `Amana Platform Fee (${formatFeePercent(DEFAULT_PLATFORM_FEE_BPS)})`,
+    labelKey: "vault.platformFee",
+    labelParams: { percent: formatFeePercent(DEFAULT_PLATFORM_FEE_BPS) },
     getValue: (total, currency, rate) => {
       const { fee } = computeFeeBreakdownFromDecimal(total);
       const feeValue = parseFloat(fee);
@@ -41,7 +45,7 @@ const LINE_ITEMS: CostLineItem[] = [
     },
   },
   {
-    label: "Net Payout",
+    labelKey: "vault.netPayout",
     getValue: (total, currency, rate) => {
       const { net } = computeFeeBreakdownFromDecimal(total);
       const netValue = parseFloat(net);
@@ -57,6 +61,7 @@ export function PaymentOverviewCard({
   totalCngn,
   ngnRate = 1580,
 }: PaymentOverviewCardProps) {
+  const { t } = useTranslation();
   const [currency, setCurrency] = useState<"cNGN" | "NGN">("cNGN");
 
   const lockedDisplay =
@@ -66,7 +71,7 @@ export function PaymentOverviewCard({
 
   return (
     <BentoCard
-      title="Vault Escrow Summary"
+      title={t("vault.escrowSummary")}
       icon={<CreditCard className="w-5 h-5" />}
       glowVariant="gold"
       className="h-full"
@@ -90,12 +95,12 @@ export function PaymentOverviewCard({
       </div>
 
       <div className="space-y-0 divide-y divide-border-default">
-        {LINE_ITEMS.map(({ label, getValue, dimmed }) => (
-          <div key={label} className="flex items-center justify-between py-3">
+        {LINE_ITEMS.map(({ labelKey, labelParams, getValue, dimmed }) => (
+          <div key={labelKey} className="flex items-center justify-between py-3">
             <span
               className={`text-sm ${dimmed ? "text-text-muted" : "text-text-secondary"}`}
             >
-              {label}
+              {t(labelKey, labelParams)}
             </span>
             <span className="text-sm font-semibold text-text-primary">
               {getValue(totalCngn, currency, ngnRate)}
@@ -105,7 +110,7 @@ export function PaymentOverviewCard({
       </div>
 
       <div className="bg-gold-muted/20 border-l-[3px] border-gold text-gold font-bold px-4 py-2 mt-4 rounded-r-md flex items-center justify-between">
-        <span className="text-sm">Locked in cNGN</span>
+        <span className="text-sm">{t("vault.lockedInCngn")}</span>
         <span className="text-sm">{lockedDisplay}</span>
       </div>
     </BentoCard>

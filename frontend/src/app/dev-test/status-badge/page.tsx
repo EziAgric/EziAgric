@@ -1,23 +1,15 @@
 // src/app/dev/status-badges/page.tsx
 // Smoke-test page — visit: http://localhost:3000/dev/status-badges
 
-import { StatusBadge, TradeStatus } from "@/components/ui/StatusBadge";
-
-const ALL_STATUSES: TradeStatus[] = [
-  "delivered",
-  "in-transit",
-  "disputed",
-  "locked",
-  "draft",
-  "pending",
-];
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { TRADE_STATUSES as ALL_STATUSES, type TradeStatus } from "@/types/trade";
 
 export default function StatusBadgeDevPage() {
   return (
     <div className="min-h-screen bg-primary p-10">
       <h1 className="text-2xl font-bold text-gold mb-2">StatusBadge</h1>
       <p className="text-text-secondary text-sm mb-10">
-        All 6 trade statuses · sizes sm &amp; md · icon on/off
+        All 5 trade statuses · sizes sm &amp; md · icon on/off
       </p>
 
       {/* Size: md (default) */}
@@ -63,12 +55,12 @@ export default function StatusBadgeDevPage() {
         </h2>
         <div className="bg-card border border-border-default rounded-xl overflow-hidden divide-y divide-border-default">
           {[
-            { id: "AMN-4920-X", commodity: "20T Non-GMO Soybeans", status: "in-transit" as TradeStatus },
-            { id: "AMN-3811-Y", commodity: "50T White Maize", status: "delivered" as TradeStatus },
-            { id: "AMN-2204-Z", commodity: "10T Cocoa Beans", status: "disputed" as TradeStatus },
-            { id: "AMN-1107-A", commodity: "30T Cassava Flour", status: "locked" as TradeStatus },
-            { id: "AMN-0990-B", commodity: "15T Palm Oil", status: "pending" as TradeStatus },
-            { id: "AMN-0012-C", commodity: "8T Groundnuts", status: "draft" as TradeStatus },
+            { id: "AMN-4920-X", commodity: "20T Non-GMO Soybeans", status: "IN TRANSIT" as TradeStatus },
+            { id: "AMN-3811-Y", commodity: "50T White Maize", status: "SETTLED" as TradeStatus },
+            { id: "AMN-2204-Z", commodity: "10T Cocoa Beans", status: "DISPUTED" as TradeStatus },
+            { id: "AMN-1107-A", commodity: "30T Cassava Flour", status: "IN TRANSIT" as TradeStatus },
+            { id: "AMN-0990-B", commodity: "15T Palm Oil", status: "PENDING" as TradeStatus },
+            { id: "AMN-0012-C", commodity: "8T Groundnuts", status: "DRAFT" as TradeStatus },
           ].map((row) => (
             <div
               key={row.id}

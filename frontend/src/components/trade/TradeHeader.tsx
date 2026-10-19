@@ -2,13 +2,15 @@
 
 import React from "react";
 import { FileText } from "lucide-react";
-import type { TradeDetail } from "@/types/trade";
+import type { TradeDetail, TradeStatus } from "@/types/trade";
+import { useTranslation } from "@/lib/i18n/useTranslation";
+import { TRADE_STATUS_MESSAGE_KEYS } from "./tradeStatusLabel";
 
 interface TradeHeaderProps {
   trade: TradeDetail;
 }
 
-const STATUS_STYLES: Record<string, string> = {
+const STATUS_STYLES: Record<TradeStatus, string> = {
   "IN TRANSIT":
     "bg-emerald-muted text-emerald border border-emerald/30",
   "PENDING":
@@ -22,6 +24,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export function TradeHeader({ trade }: TradeHeaderProps) {
+  const { t } = useTranslation();
   const statusStyle =
     STATUS_STYLES[trade.status] ?? STATUS_STYLES["DRAFT"];
 
@@ -30,7 +33,7 @@ export function TradeHeader({ trade }: TradeHeaderProps) {
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-text-muted mb-4">
         <span className="hover:text-text-secondary cursor-pointer transition-colors">
-          Trades
+          {t("tradeDetail.breadcrumbTrades")}
         </span>
         <span>/</span>
         <span className="text-text-secondary">{trade.id}</span>
@@ -48,7 +51,7 @@ export function TradeHeader({ trade }: TradeHeaderProps) {
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${statusStyle}`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-              {trade.status}
+              {t(TRADE_STATUS_MESSAGE_KEYS[trade.status] ?? TRADE_STATUS_MESSAGE_KEYS.DRAFT)}
             </span>
 
             {/* Initiated date */}
@@ -63,7 +66,7 @@ export function TradeHeader({ trade }: TradeHeaderProps) {
                 <rect x="1" y="2" width="14" height="13" rx="2" />
                 <path d="M1 6h14M5 1v2M11 1v2" />
               </svg>
-              Initiated {trade.initiatedAt}
+              {t("tradeDetail.initiated", { date: trade.initiatedAt })}
             </span>
 
             {/* Commodity category tag */}
@@ -77,7 +80,7 @@ export function TradeHeader({ trade }: TradeHeaderProps) {
         <div className="flex gap-3 flex-shrink-0">
           <button className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border-default text-text-secondary text-sm font-medium hover:border-border-hover hover:text-text-primary transition-all">
             <FileText className="w-4 h-4" />
-            View Contract
+            {t("tradeDetail.viewContract")}
           </button>
           <button className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-gold-cta text-text-inverse text-sm font-semibold hover:shadow-glow-gold transition-all">
             <svg
@@ -90,7 +93,7 @@ export function TradeHeader({ trade }: TradeHeaderProps) {
               <circle cx="8" cy="8" r="7" />
               <path d="M5 8l2.5 2.5L11 5.5" />
             </svg>
-            Confirm Delivery
+            {t("tradeDetail.confirmDelivery")}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import React from "react";
 import { Star } from "lucide-react";
 import type { TradeParty } from "@/types/trade";
 import { WalletAddressBadge } from "@/components/ui/WalletAddressBadge";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface PartiesPanelProps {
   buyer: TradeParty;
@@ -17,10 +18,11 @@ function PartyCard({
   party: TradeParty;
   role: "BUYER" | "SELLER";
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 bg-elevated rounded-lg p-4 border border-border-default">
       <p className="text-xs font-semibold tracking-widest text-text-muted mb-3">
-        THE {role}
+        {t(role === "BUYER" ? "tradeDetail.partyBuyer" : "tradeDetail.partySeller")}
       </p>
       <div className="flex items-center gap-3">
         {/* Avatar */}
@@ -54,7 +56,7 @@ function PartyCard({
 
       {/* Trust Score */}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-default">
-        <span className="text-xs text-text-muted">Trust Score</span>
+        <span className="text-xs text-text-muted">{t("tradeDetail.trustScore")}</span>
         <div className="flex items-center gap-1.5">
           <span className="text-emerald font-bold text-sm">{party.trustScore}</span>
           <div className="flex gap-0.5">
@@ -76,10 +78,11 @@ function PartyCard({
 }
 
 export function PartiesPanel({ buyer, seller }: PartiesPanelProps) {
+  const { t } = useTranslation();
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card">
       <h2 className="text-sm font-semibold text-text-secondary mb-4 tracking-wide uppercase">
-        Trade Parties
+        {t("tradeDetail.partiesTitle")}
       </h2>
       <div className="flex flex-col sm:flex-row gap-4">
         <PartyCard party={buyer} role="BUYER" />

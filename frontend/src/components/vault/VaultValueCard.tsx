@@ -3,6 +3,7 @@ import { useState } from "react";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { Shield, Key } from "lucide-react";
 import { LegalDisclaimerModal } from "@/components/ui/LegalDisclaimerModal";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface VaultValueCardProps {
   value: number;
@@ -17,6 +18,7 @@ export function VaultValueCard({
   isInsured,
   onReleaseFunds,
 }: VaultValueCardProps) {
+  const { t } = useTranslation();
   const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   const formattedValue = new Intl.NumberFormat("en-US", {
@@ -38,12 +40,12 @@ export function VaultValueCard({
       <div className="flex flex-col w-76 h-[335.13px]">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold tracking-widest text-text-secondary uppercase">
-            Total Vault Value
+            {t("vault.totalVaultValue")}
           </p>
           <div className="flex items-center gap-1 text-xs">
             <span className="text-text-secondary">{currency}</span>
             <span className="text-text-muted">/</span>
-            <span className="text-text-muted">FIAT</span>
+            <span className="text-text-muted">{t("vault.fiat")}</span>
           </div>
         </div>
 
@@ -57,12 +59,11 @@ export function VaultValueCard({
             <div className="flex items-center gap-2 mb-2">
               <Shield className="w-4 h-4 text-emerald" />
               <span className="text-sm font-semibold text-emerald">
-                Fully Insured
+                {t("vault.fullyInsured")}
               </span>
             </div>
             <p className="text-xs text-emerald leading-relaxed">
-              Secured with multi-signature cold storage and 24/7 autonomous
-              monitoring.
+              {t("vault.insuredBody")}
             </p>
           </div>
         )}
@@ -72,7 +73,7 @@ export function VaultValueCard({
           className="mt-auto w-full flex items-center justify-center gap-2 bg-gold hover:bg-gold-hover text-text-inverse font-semibold py-3 px-6 rounded-xl transition-colors"
         >
           <Key className="w-5 h-5" />
-          Release Funds
+          {t("vault.releaseFunds")}
         </button>
       </div>
     </BentoCard>

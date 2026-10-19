@@ -11,11 +11,12 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { NavButton } from "@/components/ui/Navigation";
 import { VirtualizedList } from "@/components/ui/VirtualizedList";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { toTradeStatus, type TradeStatusFilter } from "@/types/trade";
 
-type TradeStatus = "all" | "active" | "pending" | "completed" | "disputed";
 type TradeRole = "all" | "buying" | "selling";
 
-const STATUS_FILTERS: { label: string; value: TradeStatus }[] = [
+const STATUS_FILTERS: { label: string; value: TradeStatusFilter }[] = [
   { label: "All", value: "all" },
   { label: "Active", value: "active" },
   { label: "Pending", value: "pending" },
@@ -42,17 +43,6 @@ function needsMyAction(trade: TradeResponse, address: string | null): boolean {
     (isSeller && (s === "FUNDED" || s === "CONFIRMED"))
   );
 }
-
-// Status chip tokens: text = status color, bg = status/10, border = status/20.
-// "completed" and "draft" use neutral surface tokens (no alert color).
-const STATUS_STYLES: Record<string, string> = {
-  active:    "text-status-success bg-status-success/10 border border-status-success/20",
-  pending:   "text-status-warning bg-status-warning/10 border border-status-warning/20",
-  completed: "text-text-secondary bg-surface-2 border border-border-default",
-  disputed:  "text-status-danger  bg-status-danger/10  border border-status-danger/20",
-  locked:    "text-status-locked  bg-status-locked/10  border border-status-locked/20",
-  draft:     "text-status-draft   bg-surface-1         border border-border-default",
-};
 
 const PAGE_SIZE = 100;
 const ROW_HEIGHT = 52;
@@ -94,7 +84,7 @@ export default function TradesPage() {
   const searchParams = useSearchParams();
 
   // Derive filter state from URL; fall back to "all"
-  const activeFilter = (searchParams.get("status") as TradeStatus) ?? "all";
+  const activeFilter = (searchParams.get("status") as TradeStatusFilter) ?? "all";
   const activeRole = (searchParams.get("role") as TradeRole) ?? "all";
   const needsAction = searchParams.get("action") === "1";
   const page = Number(searchParams.get("page") ?? "1");
@@ -176,7 +166,7 @@ export default function TradesPage() {
     return true;
   });
 
-  function handleStatusFilter(value: TradeStatus) {
+  function handleStatusFilter(value: TradeStatusFilter) {
     pushParams({ status: value === "all" ? null : value, page: null });
   }
 
@@ -399,13 +389,10 @@ export default function TradesPage() {
                       {trade.amountCngn} cNGN
                     </div>
                     <div>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                          STATUS_STYLES[trade.status] ?? "text-text-muted"
-                        }`}
-                      >
-                        {trade.status}
-                      </span>
+                      <StatusBadge
+                        status={toTradeStatus(trade.status)}
+                        size="sm"
+                      />
                     </div>
                     <div className="text-text-secondary">
                       {formatDate(trade.createdAt)}

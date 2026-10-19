@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { TradeDetailPanel } from "../TradeDetailPanel";
@@ -25,6 +25,12 @@ jest.mock("next/link", () => {
   MockNextLink.displayName = "MockNextLink";
   return MockNextLink;
 });
+
+const mockPush = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
 
 const baseTrade: TradeDetail = {
   id: "TRD-12345",
@@ -194,6 +200,101 @@ describe("trade detail component coverage", () => {
     );
     expect(screen.getByText("Release Funds")).toBeInTheDocument();
     expect(screen.queryByText("Raise Dispute")).not.toBeInTheDocument();
+  });
+
+  it("fires each ActionBar callback when its button is clicked", async () => {
+    const user = userEvent.setup();
+    const onConfirmDelivery = jest.fn();
+    const onRaiseDispute = jest.fn();
+    const onVerifyPoD = jest.fn();
+    const onReleaseFunds = jest.fn();
+    const props = {
+      onConfirmDelivery,
+      confirmingDelivery: false,
+      onRaiseDispute,
+      onVerifyPoD,
+      onReleaseFunds,
+    };
+
+    const { rerender } = render(
+      <ActionBar trade={{ ...baseTrade, status: "IN TRANSIT" }} {...props} />,
+    );
+
+    await user.click(screen.getByText("Raise Dispute"));
+    expect(onRaiseDispute).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByText("PoD Verification"));
+    expect(onVerifyPoD).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByText("Confirm Delivery"));
+    expect(onConfirmDelivery).toHaveBeenCalledTimes(1);
+
+    rerender(<ActionBar trade={{ ...baseTrade, status: "SETTLED" }} {...props} />);
+    await user.click(screen.getByText("Release Funds"));
+    expect(onReleaseFunds).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables Release Funds and shows a loading label while releasing", () => {
+    const onReleaseFunds = jest.fn();
+    render(
+      <ActionBar
+        trade={{ ...baseTrade, status: "SETTLED" }}
+        onConfirmDelivery={jest.fn()}
+        confirmingDelivery={false}
+        onReleaseFunds={onReleaseFunds}
+        releasingFunds
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /Releasing/ });
+    expect(button).toBeDisabled();
+    expect(screen.queryByText("Release Funds")).not.toBeInTheDocument();
+  });
+
+  it("navigates to the dispute flow from TradeDetailPanel", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    render(<TradeDetailPanel trade={baseTrade} />);
+
+    await user.click(screen.getByText("Raise Dispute"));
+    expect(mockPush).toHaveBeenCalledWith("/trades/TRD-12345/dispute");
+  });
+
+  it("opens the proof-of-delivery flow from TradeDetailPanel", async () => {
+    const user = userEvent.setup();
+    render(<TradeDetailPanel trade={baseTrade} />);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(screen.getByText("PoD Verification"));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.getByText("Record or upload a delivery confirmation video for this trade."),
+    ).toBeInTheDocument();
+  });
+
+  it("runs the release-funds action from TradeDetailPanel with a loading state", async () => {
+    const user = userEvent.setup();
+    let resolveRelease: () => void = () => {};
+    const onReleaseFunds = jest.fn(
+      () => new Promise<void>((resolve) => {
+        resolveRelease = resolve;
+      }),
+    );
+    render(
+      <TradeDetailPanel
+        trade={{ ...baseTrade, status: "SETTLED" }}
+        onReleaseFunds={onReleaseFunds}
+      />,
+    );
+
+    await user.click(screen.getByText("Release Funds"));
+    expect(onReleaseFunds).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /Releasing/ })).toBeDisabled();
+
+    await act(async () => {
+      resolveRelease();
+    });
+    expect(screen.getByText("Release Funds")).toBeInTheDocument();
   });
 
   it("renders without optional timelines", () => {
