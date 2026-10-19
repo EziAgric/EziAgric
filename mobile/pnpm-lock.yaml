@@ -51,8 +51,8 @@ importers:
         specifier: ~58.0.10
         version: 58.0.10(expo@58.0.10)
       expo-localization:
-        specifier: ~57.0.2
-        version: 57.0.2(expo@58.0.10)(react@18.3.1)
+        specifier: ~58.0.4
+        version: 58.0.4(expo@58.0.10)(react@18.3.1)
       expo-notifications:
         specifier: ^57.0.22
         version: 57.0.23(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
@@ -2332,8 +2332,8 @@ packages:
       expo: '*'
       react: '*'
 
-  expo-localization@57.0.2:
-    resolution: {integrity: sha512-sIKYH3Ivddoge568WY6j+Kp2MAAZzWWqEnY2bokLkJFwX366tGL1mEnoY2WUi/qHatFFPop2yqDdurzbhnnimQ==}
+  expo-localization@58.0.4:
+    resolution: {integrity: sha512-qkW8TscppqhUy07dJnaBsFb+Le6JZrS2sQT3m8iOC4iqBXTKmFaI6P3agEmJcxYGlyAx1jt3dUxUTW3UPM6qKg==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -7684,7 +7684,7 @@ snapshots:
       expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       react: 18.3.1
 
-  expo-localization@57.0.2(expo@58.0.10)(react@18.3.1):
+  expo-localization@58.0.4(expo@58.0.10)(react@18.3.1):
     dependencies:
       expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       react: 18.3.1
