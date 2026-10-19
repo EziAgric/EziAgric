@@ -39,8 +39,8 @@ importers:
         specifier: ^58.0.10
         version: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       expo-device:
-        specifier: ^57.0.2
-        version: 57.0.2(expo@58.0.10)
+        specifier: ^58.0.5
+        version: 58.0.5(expo@58.0.10)
       expo-file-system:
         specifier: ~57.0.7
         version: 57.0.7(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))
@@ -2282,8 +2282,8 @@ packages:
       expo: '*'
       react-native: '*'
 
-  expo-device@57.0.2:
-    resolution: {integrity: sha512-1A0/FICR3CgrH43FeiDQP3l5eHDmiMoh4EjXfhfoHHkMgdBQdyD0kwDWskiGZlQ3E0Nd0LHkCFH6vJ1ofm/jow==}
+  expo-device@58.0.5:
+    resolution: {integrity: sha512-GNyaHPwoiI/z2SGR14R6d9J7hFSW2JabZieJtC3l6/LO2mJYVCbhEsQ7/1ljGBeTUnFFWHcFLccdaWEhOWtaQQ==}
     peerDependencies:
       expo: '*'
 
@@ -7640,7 +7640,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-device@57.0.2(expo@58.0.10):
+  expo-device@58.0.5(expo@58.0.10):
     dependencies:
       expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       ua-parser-js: 0.7.41
