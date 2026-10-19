@@ -5,9 +5,14 @@ import { ExpoConfig, getDefaultConfig } from 'expo/config';
 const APP_SCHEME = 'amanavault';
 const LINK_HOSTS = ['amanavault.app', 'www.amanavault.app'];
 
+// Build variant is injected per EAS profile (see eas.json). Defaults to
+// development for local `expo start` runs.
+const APP_VARIANT = process.env.APP_VARIANT ?? 'development';
+const IS_PRODUCTION = APP_VARIANT === 'production';
+
 const config: ExpoConfig = {
   ...getDefaultConfig(__dirname),
-  name: 'Amana',
+  name: IS_PRODUCTION ? 'Amana' : `Amana (${APP_VARIANT})`,
   slug: 'amana-mobile',
   version: '0.1.0',
   scheme: APP_SCHEME,
