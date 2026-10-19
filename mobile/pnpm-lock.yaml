@@ -60,8 +60,8 @@ importers:
         specifier: ^13.0.2
         version: 13.0.2(expo@58.0.10)
       expo-sqlite:
-        specifier: 57.0.3
-        version: 57.0.3(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
+        specifier: 58.0.13
+        version: 58.0.13(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
       i18next:
         specifier: ^23.11.5
         version: 23.16.8
@@ -2376,8 +2376,8 @@ packages:
     resolution: {integrity: sha512-FHYecxfGOuAhacHcanR6qCN8Cln9S+FFulcYetLu3ddDg55ohuCsMZ9U4Egzwdm+A2o6N+MdSoJKquBC5F9NIg==}
     engines: {node: ^22.13.0 || ^24.3.0 || ^26.0.0 || >=27.0.0}
 
-  expo-sqlite@57.0.3:
-    resolution: {integrity: sha512-gbu9Nwm76DNpSK+MEhCjjjF3/EMyFE96IEDSlfO9jPiF4q48a7bef5EXnWVrwW8rvqCZKYAfSGqSpYNhhhpgIg==}
+  expo-sqlite@58.0.13:
+    resolution: {integrity: sha512-EqYQTJUJ2Ub+Q/PwM8UTQBeg1/+piuhG8KQTO8HOhZfYu8e34bB3sOkGsM0HQ7KNesvWLlN8UmbrajRQRyE3gg==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -7738,7 +7738,7 @@ snapshots:
 
   expo-server@58.0.5: {}
 
-  expo-sqlite@57.0.3(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1):
+  expo-sqlite@58.0.13(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1):
     dependencies:
       await-lock: 2.2.2
       expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
