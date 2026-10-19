@@ -199,6 +199,113 @@ describe("useAdmin", () => {
     });
   });
 
+  describe("missing address", () => {
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = "GADMIN123";
+      process.env.NEXT_PUBLIC_ENABLE_ADMIN_UI = "true";
+    });
+
+    it.each([
+      ["null", null],
+      ["undefined", undefined],
+    ])("returns isAdmin false when address is %s", (_label, address) => {
+      mockUseAuth.mockReturnValue({
+        address: address as string | null,
+        shortAddress: null,
+        token: null,
+        isAuthenticated: false,
+        isWalletConnected: false,
+        isWalletDetected: false,
+        isLoading: false,
+        error: null,
+        connectWallet: jest.fn(),
+        authenticate: jest.fn(),
+        logout: jest.fn(),
+        refreshAuth: jest.fn(),
+      });
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current.isAdmin).toBe(false);
+      expect(result.current.canAccessAdmin).toBe(false);
+    });
+  });
+
+  describe("loading state", () => {
+    beforeEach(() => {
+      process.env.NEXT_PUBLIC_ADMIN_WALLETS = "GADMIN123";
+      process.env.NEXT_PUBLIC_ENABLE_ADMIN_UI = "true";
+    });
+
+    const loadingAuth = {
+      address: null,
+      shortAddress: null,
+      token: null,
+      isAuthenticated: false,
+      isWalletConnected: false,
+      isWalletDetected: false,
+      isLoading: true,
+      error: null,
+      connectWallet: jest.fn(),
+      authenticate: jest.fn(),
+      logout: jest.fn(),
+      refreshAuth: jest.fn(),
+    };
+
+    it("denies admin access while auth is still loading", () => {
+      mockUseAuth.mockReturnValue(loadingAuth);
+
+      const { result } = renderHook(() => useAdmin());
+
+      expect(result.current.isAdmin).toBe(false);
+      expect(result.current.canAccessAdmin).toBe(false);
+    });
+
+    it("grants admin access once auth resolves to an admin address", () => {
+      mockUseAuth.mockReturnValue(loadingAuth);
+
+      const { result, rerender } = renderHook(() => useAdmin());
+
+      expect(result.current.canAccessAdmin).toBe(false);
+
+      mockUseAuth.mockReturnValue({
+        ...loadingAuth,
+        address: "GADMIN123",
+        shortAddress: "GADMIN...123",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+      });
+      rerender();
+
+      expect(result.current.isAdmin).toBe(true);
+      expect(result.current.canAccessAdmin).toBe(true);
+    });
+
+    it("keeps admin access denied once auth resolves to a non-admin address", () => {
+      mockUseAuth.mockReturnValue(loadingAuth);
+
+      const { result, rerender } = renderHook(() => useAdmin());
+
+      mockUseAuth.mockReturnValue({
+        ...loadingAuth,
+        address: "GUSER456",
+        shortAddress: "GUSER...456",
+        token: "mock-token",
+        isAuthenticated: true,
+        isWalletConnected: true,
+        isWalletDetected: true,
+        isLoading: false,
+      });
+      rerender();
+
+      expect(result.current.isAdmin).toBe(false);
+      expect(result.current.canAccessAdmin).toBe(false);
+    });
+  });
+
   describe("all return values", () => {
     it("returns all expected properties", () => {
       process.env.NEXT_PUBLIC_ADMIN_WALLETS = "GADMIN123";
