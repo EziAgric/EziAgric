@@ -8,6 +8,8 @@
  * - Tracks request timing and metadata
  */
 
+import { logger } from './logger';
+
 export interface TracedRequestOptions extends RequestInit {
   correlationId?: string;
   timeout?: number;
@@ -176,7 +178,7 @@ export class TracedHttpClient {
     const requestId = headers['X-Request-Id'];
 
     // Log request start
-    console.log(`[${correlationId}] ${method} ${url}`, {
+    logger.debug(`[${correlationId}] ${method} ${url}`, {
       correlationId,
       requestId,
       method,
@@ -203,7 +205,7 @@ export class TracedHttpClient {
       const duration = endTime - startTime;
 
       // Log response
-      console.log(`[${correlationId}] ${method} ${url} - ${response.status}`, {
+      logger.debug(`[${correlationId}] ${method} ${url} - ${response.status}`, {
         correlationId,
         requestId,
         status: response.status,
@@ -219,7 +221,7 @@ export class TracedHttpClient {
         try {
           data = await response.json();
         } catch (error) {
-          console.warn(`[${correlationId}] Failed to parse JSON response:`, error);
+          logger.warn(`[${correlationId}] Failed to parse JSON response:`, error);
         }
       }
 
@@ -254,7 +256,7 @@ export class TracedHttpClient {
       const endTime = performance.now();
       const duration = endTime - startTime;
 
-      console.error(`[${correlationId}] ${method} ${url} - ERROR`, {
+      logger.error(`[${correlationId}] ${method} ${url} - ERROR`, {
         correlationId,
         requestId,
         error: error instanceof Error ? error.message : 'Unknown error',

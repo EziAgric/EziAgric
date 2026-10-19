@@ -287,3 +287,69 @@ describe("GlobalSearch — navigation on select", () => {
     expect(mockPush).toHaveBeenCalledWith("/trades/t1");
   });
 });
+
+// ── Focus management ──────────────────────────────────────────────────────────
+
+describe("GlobalSearch — focus management", () => {
+  it("cycles Tab from the last focusable element back to the first", () => {
+    render(<GlobalSearch />);
+    pressMetaK();
+
+    const input = screen.getByRole("searchbox");
+    const closeButton = screen.getByRole("button", { name: /close search/i });
+
+    closeButton.focus();
+    fireEvent.keyDown(closeButton, { key: "Tab" });
+    expect(input).toHaveFocus();
+  });
+
+  it("cycles Shift+Tab from the first focusable element to the last", () => {
+    render(<GlobalSearch />);
+    pressMetaK();
+
+    const input = screen.getByRole("searchbox");
+    const closeButton = screen.getByRole("button", { name: /close search/i });
+
+    input.focus();
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+    expect(closeButton).toHaveFocus();
+  });
+
+  it("returns focus to the trigger button after closing with Escape", async () => {
+    render(<GlobalSearch />);
+    await userEvent.click(screen.getByRole("button", { name: /open global search/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    pressEscape();
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open global search/i })).toHaveFocus();
+  });
+
+  it("returns focus to the trigger button after a backdrop click", async () => {
+    render(<GlobalSearch />);
+    await userEvent.click(screen.getByRole("button", { name: /open global search/i }));
+
+    fireEvent.click(screen.getByRole("dialog"));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open global search/i })).toHaveFocus();
+  });
+
+  it("returns focus to the trigger button after selecting a result", async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+    render(<GlobalSearch />);
+    pressMetaK();
+    await user.type(screen.getByRole("searchbox"), "trade");
+    act(() => jest.advanceTimersByTime(300));
+    await waitFor(() => screen.getByText("Trade #001"));
+
+    jest.useRealTimers();
+    await userEvent.click(screen.getByText("Trade #001"));
+
+    expect(mockPush).toHaveBeenCalledWith("/trades/t1");
+    expect(screen.getByRole("button", { name: /open global search/i })).toHaveFocus();
+  });
+});
