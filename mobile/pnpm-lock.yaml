@@ -45,8 +45,8 @@ importers:
         specifier: ~57.0.7
         version: 57.0.7(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))
       expo-image-manipulator:
-        specifier: ~13.0.6
-        version: 13.0.6(expo@58.0.10)
+        specifier: ~58.0.14
+        version: 58.0.14(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
       expo-image-picker:
         specifier: ~58.0.10
         version: 58.0.10(expo@58.0.10)
@@ -2306,20 +2306,17 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-image-loader@5.0.0:
-    resolution: {integrity: sha512-Eg+5FHtyzv3Jjw9dHwu2pWy4xjf8fu3V0Asyy42kO+t/FbvW/vjUixpTjPtgKQLQh+2/9Nk4JjFDV6FwCnF2ZA==}
-    peerDependencies:
-      expo: '*'
-
   expo-image-loader@58.0.3:
     resolution: {integrity: sha512-zlHudxC8OObyqCHmvdxJqURI7886KJ0cUJyn7R/a8FOD9fP837xKDN+u4SIt7XsSSVPNXzMd4Y7mN0pmup8NGA==}
     peerDependencies:
       expo: '*'
 
-  expo-image-manipulator@13.0.6:
-    resolution: {integrity: sha512-Rz8Kcfx1xYm0AsIDi6zfKYUDnwCP8edgYXWb00KAkzOF8bDxwzTrnvESWhCiveM4IB3fojjLpNeENME34p3bzA==}
+  expo-image-manipulator@58.0.14:
+    resolution: {integrity: sha512-j7Y6p4NCnzJhCa64NecnER4SK+GG1YRszSwUIsCkvQF/5od70y0m48rxtAQu0ZlwXDAf92NU2kMPKzvjAGWgaQ==}
     peerDependencies:
       expo: '*'
+      react: '*'
+      react-native: '*'
 
   expo-image-picker@58.0.10:
     resolution: {integrity: sha512-yqQC9UYMWSUxk6U0jaS1vE1w+b9Ru0FJmQ3KjUf9Q9oVg5xBxmg8+Ts+usazMAuPoskNIXJ++VZ+uK6br9yUGQ==}
@@ -7661,18 +7658,16 @@ snapshots:
       react: 18.3.1
       react-native: 0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1)
 
-  expo-image-loader@5.0.0(expo@58.0.10):
-    dependencies:
-      expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
-
   expo-image-loader@58.0.3(expo@58.0.10):
     dependencies:
       expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
 
-  expo-image-manipulator@13.0.6(expo@58.0.10):
+  expo-image-manipulator@58.0.14(expo@58.0.10)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1):
     dependencies:
       expo: 58.0.10(@babel/core@7.29.7)(@expo/dom-webview@58.0.2)(react-native@0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
-      expo-image-loader: 5.0.0(expo@58.0.10)
+      expo-image-loader: 58.0.3(expo@58.0.10)
+      react: 18.3.1
+      react-native: 0.87.1(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1)
 
   expo-image-picker@58.0.10(expo@58.0.10):
     dependencies:
