@@ -214,6 +214,67 @@ components:
         pattern: "^[a-zA-Z0-9._-]+$"
       example: beta
   schemas:
+    OrphanDeposit:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: integer }
+        ledgerSeq: { type: integer }
+        txHash: { type: string }
+        depositorAddress: { type: string }
+        amountRaw: { type: string }
+        assetId: { type: string }
+        contractTradeId: { type: string, nullable: true }
+        resolved: { type: boolean }
+        detectedAt: { type: string, format: date-time }
+    OrphanDepositListResponse:
+      type: object
+      required: [items, total, page, limit]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrphanDeposit"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+    OrphanDepositIngestRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            required: [ledgerSeq, txHash, depositorAddress, amountRaw, assetId]
+            properties:
+              ledgerSeq: { type: integer, minimum: 1 }
+              txHash: { type: string, minLength: 1 }
+              depositorAddress: { type: string, minLength: 1 }
+              amountRaw: { type: string, minLength: 1 }
+              assetId: { type: string, minLength: 1 }
+              contractTradeId: { type: string }
+    OrphanScanResult:
+      type: object
+      required: [scanned, orphansDetected, alreadyKnown]
+      properties:
+        scanned: { type: integer }
+        orphansDetected: { type: integer }
+        alreadyKnown: { type: integer }
+    OrphanDepositAttachRequest:
+      type: object
+      required: [tradeId]
+      properties:
+        tradeId: { type: string, minLength: 1 }
+    OrphanDepositAttachResponse:
+      type: object
+      required: [success, orphanId, tradeId]
+      properties:
+        success: { type: boolean }
+        orphanId: { type: integer }
+        tradeId: { type: string }
     ErrorEnvelope:
       type: object
       properties:
@@ -1165,6 +1226,110 @@ paths:
                       type: object
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+  /api/admin/orphan-deposits:
+    get:
+      tags: [Admin]
+      summary: List unresolved orphan deposits
+      description: Paginated list of on-chain deposits with no matching trade that have not yet been resolved, newest first.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Paginated unresolved orphan deposits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrphanDepositListResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/orphan-deposits/ingest:
+    post:
+      tags: [Admin]
+      summary: Ingest chain deposit events
+      description: Accepts a batch of deposit events from the chain-event scanner. Events with no matching trade are recorded as orphan deposits.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrphanDepositIngestRequest"
+      responses:
+        "200":
+          description: Scan summary for the ingested batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrphanScanResult"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/orphan-deposits/{id}/attach:
+    post:
+      tags: [Admin]
+      summary: Attach an orphan deposit to a trade
+      description: Links an orphan deposit to an existing trade and marks it resolved.
+      security:
+        - bearerAuth: []
+        - adminAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrphanDepositAttachRequest"
+      responses:
+        "200":
+          description: Orphan deposit attached to the trade.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrphanDepositAttachResponse"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/features:
     get:
       tags: [Admin]
