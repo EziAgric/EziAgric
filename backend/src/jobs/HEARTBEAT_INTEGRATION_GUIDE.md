@@ -180,6 +180,18 @@ export class WebhookJobHandler {
  * 3. Detailed analytics: GET /health/jobs/dashboard
  * 4. Manual reset failures: POST /health/jobs/{jobType}/reset-failures
  * 
+ * UPTIME
+ * ======
+ * 
+ * Every ping is also appended to JobHeartbeatEvent (pruned after 8 days).
+ * The dashboard's lastDayUptime / last7DaysUptime are the percentage of
+ * expected runs (one per intervalMs, 5 minute grace) that recorded a
+ * "completed" heartbeat, averaged across jobs. Limitations:
+ * - History only exists from the JobHeartbeatEvent migration onwards, so
+ *   until a job has 7 days of history only the tracked portion is measured.
+ * - Jobs without any history are excluded; if none have history the
+ *   fields are null (unknown) rather than 0.
+ * 
  * ALERTING
  * ========
  * 

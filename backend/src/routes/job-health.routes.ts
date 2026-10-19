@@ -11,6 +11,12 @@ import { appLogger } from "../middleware/logger";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { adminMiddleware } from "../middleware/admin.middleware";
 import { prisma } from "../lib/db";
+import {
+  DAY_MS,
+  HEARTBEAT_HISTORY_RETENTION_MS,
+  computeAggregateUptime,
+  computeJobUptime,
+} from "../services/jobUptime";
 
 const isJobType = (value: string): value is JobType =>
   (Object.values(JobType) as string[]).includes(value);
@@ -120,6 +126,18 @@ export function createJobHealthRoutes(): Router {
     async (req: Request, res: Response) => {
       try {
         const allHeartbeats = await prisma.jobHeartbeat.findMany();
+        const now = Date.now();
+        const history = await prisma.jobHeartbeatEvent.findMany({
+          where: {
+            recordedAt: { gte: new Date(now - HEARTBEAT_HISTORY_RETENTION_MS) },
+          },
+          select: { jobType: true, status: true, recordedAt: true },
+          orderBy: { recordedAt: "asc" },
+        });
+        const historyFor = (jobType: string) =>
+          history.filter((event) => event.jobType === jobType);
+        const roundPercent = (value: number | null) =>
+          value === null ? null : Math.round(value * 100) / 100;
 
         const analytics = {
           totalJobs: allHeartbeats.length,
@@ -133,9 +151,14 @@ export function createJobHealthRoutes(): Router {
             averageFailureCount: 0,
             totalFailures: 0,
           },
+          // Percentages (0-100) of expected runs that completed, averaged
+          // across jobs. null means no heartbeat history is available yet.
           uptime: {
-            lastDayUptime: 0,
-            last7DaysUptime: 0,
+            lastDayUptime: computeAggregateUptime(allHeartbeats, history, DAY_MS, now),
+            last7DaysUptime: computeAggregateUptime(allHeartbeats, history, 7 * DAY_MS, now),
+            jobsWithHistory: allHeartbeats.filter((hb) => historyFor(hb.jobType).length > 0)
+              .length,
+            historyRetentionDays: HEARTBEAT_HISTORY_RETENTION_MS / DAY_MS,
           },
           jobDetails: allHeartbeats.map((hb) => ({
             jobType: hb.jobType,
@@ -145,11 +168,16 @@ export function createJobHealthRoutes(): Router {
             failureCount: hb.failureCount,
             intervalMs: hb.intervalMs,
             lastError: hb.lastError,
+            lastDayUptime: roundPercent(
+              computeJobUptime(historyFor(hb.jobType), hb.intervalMs, DAY_MS, now),
+            ),
+            last7DaysUptime: roundPercent(
+              computeJobUptime(historyFor(hb.jobType), hb.intervalMs, 7 * DAY_MS, now),
+            ),
           })),
         };
 
         // Calculate health breakdown
-        const now = Date.now();
         const gracePeriod = 5 * 60 * 1000;
 
         allHeartbeats.forEach((hb) => {

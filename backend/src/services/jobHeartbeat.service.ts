@@ -8,6 +8,7 @@
 import { prisma } from "../lib/db";
 import { appLogger } from "../middleware/logger";
 import { alertService } from "./alert.service";
+import { HEARTBEAT_HISTORY_RETENTION_MS } from "./jobUptime";
 
 export enum JobType {
   RECONCILIATION = "reconciliation",
@@ -165,6 +166,8 @@ export class JobHeartbeatService {
         },
       });
 
+      await this.recordHistory(jobType, data.status);
+
       appLogger.debug(
         {
           jobType,
@@ -190,6 +193,33 @@ export class JobHeartbeatService {
       appLogger.error(
         { jobType, error },
         "[JobHeartbeat] Failed to record ping",
+      );
+    }
+  }
+
+  /**
+   * Append a ping to the rolling heartbeat history (used for uptime) and
+   * prune entries older than the retention window. History failures are
+   * logged but never break the ping itself.
+   */
+  private async recordHistory(
+    jobType: JobType,
+    status: HeartbeatPingData["status"],
+  ): Promise<void> {
+    try {
+      await prisma.jobHeartbeatEvent.create({
+        data: { jobType, status },
+      });
+      await prisma.jobHeartbeatEvent.deleteMany({
+        where: {
+          jobType,
+          recordedAt: { lt: new Date(Date.now() - HEARTBEAT_HISTORY_RETENTION_MS) },
+        },
+      });
+    } catch (error) {
+      appLogger.warn(
+        { jobType, error },
+        "[JobHeartbeat] Failed to record heartbeat history",
       );
     }
   }
