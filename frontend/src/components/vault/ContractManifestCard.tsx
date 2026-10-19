@@ -1,7 +1,10 @@
+"use client";
+
 import { BentoCard } from "@/components/ui/BentoCard";
 import { FileText, Eye } from "lucide-react";
 import Image from 'next/image';
 import Download from "@/app/assets/ExportIcon.png"
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface Party {
   initials: string;
@@ -28,13 +31,14 @@ export function ContractManifestCard({
   onExportPdf,
   onViewClauses,
 }: ContractManifestCardProps) {
+  const { t } = useTranslation();
   const getPartyBgColor = (color: Party["color"]) => {
     return color === "teal" ? "bg-teal" : "bg-emerald";
   };
 
   return (
     <BentoCard
-      title="Contract Manifest"
+      title={t("vault.contractManifest")}
       icon={<FileText className="w-5 h-5" />}
       glowVariant="gold"
       className="h-106.5"
@@ -48,13 +52,13 @@ export function ContractManifestCard({
       <div className="grid grid-cols-2 gap-6 mb-2 pl-5 pr-5">
         <div>
           <p className="text-xs font-semibold tracking-widest text-text-secondary uppercase mb-1">
-            Agreement Date
+            {t("vault.agreementDate")}
           </p>
           <p className="text-sm font-medium text-text-primary">{agreementDate}</p>
         </div>
         <div>
           <p className="text-xs font-semibold tracking-widest text-text-secondary uppercase mb-1">
-            Settlement Type
+            {t("vault.settlementType")}
           </p>
           <p className="text-sm font-medium text-text-primary">{settlementType}</p>
         </div>
@@ -63,7 +67,7 @@ export function ContractManifestCard({
       <div className="grid grid-cols-2 gap-6 mb-6 pl-5 pr-5">
         <div className="mt-15">
           <p className="text-xs font-semibold tracking-widest text-text-secondary uppercase mb-2">
-            Origin Party
+            {t("vault.originParty")}
           </p>
           <div className="flex items-center gap-2">
             <span
@@ -76,7 +80,7 @@ export function ContractManifestCard({
         </div>
         <div className="mt-15">
           <p className="text-xs font-semibold tracking-widest text-text-secondary uppercase mb-2">
-            Recipient Party
+            {t("vault.recipientParty")}
           </p>
           <div className="flex items-center gap-2">
             <span
@@ -96,18 +100,18 @@ export function ContractManifestCard({
         >
            <Image
               src={Download}
-              alt="export icon"
+              alt={t("vault.exportIconAlt")}
               width={11.67}
               height={11.67}
              />
-          Export PDF
+          {t("vault.exportPdf")}
         </button>
         <button
           onClick={onViewClauses}
           className="flex-1 flex items-center justify-center gap-2 bg-[#1E2D2666] hover:bg-bg-input text-text-primary font-medium py-2.5 px-4 rounded-xl transition-colors"
         >
           <Eye className="w-4 h-4" />
-          View Clauses
+          {t("vault.viewClauses")}
         </button>
       </div>
     </BentoCard>

@@ -3,6 +3,7 @@
 import React from "react";
 import type { TradeDetail } from "@/types/trade";
 import { TradeAmountRow } from "./TradeAmountRow";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface FinancialSummaryProps {
   trade: TradeDetail;
@@ -38,38 +39,39 @@ function FinancialRow({
 }
 
 export function FinancialSummary({ trade }: FinancialSummaryProps) {
+  const { t } = useTranslation();
   const ngnEquivalent = Math.round(trade.vaultAmountLocked * 1600);
 
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase">
-          Financial Summary
+          {t("tradeDetail.financialTitle")}
         </h2>
-        <span className="text-xs text-text-muted">All amounts in cNGN</span>
+        <span className="text-xs text-text-muted">{t("tradeDetail.allAmountsCngn")}</span>
       </div>
 
       <TradeAmountRow
         amountCngn={trade.vaultAmountLocked}
         amountLocal={ngnEquivalent}
         currencyLocal="NGN"
-        label="Vault Amount Locked"
+        label={t("tradeDetail.vaultAmountLocked")}
         highlighted
       />
 
       {/* Line items */}
       <div>
         <FinancialRow
-          label="Asset Value"
+          label={t("tradeDetail.assetValue")}
           value={`${trade.assetValue.toLocaleString()} cNGN`}
         />
         <FinancialRow
-          label={`Platform Fee (${trade.platformFeePercent}%)`}
+          label={t("tradeDetail.platformFee", { percent: trade.platformFeePercent })}
           value={`${trade.platformFee.toLocaleString()} cNGN`}
           highlight
         />
         <FinancialRow
-          label="Network Gas Est."
+          label={t("tradeDetail.networkGasEst")}
           value={`${trade.networkGasEst} ETH`}
           dimmed
         />
@@ -91,11 +93,10 @@ export function FinancialSummary({ trade }: FinancialSummaryProps) {
         </div>
         <div>
           <p className="text-xs font-semibold text-emerald mb-0.5 tracking-wide">
-            SMART CONTRACT SECURED
+            {t("tradeDetail.smartContractSecured")}
           </p>
           <p className="text-xs text-text-secondary leading-relaxed">
-            Funds are programmatically locked. Release occurs only upon
-            multi-sig validation or verified shipment receipt.
+            {t("tradeDetail.smartContractBody")}
           </p>
         </div>
       </div>

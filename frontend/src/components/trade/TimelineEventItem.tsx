@@ -2,6 +2,8 @@
 
 import React from "react";
 import type { TransactionEvent, TransactionEventStatus } from "@/types/trade";
+import type { MessageKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface TimelineEventItemProps {
   event: TransactionEvent;
@@ -9,11 +11,11 @@ interface TimelineEventItemProps {
   isLast: boolean;
 }
 
-const ACTOR_LABELS: Record<TransactionEvent["actor"], string> = {
-  system: "System",
-  buyer: "Buyer",
-  seller: "Seller",
-  driver: "Driver",
+const ACTOR_LABELS: Record<TransactionEvent["actor"], MessageKey> = {
+  system: "tradeDetail.actorSystem",
+  buyer: "tradeDetail.actorBuyer",
+  seller: "tradeDetail.actorSeller",
+  driver: "tradeDetail.actorDriver",
 };
 
 const ACTOR_COLORS: Record<TransactionEvent["actor"], string> = {
@@ -59,6 +61,7 @@ export function TimelineEventItem({
   status,
   isLast,
 }: TimelineEventItemProps) {
+  const { t } = useTranslation();
   const isActive = status === "active";
   const isPending = status === "pending";
 
@@ -89,7 +92,7 @@ export function TimelineEventItem({
           <div className="flex items-center gap-2 flex-shrink-0">
             {isActive && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-status-warning/10 text-status-warning border border-status-warning/20 font-semibold tracking-wide uppercase">
-                Active
+                {t("tradeDetail.eventActive")}
               </span>
             )}
             {event.timestamp && (
@@ -103,7 +106,7 @@ export function TimelineEventItem({
         <span
           className={`text-[11px] font-medium uppercase tracking-wide ${ACTOR_COLORS[event.actor]}`}
         >
-          {ACTOR_LABELS[event.actor]}
+          {t(ACTOR_LABELS[event.actor])}
         </span>
 
         {event.description && (

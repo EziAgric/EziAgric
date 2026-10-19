@@ -5,21 +5,18 @@ import {
   CheckCircle,
   Truck,
   AlertTriangle,
-  Lock,
   FileText,
   Clock,
   LucideProps,
 } from "lucide-react";
+import type { TradeStatus } from "@/types/trade";
 
 // ── Types ────────────────────────────────────────────────────────
 
-export type TradeStatus =
-  | "delivered"
-  | "in-transit"
-  | "disputed"
-  | "locked"
-  | "draft"
-  | "pending";
+// The status vocabulary is owned by `@/types/trade`; re-exported here so
+// existing `import { TradeStatus } from "@/components/ui"` call sites keep
+// resolving to the single canonical type.
+export type { TradeStatus };
 
 export interface StatusBadgeProps {
   status: TradeStatus;
@@ -37,42 +34,35 @@ interface StatusConfig {
 }
 
 const STATUS_MAP: Record<TradeStatus, StatusConfig> = {
-  delivered: {
-    label: "Delivered",
+  SETTLED: {
+    label: "Settled",
     icon: CheckCircle,
     dot: "bg-status-success",
     badge:
       "bg-status-success/10 text-status-success border-status-success/25",
   },
-  "in-transit": {
+  "IN TRANSIT": {
     label: "In Transit",
     icon: Truck,
     dot: "bg-status-warning",
     badge:
       "bg-status-warning/10 text-status-warning border-status-warning/25",
   },
-  disputed: {
+  DISPUTED: {
     label: "Disputed",
     icon: AlertTriangle,
     dot: "bg-status-danger",
     badge:
       "bg-status-danger/10 text-status-danger border-status-danger/25",
   },
-  locked: {
-    label: "Funds Locked",
-    icon: Lock,
-    dot: "bg-status-locked",
-    badge:
-      "bg-status-locked/10 text-status-locked border-status-locked/25",
-  },
-  draft: {
+  DRAFT: {
     label: "Draft",
     icon: FileText,
     dot: "bg-status-draft",
     badge:
       "bg-status-draft/10 text-status-draft border-status-draft/25",
   },
-  pending: {
+  PENDING: {
     label: "Pending",
     icon: Clock,
     dot: "bg-status-info",

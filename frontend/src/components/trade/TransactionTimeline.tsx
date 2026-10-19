@@ -3,6 +3,7 @@
 import React from "react";
 import type { TransactionEvent, TransactionEventStatus } from "@/types/trade";
 import { TimelineEventItem } from "./TimelineEventItem";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface TransactionTimelineProps {
   events: TransactionEvent[];
@@ -22,6 +23,7 @@ export function TransactionTimeline({
   events,
   currentEventIndex,
 }: TransactionTimelineProps) {
+  const { t } = useTranslation();
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card flex flex-col flex-1">
       <div className="flex items-center gap-2 mb-5">
@@ -36,7 +38,7 @@ export function TransactionTimeline({
           <path d="M8 5v3l2 1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase">
-          Transaction Timeline
+          {t("tradeDetail.transactionTimelineTitle")}
         </h2>
       </div>
 

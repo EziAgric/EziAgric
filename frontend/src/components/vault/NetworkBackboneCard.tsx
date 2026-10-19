@@ -1,7 +1,10 @@
+"use client";
+
 import Image from 'next/image';
 import { BentoCard } from "@/components/ui/BentoCard";
 import { NetworkIcon } from "@/components/icons";
 import StellarLogo from '../../app/assets/StellarLogo.png';
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 
 interface NetworkBackboneCardProps {
@@ -9,9 +12,10 @@ interface NetworkBackboneCardProps {
 }
 
 export function NetworkBackboneCard({ description }: NetworkBackboneCardProps) {
+  const { t } = useTranslation();
   return (
     <BentoCard
-      title="Network Backbone"
+      title={t("vault.networkBackbone")}
       icon={<NetworkIcon className="w-5 h-5" />}
       glowVariant="gold"
       className="h-full"
@@ -23,7 +27,7 @@ export function NetworkBackboneCard({ description }: NetworkBackboneCardProps) {
         <div className="flex items-center gap-2 mb-8">
          <Image
             src={StellarLogo}
-            alt="stellar logo"
+            alt={t("vault.stellarLogoAlt")}
           />
         </div>
       </div>

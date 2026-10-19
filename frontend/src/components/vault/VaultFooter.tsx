@@ -7,6 +7,7 @@ import {
   TiktokIcon,
   DiscordIcon,
 } from "@/components/icons";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface FooterLink {
   label: string;
@@ -32,13 +33,14 @@ const socialIcons = {
 };
 
 export function VaultFooter({ version, links, socialLinks }: VaultFooterProps) {
+  const { t } = useTranslation();
   return (
     <footer className="mt-16 pt-8 border-t border-border-default">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
         <div>
           <div className="flex items-center gap-2 text-xs text-text-secondary mb-2">
             <Check className="w-4 h-4" />
-            <span>Amana Digital Custody Systems {version}</span>
+            <span>{t("vault.footerSystem", { version })}</span>
           </div>
           <div className="flex items-center gap-6 text-xs text-text-secondary">
             {links.map((link) => (
@@ -54,7 +56,7 @@ export function VaultFooter({ version, links, socialLinks }: VaultFooterProps) {
         </div>
         <div>
           <p className="text-xs text-gold uppercase tracking-widest mb-3">
-            Connect With Us
+            {t("vault.connectWithUs")}
           </p>
           <div className="flex items-center gap-3">
             {socialLinks.map((social) => {

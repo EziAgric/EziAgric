@@ -3,6 +3,8 @@
 import React from "react";
 import { Eye, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import type { TradeStatus } from "@/types/trade";
+import { useTranslation } from "@/lib/i18n/useTranslation";
+import { TRADE_STATUS_MESSAGE_KEYS } from "./tradeStatusLabel";
 
 export interface TradeListItemProps {
   tradeId: string;
@@ -42,14 +44,21 @@ export function TradeListItem({
   onDeposit,
   onWithdraw,
 }: TradeListItemProps) {
+  const { t } = useTranslation();
   const statusStyle = STATUS_STYLES[status] ?? STATUS_STYLES["DRAFT"];
+  const statusLabel = t(TRADE_STATUS_MESSAGE_KEYS[status] ?? TRADE_STATUS_MESSAGE_KEYS.DRAFT);
 
   return (
     <div
       onClick={onView}
       role="button"
       tabIndex={0}
-      aria-label={`View trade ${tradeId} — ${commodity} ${amountCngn} cNGN, status ${status}`}
+      aria-label={t("tradeList.viewTradeSummaryAria", {
+        id: tradeId,
+        commodity,
+        amount: amountCngn,
+        status: statusLabel,
+      })}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -93,7 +102,7 @@ export function TradeListItem({
           className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide ${statusStyle}`}
         >
           <span className="w-1.5 h-1.5 rounded-full bg-current" />
-          {status}
+          {statusLabel}
         </span>
 
         <div className="flex items-center gap-3">
@@ -102,8 +111,8 @@ export function TradeListItem({
               e.stopPropagation();
               onView();
             }}
-            aria-label={`View trade ${tradeId}`}
-            title="View trade"
+            aria-label={t("tradeList.viewTradeAria", { id: tradeId })}
+            title={t("tradeList.viewTrade")}
             className="p-2 rounded-lg border border-border-default text-text-muted hover:border-border-hover hover:text-text-primary transition-colors focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2"
           >
             <Eye aria-hidden="true" className="w-4 h-4" />
@@ -115,8 +124,8 @@ export function TradeListItem({
                 e.stopPropagation();
                 onDeposit();
               }}
-              aria-label={`Deposit for trade ${tradeId}`}
-              title="Deposit"
+              aria-label={t("tradeList.depositAria", { id: tradeId })}
+              title={t("tradeList.deposit")}
               className="p-2 rounded-lg border border-border-default text-text-muted hover:border-emerald/40 hover:text-emerald transition-colors focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2"
             >
               <ArrowDownToLine aria-hidden="true" className="w-4 h-4" />
@@ -129,8 +138,8 @@ export function TradeListItem({
                 e.stopPropagation();
                 onWithdraw();
               }}
-              aria-label={`Withdraw for trade ${tradeId}`}
-              title="Withdraw"
+              aria-label={t("tradeList.withdrawAria", { id: tradeId })}
+              title={t("tradeList.withdraw")}
               className="p-2 rounded-lg border border-border-default text-text-muted hover:border-status-danger/40 hover:text-status-danger transition-colors focus-visible:outline-2 focus-visible:outline-gold focus-visible:outline-offset-2"
             >
               <ArrowUpFromLine aria-hidden="true" className="w-4 h-4" />

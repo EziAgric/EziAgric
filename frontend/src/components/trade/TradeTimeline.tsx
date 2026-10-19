@@ -2,6 +2,7 @@
 
 import React from "react";
 import type { TimelineEvent } from "@/types/trade";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface TradeTimelineProps {
   events: TimelineEvent[];
@@ -43,6 +44,7 @@ const EVENT_STATUS_STYLES: Record<string, string> = {
 };
 
 export function TradeTimeline({ events }: TradeTimelineProps) {
+  const { t } = useTranslation();
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card">
       <div className="flex items-center gap-2 mb-5">
@@ -51,7 +53,7 @@ export function TradeTimeline({ events }: TradeTimelineProps) {
           <path d="M8 2v12M2 4l6 2 6-2" />
         </svg>
         <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase">
-          Trade Lifecycle
+          {t("tradeDetail.lifecycleTitle")}
         </h2>
       </div>
 
@@ -90,7 +92,7 @@ export function TradeTimeline({ events }: TradeTimelineProps) {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {event.status === "current" && (
                       <span className="text-xs px-2 py-0.5 rounded bg-status-warning/10 text-status-warning border border-status-warning/20 font-medium">
-                        CURRENT STATE
+                        {t("tradeDetail.currentState")}
                       </span>
                     )}
                     {event.timestamp && (
@@ -115,7 +117,7 @@ export function TradeTimeline({ events }: TradeTimelineProps) {
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
                           src={event.tracking.imageUrl}
-                          alt="vessel"
+                          alt={t("tradeDetail.vesselAlt")}
                           className="w-full h-full object-cover rounded-md"
                         />
                       ) : (
@@ -126,10 +128,10 @@ export function TradeTimeline({ events }: TradeTimelineProps) {
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-text-muted mb-0.5">
-                        LIVE TRACKING
+                        {t("tradeDetail.liveTracking")}
                       </p>
                       <p className="text-sm font-semibold text-text-primary">
-                        Tracking #: {event.tracking.trackingNumber}
+                        {t("tradeDetail.trackingNumber", { number: event.tracking.trackingNumber })}
                       </p>
                     </div>
                   </div>

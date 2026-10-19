@@ -2,16 +2,18 @@
 
 import React from "react";
 import type { TradeDetail } from "@/types/trade";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 interface VaultSidebarProps {
   trade: TradeDetail;
 }
 
 export function VaultSidebar({ trade }: VaultSidebarProps) {
+  const { t } = useTranslation();
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card">
       <p className="text-xs font-semibold tracking-widest text-text-muted mb-1 uppercase">
-        Vault Amount Locked
+        {t("tradeDetail.vaultAmountLocked")}
       </p>
       <p className="text-4xl font-bold text-gold mb-4">
         {trade.vaultAmountLocked.toLocaleString()}{" "}
@@ -20,21 +22,21 @@ export function VaultSidebar({ trade }: VaultSidebarProps) {
 
       <div className="space-y-2 mb-4">
         <div className="flex justify-between text-sm">
-          <span className="text-text-secondary">Asset Value</span>
+          <span className="text-text-secondary">{t("tradeDetail.assetValue")}</span>
           <span className="text-text-primary font-medium">
             {trade.assetValue.toLocaleString()} cNGN
           </span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-text-secondary">
-            Platform Fee ({trade.platformFeePercent}%)
+            {t("tradeDetail.platformFee", { percent: trade.platformFeePercent })}
           </span>
           <span className="text-status-danger font-medium">
             {trade.platformFee.toLocaleString()} cNGN
           </span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-text-secondary">Network Gas Est.</span>
+          <span className="text-text-secondary">{t("tradeDetail.networkGasEst")}</span>
           <span className="text-text-muted font-medium">
             {trade.networkGasEst} ETH
           </span>
@@ -57,11 +59,10 @@ export function VaultSidebar({ trade }: VaultSidebarProps) {
         </div>
         <div>
           <p className="text-xs font-semibold text-emerald mb-0.5 tracking-wide">
-            SMART CONTRACT SECURED
+            {t("tradeDetail.smartContractSecured")}
           </p>
           <p className="text-xs text-text-secondary leading-relaxed">
-            Funds are programmatically locked. Release occurs only upon
-            multi-sig validation or verified shipment receipt.
+            {t("tradeDetail.smartContractBody")}
           </p>
         </div>
       </div>
@@ -82,11 +83,11 @@ export function VaultSidebar({ trade }: VaultSidebarProps) {
               <path d="M6.5 5.5C6.5 4.7 7.2 4 8 4s1.5.7 1.5 1.5c0 1-1.5 2-1.5 2" />
             </svg>
           </div>
-          <span className="text-xs text-text-secondary">Need Help?</span>
-          <span className="text-xs text-text-muted">Dispute Resolution</span>
+          <span className="text-xs text-text-secondary">{t("tradeDetail.needHelp")}</span>
+          <span className="text-xs text-text-muted">{t("tradeDetail.disputeResolution")}</span>
         </div>
         <button className="text-xs font-semibold text-gold hover:text-gold-hover transition-colors">
-          Open Ticket
+          {t("tradeDetail.openTicket")}
         </button>
       </div>
     </div>

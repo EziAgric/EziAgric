@@ -1,6 +1,9 @@
+"use client";
+
 import { BentoCard } from "@/components/ui/BentoCard";
 import { SettingsIcon } from "@/components/icons";
 import { Check, Clock, Flag } from "lucide-react";
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 type StepStatus = "completed" | "in-progress" | "pending";
 
@@ -19,6 +22,7 @@ export function ReleaseSequenceCard({
   sequenceId,
   steps,
 }: ReleaseSequenceCardProps) {
+  const { t } = useTranslation();
   const getStepIcon = (status: StepStatus) => {
     switch (status) {
       case "completed":
@@ -54,14 +58,14 @@ export function ReleaseSequenceCard({
 
   return (
     <BentoCard
-      title="Release Sequence"
+      title={t("vault.releaseSequence")}
       icon={<SettingsIcon className="w-5 h-5" />}
       glowVariant="gold"
       className="h-full"
     >
       <div className="flex items-center justify-end mb-6">
         <span className="text-xs font-mono text-text-secondary bg-bg-elevated px-3 py-1 rounded-full border border-border-default">
-          SEQUENCE_ID: {sequenceId}
+          {t("vault.sequenceId", { id: sequenceId })}
         </span>
       </div>
 

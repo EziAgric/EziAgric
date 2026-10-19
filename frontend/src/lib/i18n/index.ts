@@ -3,6 +3,13 @@ import ha from './messages/ha';
 import yo from './messages/yo';
 import ig from './messages/ig';
 import pcm from './messages/pcm';
+import type { MessageKey, Messages, PartialMessages } from './messages/types';
+import { isPseudoLocaleEnabled } from './config';
+import { pseudoLocalize } from './pseudo';
+
+export * from './format';
+export { DEFAULT_CURRENCY, isPseudoLocaleEnabled } from './config';
+export type { MessageKey, Messages, PartialMessages } from './messages/types';
 
 export const LOCALES = ['en', 'ha', 'yo', 'ig', 'pcm'] as const;
 
@@ -20,10 +27,11 @@ export const DEFAULT_LOCALE: Locale = 'en';
 
 export const STORAGE_KEY = 'app.locale';
 
-export type Messages = typeof en;
+/** Window event dispatched whenever the active locale changes in this tab. */
+export const LOCALE_CHANGE_EVENT = 'app:localechange';
 
-export const messages: Record<Locale, Messages> = {
-  en,
+export const messages: Record<Locale, PartialMessages> = {
+  en: en as Messages,
   ha,
   yo,
   ig,
@@ -51,6 +59,7 @@ export function setStoredLocale(locale: Locale): void {
   } catch {
     // ignore storage failures (private mode, quota, etc.)
   }
+  window.dispatchEvent(new Event(LOCALE_CHANGE_EVENT));
 }
 
 /**
@@ -58,7 +67,7 @@ export function setStoredLocale(locale: Locale): void {
  * message catalog, falling back to the default locale and finally the key.
  */
 export function translate(locale: Locale, key: string): string {
-  const resolve = (catalog: Messages): string | undefined => {
+  const resolve = (catalog: PartialMessages): string | undefined => {
     const parts = key.split('.');
     let current: unknown = catalog;
     for (const part of parts) {
@@ -72,6 +81,36 @@ export function translate(locale: Locale, key: string): string {
   };
 
   return resolve(messages[locale]) ?? resolve(messages[DEFAULT_LOCALE]) ?? key;
+}
+
+export type TranslateParams = Record<string, string | number>;
+
+export interface TranslateOptions {
+  /** Catalog to read from; "pseudo" pseudo-localizes the default catalog. */
+  locale?: Locale | 'pseudo';
+}
+
+/** Replace `{name}` placeholders with the matching param, leaving unknown ones intact. */
+export function interpolate(message: string, params?: TranslateParams): string {
+  if (!params) return message;
+  return message.replace(/\{(\w+)\}/g, (match, name: string) =>
+    name in params ? String(params[name]) : match,
+  );
+}
+
+/**
+ * Translate a catalog key, interpolating `{placeholders}` from `options`.
+ *
+ *   t("wallet.connect")                                 // "Connect wallet"
+ *   t("wallet.wrongNetworkCta", { expected: "Testnet" }) // "Switch to Testnet"
+ *   t("common.retry", { locale: "ha" })                 // Hausa copy
+ */
+export function t(key: MessageKey, options: TranslateOptions & TranslateParams = {}): string {
+  const { locale = DEFAULT_LOCALE, ...params } = options as TranslateOptions & TranslateParams;
+  const pseudo = locale === 'pseudo' || isPseudoLocaleEnabled();
+  const catalogLocale: Locale = locale === 'pseudo' ? DEFAULT_LOCALE : (locale as Locale);
+  const template = translate(catalogLocale, key);
+  return interpolate(pseudo ? pseudoLocalize(template) : template, params);
 }
 
 /**
