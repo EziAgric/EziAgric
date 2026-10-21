@@ -1,0 +1,145 @@
+{
+  "common": {
+    "loading": "Ana lodawa...",
+    "error": "Kuskura ya faru",
+    "retry": "Maimi",
+    "cancel": "Ko",
+    "submit": "Mi",
+    "save": "Ajiye",
+    "delete": "Goge",
+    "edit": "Shirya",
+    "back": "Baya",
+    "next": "Gaba",
+    "done": "An gama",
+    "search": "Bincika",
+    "noResults": "Ba sakamako ba"
+  },
+  "home": {
+    "title": "Barka da komawa",
+    "subtitle": "Ga bayanin ciniki",
+    "activeTrades": "Ciniki masu aiki",
+    "totalVault": "Rumfuna",
+    "pendingDisputes": "Rikice-rikice",
+    "quickActions": "Ayyuka",
+    "newTrade": "Ciniki mai zuwa",
+    "vault": "Rumfuna",
+    "disputes": "Rikice-rikice",
+    "recentActivity": "Ayyukan kwanan"
+  },
+  "profile": {
+    "title": "Bayani",
+    "trustScore": "Maki amana",
+    "totalTrades": "Jimlar cinikai",
+    "successfulTrades": "Nasarar cinikai",
+    "successRate": "Mashirin nasara",
+    "memberSince": "Shiga tun",
+    "loadingProfile": "Ana lodawa profile..."
+  },
+  "trustScore": {
+    "title": "Maki amana",
+    "calculating": "Ana lissan maki amana...",
+    "excellent": "Kyau sosai",
+    "good": "Mai kyau",
+    "fair": "Mai amfani",
+    "needsImprovement": "Yana buƙatar ingantawa",
+    "scoreBreakdown": "Rarraba maki",
+    "completedTrades": "Cinikai da aka gama",
+    "successfulDisputes": "Rikice-rikice da aka warware",
+    "responseTime": "Lokacin amsa",
+    "ratingQuality": "Ingancin girmama",
+    "scoreHistory": "Tarihin maki"
+  },
+  "vault": {
+    "title": "Dashboard na Rumfuna",
+    "totalBalance": "Jimlar ma'auni",
+    "active": "Aiki",
+    "completed": "An gama",
+    "recentTrades": "Cinikai na kwanan",
+    "noTrades": "Babu ciniki",
+    "loadingVault": "Ana loda bayanai..."
+  },
+  "wallet": {
+    "title": "Haɗa walat",
+    "connecting": "Ana haɗa walat...",
+    "connected": "Walat ya haɗu",
+    "disconnect": "Kawar",
+    "address": "Adireshi",
+    "copyAddress": "Kwafi adireshin walat",
+    "selectWallet": "Zaɓi walat don haɗawa",
+    "freighter": "Freighter",
+    "freighterDesc": "Tasha ta Stellar",
+    "albedo": "Albedo",
+    "albedoDesc": "Walat na yanar gizo",
+    "xbull": "xBull",
+    "xbullDesc": "Walat na waya"
+  },
+  "dispute": {
+    "title": "Bayanin rikici",
+    "loading": "Ana loda bayanin rikici...",
+    "tradeInfo": "Bayanin ciniki",
+    "disputeInfo": "Bayanin rikici",
+    "reason": "Dalili",
+    "raisedBy": "Tarihi",
+    "raisedOn": "A ranar",
+    "evidence": "Hujja",
+    "resolution": "Warware",
+    "buyerWins": "Mai saya ya yi nasara",
+    "sellerWins": "Mai sayar ya yi nasara",
+    "split": "Raba",
+    "status": {
+      "open": "Bude",
+      "underReview": "Ana duba",
+      "resolved": "An warware"
+    }
+  },
+  "review": {
+    "title": "Bari bitar",
+    "yourRating": "Girmamarka",
+    "reviewTitle": "Taken bita",
+    "reviewTitlePlaceholder": "Taɓa kwarewarka",
+    "yourReview": "Bitarka",
+    "reviewPlaceholder": "Raba cikakkun bayanai game da ciniki...",
+    "submitReview": "Mi bitar",
+    "submitted": "An mika bitar!",
+    "thankYou": "Muna godiya. Bitarwarka tana taimakawa gini amana.",
+    "validation": {
+      "ratingRequired": "Zaɓi girmama",
+      "titleRequired": "Shigar da taken bita",
+      "titleTooShort": "Taken ya kamata ya kasance akalla haruffa 3",
+      "commentRequired": "Shigar da sharhi",
+      "commentTooShort": "Sharhi ya kamata ya kasance akalla haruffa 10"
+    },
+    "ratings": {
+      "poor": "Maras kyau",
+      "fair": "Mai amfani",
+      "good": "Mai kyau",
+      "veryGood": "Kyau sosai",
+      "excellent": "Mafi kyau"
+    }
+  },
+  "marketplace": {
+    "title": "Shaguna",
+    "loading": "Ana loda kayayyaki...",
+    "noResults": "Ba a samu kayayyaki ba"
+  },
+  "trades": {
+    "title": "Cinikaina",
+    "loading": "Ana loda cinikai...",
+    "noTrades": "Babu ciniki",
+    "filterAll": "Duk",
+    "filterPending": "A jira",
+    "filterFunded": "An biya",
+    "filterCompleted": "An gama",
+    "filterDisputed": "Rikici",
+    "statusPending": "A jira",
+    "statusFunded": "An biya",
+    "statusCompleted": "An gama",
+    "statusDisputed": "Rikici"
+  },
+  "navigation": {
+    "home": "Gida",
+    "trades": "Cinikai",
+    "vault": "Rumfuna",
+    "profile": "Bayani"
+  }
+}

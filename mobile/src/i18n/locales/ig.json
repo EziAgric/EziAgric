@@ -1,0 +1,126 @@
+{
+  "common": {
+    "loading": "Na-ebu...",
+    "error": "Njehie mere",
+    "retry": "Lee anya",
+    "cancel": "Kpachapụ",
+    "submit": "Nyefee",
+    "save": "Chekwaa",
+    "delete": "Hichapụ",
+    "edit": "Dezie",
+    "back": "Lagachi",
+    "next": "Na-esote",
+    "done": "Emela",
+    "search": "Chọọ",
+    "noResults": "Enweghị nsona"
+  },
+  "home": {
+    "title": "Nabataghachi",
+    "subtitle": "Nke a bụ nyocha azụmahịa gị",
+    "activeTrades": "Azụmahịa na-arụ ọrụ",
+    "totalVault": "Vault",
+    "pendingDisputes": "Mkpara",
+    "quickActions": "Omume ngwa ngwa",
+    "newTrade": "Azụmahịa ọhụrụ",
+    "vault": "Vault",
+    "disputes": "Mkpara",
+    "recentActivity": "Omume kacha nso"
+  },
+  "profile": {
+    "title": "Profile",
+    "trustScore": "Score ntụkwasị",
+    "totalTrades": "Azụmahịa niile",
+    "successfulTrades": "Azụmahịa ndị nwereuccess",
+    "successRate": "Oke nwereuccess",
+    "memberSince": "Onye otu site na",
+    "loadingProfile": "Na-ebu profile..."
+  },
+  "trustScore": {
+    "title": "Score ntụkwasị",
+    "calculating": "Na-akọ score ntụkwasị...",
+    "excellent": "Mma",
+    "good": "Ọ dị mma",
+    "fair": "Zụlite",
+    "needsImprovement": "Chọrọ mbelata",
+    "scoreBreakdown": "Nkewa score",
+    "completedTrades": "Azụmahịa emela",
+    "successfulDisputes": "Mkpara ndị nwereuccess",
+    "responseTime": "Oge azịza",
+    "ratingQuality": "Ogo ntinye aka",
+    "scoreHistory": "Akụkọ score"
+  },
+  "vault": {
+    "title": "Dashboard Vault",
+    "totalBalance": "Mgbalị niile",
+    "active": "Na-arụ ọrụ",
+    "completed": "Emela",
+    "recentTrades": "Azụmahịa kacha nso",
+    "noTrades": "Enweghị azụmahịa",
+    "loadingVault": "Na-ebu data vault..."
+  },
+  "wallet": {
+    "title": "Jikọọ Wallet",
+    "connecting": "Na-ejikọ wallet...",
+    "connected": "Wallet ejikọọ",
+    "discut": "Kpuchie",
+    "address": "Adreesị",
+    "copyAddress": "Detuo adreesị wallet",
+    "selectWallet": "Họrọ wallet iji jikọọ",
+    "freighter": "Freighter",
+    "freighterDesc": "Stellar wallet browser",
+    "albedo": "Albedo",
+    "albedoDesc": "Web wallet",
+    "xbull": "xBull",
+    "xbullDesc": "Mobile wallet"
+  },
+  "dispute": {
+    "title": "Nkọwa mkpara",
+    "loading": "Na-ebu nkọwa mkpara...",
+    "tradeInfo": "Nkọwa azụmahịa",
+    "disputeInfo": "Nkọwa mkpara",
+    "reason": "Ihe kpatara",
+    "raisedBy": "Bịanyere aka",
+    "raisedOn": "Na",
+    "evidence": "Ihe akaebe",
+    "resolution": "Nchịpụ",
+    "buyerWins": "Onye na-eme achọ nwetachara",
+    "sellerWins": "Onye na-ere nwetachara",
+    "split": "Kewaa",
+    "status": {
+      "open": "Mepee",
+      "underReview": "Na-eme nyocha",
+      "resolved": "Emela"
+    }
+  },
+  "review": {
+    "title": "Depụta nlebanya",
+    "yourRating": "Ntinye aka gị",
+    "reviewTitle": "Aha nlebanya",
+    "reviewTitlePlaceholder": "Kọwapụta ahụmahụ gị",
+    "yourReview": "Nlebanya gị",
+    "reviewPlaceholder": "Kọwaa ndụmọdụ gị...",
+    "submitReview": "Nyefee nlebanya",
+    "submitted": "E nyefere nlebanya!",
+    "thankYou": "Daalụ. Nlebanya gị na-akwalite ntụkwasị.",
+    "validation": {
+      "ratingRequired": "Họrọ ntinye aka",
+      "titleRequired": "Dịa aha nlebanya",
+      "titleTooShort": "Aha ga-enwerịrị opekempe ederede 3",
+      "commentRequired": "Dịta nkọwa",
+      "commentTooShort": "Nkọwa ga-enwerịrị opekempe ederede 10"
+    },
+    "ratings": {
+      "poor": "Ọ dị njọ",
+      "fair": "Zụlite",
+      "good": "Ọ dị mma",
+      "veryGood": "Ọ dị mma ukwuu",
+      "excellence": "Kacha mma"
+    }
+  },
+  "navigation": {
+    "home": "Ụlọ",
+    "trades": "Azụmahịa",
+    "vault": "Vault",
+    "profile": "Profile"
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "common": {
+    "loading": "Inapakia...",
+    "error": "Hitilafu imetokea",
+    "retry": "Jaribu tena",
+    "cancel": "Ghairi",
+    "submit": "Wasilisha",
+    "save": "Hifadhi",
+    "futa": "Futa",
+    "hariri": "Hariri",
+    "back": "Rudi",
+    "next": "Ifuatayo",
+    "done": "Imekamilika",
+    "search": "Tafuta",
+    "noResults": "Hakuna matokeo"
+  },
+  "home": {
+    "title": "Karibu tena",
+    "subtitle": "Hapa kuna muhtasari wa biashara yako",
+    "activeTrades": "Biashara zinazoendelea",
+    "totalVault": "Vault",
+    "pendingDisputes": "Mabishano yaliyosimama",
+    "quickActions": "Vitendo vya haraka",
+    "newTrade": "Biashara mpya",
+    "vault": "Vault",
+    "disputes": "Mabishano",
+    "recentActivity": "Shughuli za hivi karibuni"
+  },
+  "profile": {
+    "title": "Wasifu",
+    "trustScore": "Alama ya uaminifu",
+    "totalTrades": "Biashara zote",
+    "successfulTrades": "Biashara zilizofanikiwa",
+    "successRate": "Kiwango cha mafanikio",
+    "memberSince": "Mwanachama tangu",
+    "loadingProfile": "Inapakia wasifu..."
+  },
+  "trustScore": {
+    "title": "Alama ya uaminifu",
+    "calculating": "Inakokotoa alama ya uaminifu...",
+    "excellent": "Bora",
+    "good": "Njema",
+    "fair": "Wastani",
+    "needsImprovement": "Inahitaji kuboreshwa",
+    "scoreBreakdown": "Mgawanyiko wa alama",
+    "completedTrades": "Biashara zilizokamilika",
+    "successfulDisputes": "Mabishano yaliyofanikiwa",
+    "responseTime": "Muda wa majibu",
+    "ratingQuality": "Ubora wa ukadiria",
+    "scoreHistory": "Historia ya alama"
+  },
+  "vault": {
+    "title": "Dashibodi ya Vault",
+    "totalBalance": "Jumla ya salio",
+    "active": "Inayoendelea",
+    "completed": "Immekamilika",
+    "recentTrades": "Biashara za hivi karibuni",
+    "noTrades": "Hakuna biashara",
+    "loadingVault": "Inapakia data ya vault..."
+  },
+  "wallet": {
+    "title": "Unganisha Wallet",
+    "connecting": "Inaunganisha wallet...",
+    "connected": "Wallet imeunganishwa",
+    "disconnect": "Katika",
+    "address": "Anwani",
+    "copyAddress": "Anwani ya nakili",
+    "selectWallet": "Chagua wallet ya kuunganisha",
+    "freighter": "Freighter",
+    "freighterDesc": "Wallet ya kivinjari ya Stellar",
+    "albedo": "Albedo",
+    "albedoDesc": "Wallet ya wavuti",
+    "xbull": "xBull",
+    "xbullDesc": "Wallet ya simu"
+  },
+  "dispute": {
+    "title": "Maelezo ya ubishi",
+    "loading": "Inapakia maelezo ya ubishi...",
+    "tradeInfo": "Maelezo ya biashara",
+    "disputeInfo": "Maelezo ya ubishi",
+    "reason": "Sababu",
+    "raisedBy": "Ilianzishwa na",
+    "raisedOn": "Tarehe",
+    "evidence": "Ushaidi",
+    "resolution": "Uamuzi",
+    "buyerWins": "Mnunuzi ashinda",
+    "sellerWins": "Muuzaji ashinda",
+    "split": "Gawanya",
+    "status": {
+      "open": "Wazi",
+      "underReview": "Inachunguzwa",
+      "resolved": "Imefanywa"
+    }
+  },
+  "review": {
+    "title": "Toa ukaguzi",
+    "yourRating": "Ukadiriaji wako",
+    "reviewTitle": "Kichwa cha ukaguzi",
+    "reviewTitlePlaceholder": "Kusanya uzoefu wako",
+    "yourReview": "Ukaguzi wako",
+    "reviewPlaceholder": "Shiriki maelezo kuhusu uzoefu wako...",
+    "submitReview": "Wasilisha ukaguzi",
+    "submitted": "Ukaguzi umewasilishwa!",
+    "thankYou": "Asante. Ukaguzi wako unajenga uaminifu.",
+    "validation": {
+      "ratingRequired": "Tafadhali chagua ukadiriaji",
+      "titleRequired": "Tafadhali ingiza kichwa cha ukaguzi",
+      "titleTooShort": "Kichwa lazima kiwe na angalau herufi 3",
+      "commentRequired": "Tafadhali ingiza maoni yako",
+      "commentTooShort": "Maoni lazima yawe na angalau herufi 10"
+    },
+    "ratings": {
+      "poor": "Mbaya",
+      "fair": "Wastani",
+      "good": "Njema",
+      "veryGood": "Nzuri sana",
+      "excellent": "Bora"
+    }
+  },
+  "navigation": {
+    "home": "Nyumbani",
+    "trades": "Biashara",
+    "vault": "Vault",
+    "profile": "Wasifu"
+  }
+}
