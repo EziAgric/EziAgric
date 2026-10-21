@@ -1,0 +1,126 @@
+{
+  "common": {
+    "loading": "Nnkan n lọ...",
+    "error": "Aṣiṣe ti ṣẹlẹ",
+    "retry": "ṣe apejuwe",
+    "cancel": "Fọ",
+    "submit": "Fi silẹ",
+    "save": "Fipamọ",
+    "po": "Paarẹ",
+    "satunkọ": "Satunkọ",
+    "padà": "Padà",
+    "next": "Ti nbo",
+    "ti o完成": "Ti o完成",
+    "search": "Wa",
+    "noResults": "Ko si abajade"
+  },
+  "home": {
+    "title": "Kuọ abọ",
+    "subtitle": "Oye iṣowo rẹ",
+    "activeTrades": "Iṣowo ti n lọ",
+    "totalVault": "Ile itọ́",
+    "pendingDisputes": "Aṣẹ ti o npọndọ",
+    "quickActions": "Awọn iṣe",
+    "newTrade": "Iṣowo tuntun",
+    "vault": "Ile itọ́",
+    "disputes": "Aṣẹ",
+    "recentActivity": "Iṣe ti o kẹyìn"
+  },
+  "profile": {
+    "title": "Profaili",
+    "trustScore": "Ipele iw信任",
+    "totalTrades": "Ipele iṣowo",
+    "successfulTrades": "Iṣowo ti o ni idan",
+    "successRate": "Ipele aṣeyọri",
+    "memberSince": "Ọba lati",
+    "loadingProfile": "Nnkan n lọ profaili..."
+  },
+  "trustScore": {
+    "title": "Ipele iw信任",
+    "calculating": "Nnkan ṣe iwọn iw信任...",
+    "excellent": "O dara julọ",
+    "good": "O dara",
+    "fair": "O ye",
+    "needsImprovement": "Nifẹ si Ilọsiwaju",
+    "scoreBreakdown": "Ipinnu iwọn",
+    "completedTrades": "Iṣowo ti o ti pari",
+    "successfulDisputes": "Aṣẹ ti o ni idan",
+    "responseTime": "Akoko idahunsi",
+    "ratingQuality": "Didana iwọn",
+    "scoreHistory": "Itan iwọn"
+  },
+  "vault": {
+    "title": "Dashoboodu ile itọ́",
+    "totalBalance": "Iye owo lapapọ",
+    "active": "Ti n lọ",
+    "completed": "Ti pari",
+    "recentTrades": "Iṣowo ti o kẹyìn",
+    "noTrades": "Ko si iṣowo",
+    "loadingVault": "Nnkan n lọ..."
+  },
+  "wallet": {
+    "title": "So Wallet",
+    "connecting": "Nnkan so wallet...",
+    "connected": "Wallet ti so",
+    "discut": "Kọ",
+    "address": "Adirẹsi",
+    "copyAddress": "Da adirẹsi pada",
+    "selectWallet": "Yan wallet lati so",
+    "freighter": "Freighter",
+    "freighterDesc": "Aṣà browser Stellar",
+    "albedo": "Albedo",
+    "albedoDesc": "Wallet ayelujara",
+    "xbull": "xBull",
+    "xbullDesc": "Wallet fọ̀nú"
+  },
+  "dispute": {
+    "title": "Alaye aṣẹ",
+    "loading": "Nnkan n lọ alaye aṣẹ...",
+    "tradeInfo": "Alaye iṣowo",
+    "disputeInfo": "Alaye aṣẹ",
+    "reason": "Ọpọlọpọ",
+    "raisedBy": "Ọgbà ti o kọ",
+    "raisedOn": "Lọ́jọ́",
+    "evidence": "Ẹri",
+    "resolution": "Atilẹ",
+    "buyerWins": "Oniṣowo jawe",
+    "sellerWins": "Alaja jawe",
+    "split": "Pin",
+    "status": {
+      "open": "Sii",
+      "underReview": "Ni akawe",
+      "resolved": "Ti seto"
+    }
+  },
+  "review": {
+    "title": "Fi esi silẹ",
+    "yourRating": "Iwọn rẹ",
+    "reviewTitle": "Akọle ase",
+    "reviewTitlePlaceholder": "Ipari iriri rẹ",
+    "yourReview": "Ase rẹ",
+    "reviewPlaceholder": "Pin iriri rẹ...",
+    "submitReview": "Fi silẹ",
+    "submitted": "A ti fi silẹ!",
+    "thankYou": "E dupe. Ase rẹ ngba iwọle lagbara.",
+    "validation": {
+      "ratingRequired": "Yan iwọn",
+      "titleRequired": "Fi akọle silẹ",
+      "titleTooShort": "Akọle gbọdọ ni odo 3 lọọ",
+      "commentRequired": "Fi ase silẹ",
+      "commentTooShort": "Ase gbọdọ ni odo 10 lọọ"
+    },
+    "ratings": {
+      "poor": "Buburu",
+      "fair": "O ye",
+      "good": "O dara",
+      "veryGood": "O dara pupọ",
+      "excellent": "Ti o dara julo"
+    }
+  },
+  "navigation": {
+    "home": "Ile",
+    "trades": "Iṣowo",
+    "vault": "Ile itọ́",
+    "profile": "Profaili"
+  }
+}

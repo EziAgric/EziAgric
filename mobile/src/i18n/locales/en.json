@@ -1,0 +1,155 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "submit": "Submit",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done",
+    "search": "Search",
+    "noResults": "No results found"
+  },
+  "home": {
+    "title": "Welcome back",
+    "subtitle": "Here's your trade overview",
+    "activeTrades": "Active Trades",
+    "totalVault": "Vault",
+    "pendingDisputes": "Disputes",
+    "quickActions": "Quick Actions",
+    "newTrade": "New Trade",
+    "vault": "Vault",
+    "disputes": "Disputes",
+    "recentActivity": "Recent Activity"
+  },
+  "profile": {
+    "title": "Profile",
+    "trustScore": "Trust Score",
+    "totalTrades": "Total Trades",
+    "successfulTrades": "Successful",
+    "successRate": "Success Rate",
+    "memberSince": "Member since",
+    "loadingProfile": "Loading profile..."
+  },
+  "trustScore": {
+    "title": "Trust Score",
+    "calculating": "Calculating trust score...",
+    "excellent": "Excellent",
+    "good": "Good",
+    "fair": "Fair",
+    "needsImprovement": "Needs Improvement",
+    "scoreBreakdown": "Score Breakdown",
+    "completedTrades": "Completed Trades",
+    "successfulDisputes": "Successful Disputes",
+    "responseTime": "Response Time",
+    "ratingQuality": "Rating Quality",
+    "scoreHistory": "Score History"
+  },
+  "vault": {
+    "title": "Vault Dashboard",
+    "totalBalance": "Total Balance",
+    "active": "Active",
+    "completed": "Completed",
+    "recentTrades": "Recent Trades",
+    "noTrades": "No trades yet",
+    "loadingVault": "Loading vault data..."
+  },
+  "wallet": {
+    "title": "Connect Wallet",
+    "connecting": "Connecting wallet...",
+    "connected": "Wallet Connected",
+    "disconnect": "Disconnect",
+    "address": "Address",
+    "copyAddress": "Copy wallet address",
+    "selectWallet": "Select a wallet to connect",
+    "freighter": "Freighter",
+    "freighterDesc": "Stellar wallet browser extension",
+    "albedo": "Albedo",
+    "albedoDesc": "Web wallet with stellar.toml",
+    "xbull": "xBull",
+    "xbullDesc": "Mobile wallet for Stellar"
+  },
+  "dispute": {
+    "title": "Dispute Details",
+    "loading": "Loading dispute details...",
+    "tradeInfo": "Trade Information",
+    "disputeInfo": "Dispute Information",
+    "reason": "Reason",
+    "raisedBy": "Raised By",
+    "raisedOn": "Raised On",
+    "evidence": "Evidence",
+    "resolution": "Resolution",
+    "buyerWins": "Buyer Wins",
+    "sellerWins": "Seller Wins",
+    "split": "Split",
+    "status": {
+      "open": "Open",
+      "underReview": "Under Review",
+      "resolved": "Resolved"
+    }
+  },
+  "review": {
+    "title": "Leave a Review",
+    "yourRating": "Your Rating",
+    "reviewTitle": "Review Title",
+    "reviewTitlePlaceholder": "Summarize your experience",
+    "yourReview": "Your Review",
+    "reviewPlaceholder": "Share details about your experience with this trade...",
+    "submitReview": "Submit Review",
+    "submitted": "Review Submitted!",
+    "thankYou": "Thank you for your feedback. Your review helps build trust in our community.",
+    "validation": {
+      "ratingRequired": "Please select a rating",
+      "titleRequired": "Please enter a review title",
+      "titleTooShort": "Title must be at least 3 characters",
+      "commentRequired": "Please enter your review comment",
+      "commentTooShort": "Comment must be at least 10 characters"
+    },
+    "ratings": {
+      "poor": "Poor",
+      "fair": "Fair",
+      "good": "Good",
+      "veryGood": "Very Good",
+      "excellent": "Excellent"
+    }
+  },
+  "marketplace": {
+    "title": "Marketplace",
+    "loading": "Loading listings...",
+    "noResults": "No listings found"
+  },
+  "trades": {
+    "title": "My Trades",
+    "loading": "Loading trades...",
+    "noTrades": "No trades found",
+    "filterAll": "All",
+    "filterPending": "Pending",
+    "filterFunded": "Funded",
+    "filterCompleted": "Completed",
+    "filterDisputed": "Disputed",
+    "statusPending": "Pending",
+    "statusFunded": "Funded",
+    "statusCompleted": "Completed",
+    "statusDisputed": "Disputed"
+  },
+  "navigation": {
+    "home": "Home",
+    "trades": "Trades",
+    "vault": "Vault",
+    "profile": "Profile"
+  },
+  "notification": {
+    "tradeFunded": "Trade Funded",
+    "tradeFundedBody": "Your trade has been funded successfully",
+    "tradeCompleted": "Trade Completed",
+    "tradeCompletedBody": "Your trade has been completed successfully",
+    "disputeRaised": "Dispute Raised",
+    "disputeRaisedBody": "A dispute has been raised for one of your trades",
+    "evidenceSubmitted": "Evidence Submitted",
+    "evidenceSubmittedBody": "New evidence has been submitted for dispute resolution"
+  }
+}
