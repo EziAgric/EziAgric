@@ -1,342 +1,285 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  StyleSheet,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
-import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
+import type { Trade, TradeStatus } from '../types/trade';
+import { useTradeStore } from '../stores/tradeStore';
+import { useAuthStore } from '../stores/authStore';
+import { AdminErrorBanner } from '../components/AdminErrorBanner';
+import { buildSupportMailto } from '../constants/support';
 
-interface Trade {
-  id: string;
-  productName: string;
-  amount: number;
-  status: 'pending' | 'funded' | 'completed' | 'disputed';
-  date: string;
-  counterparty: string;
-}
+type Props = StackScreenProps<RootStackParamList, 'TradeList'>;
 
-/**
- * TradeListScreen - List all trades for the user
- * Localized with i18n for high-traffic screen requirement
- */
-export default function TradeListScreen() {
-  const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string>('all');
+const STATUS_FILTERS: Array<{ label: string; value: TradeStatus | 'ALL' }> = [
+  { label: 'All', value: 'ALL' },
+  { label: 'Pending', value: 'PENDING' },
+  { label: 'Active', value: 'IN_TRANSIT' },
+  { label: 'Disputed', value: 'DISPUTED' },
+  { label: 'Done', value: 'COMPLETED' },
+];
 
-  const filters = [
-    { key: 'all', label: t('trades.filterAll') },
-    { key: 'pending', label: t('trades.filterPending') },
-    { key: 'funded', label: t('trades.filterFunded') },
-    { key: 'completed', label: t('trades.filterCompleted') },
-    { key: 'disputed', label: t('trades.filterDisputed') },
-  ];
+const STATUS_COLORS: Record<TradeStatus, string> = {
+  PENDING: '#F59E0B',
+  FUNDED: '#3B82F6',
+  IN_TRANSIT: '#14B8A6',
+  DELIVERED: '#34D399',
+  DISPUTED: '#EF4444',
+  COMPLETED: '#34D399',
+  REFUNDED: '#6B7280',
+};
 
-  const fetchTrades = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Simulated API call - replace with actual API
-      const mockTrades: Trade[] = [
-        {
-          id: 'trade-001',
-          productName: 'Maize (50kg)',
-          amount: 25000,
-          status: 'funded',
-          date: '2024-10-15',
-          counterparty: 'Abuja Market Coop',
-        },
-        {
-          id: 'trade-002',
-          productName: 'Rice (25kg)',
-          amount: 15000,
-          status: 'pending',
-          date: '2024-10-18',
-          counterparty: 'Kano Traders Ltd',
-        },
-        {
-          id: 'trade-003',
-          productName: 'Soybeans (100kg)',
-          amount: 45000,
-          status: 'completed',
-          date: '2024-10-10',
-          counterparty: 'Lagos Exporters',
-        },
-        {
-          id: 'trade-004',
-          productName: 'Cassava Flour (20kg)',
-          amount: 8000,
-          status: 'disputed',
-          date: '2024-10-12',
-          counterparty: 'Port Harcourt Stores',
-        },
-      ];
-      setTrades(mockTrades);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.error'));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+function TradeCard({ trade, onPress }: { trade: Trade; onPress: () => void }) {
+  const statusColor = STATUS_COLORS[trade.status] ?? '#6B7280';
+  const shortBuyer = `${trade.buyerAddress.slice(0, 6)}…${trade.buyerAddress.slice(-4)}`;
+  const shortSeller = `${trade.sellerAddress.slice(0, 6)}…${trade.sellerAddress.slice(-4)}`;
 
-  useEffect(() => {
-    fetchTrades();
-  }, [fetchTrades]);
-
-  const filteredTrades = trades.filter((trade) => {
-    if (filter === 'all') return true;
-    return trade.status === filter;
-  });
-
-  const getStatusColor = (status: Trade['status']) => {
-    switch (status) {
-      case 'pending':
-        return '#d97706';
-      case 'funded':
-        return '#2563eb';
-      case 'completed':
-        return '#2d6a2d';
-      case 'disputed':
-        return '#dc2626';
-      default:
-        return '#6b7280';
-    }
-  };
-
-  const getStatusLabel = (status: Trade['status']) => {
-    switch (status) {
-      case 'pending':
-        return t('trades.statusPending');
-      case 'funded':
-        return t('trades.statusFunded');
-      case 'completed':
-        return t('trades.statusCompleted');
-      case 'disputed':
-        return t('trades.statusDisputed');
-      default:
-        return status;
-    }
-  };
-
-  const renderItem = ({ item }: { item: Trade }) => (
+  return (
     <TouchableOpacity
-      testID={`trade-${item.id}`}
-      style={styles.tradeCard}
-      accessibilityLabel={`Trade: ${item.productName}, ${item.amount} Naira, ${getStatusLabel(item.status)}`}
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.75}
       accessibilityRole="button"
+      accessibilityLabel={`Trade ${trade.tradeId.slice(0, 8)}, ${trade.amountUsdc} USDC, status ${trade.status}`}
+      accessible
     >
-      <View style={styles.tradeHeader}>
-        <Text style={styles.tradeProduct}>{item.productName}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
+      <View style={styles.cardRow}>
+        <Text style={styles.tradeId}>#{trade.tradeId.slice(0, 8)}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: `${statusColor}22` }]}>
+          <Text style={[styles.statusText, { color: statusColor }]}>{trade.status}</Text>
         </View>
       </View>
-      <Text style={styles.tradeAmount}>{item.amount.toLocaleString()} NGN</Text>
-      <View style={styles.tradeFooter}>
-        <Text style={styles.tradeCounterparty}>{item.counterparty}</Text>
-        <Text style={styles.tradeDate}>{item.date}</Text>
+      <Text style={styles.amount}>{trade.amountUsdc} USDC</Text>
+      <View style={styles.cardRow}>
+        <Text style={styles.addressLabel}>Buyer: <Text style={styles.address}>{shortBuyer}</Text></Text>
+        <Text style={styles.addressLabel}>Seller: <Text style={styles.address}>{shortSeller}</Text></Text>
       </View>
     </TouchableOpacity>
   );
+}
 
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#2d6a2d" />
-        <Text style={styles.loadingText}>{t('common.loading')}</Text>
-      </View>
-    );
-  }
+export default function TradeListScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
+  const { trades, isLoading, errorView, fetchTrades, clearErrorView } = useTradeStore();
+  const { clearAuth } = useAuthStore();
+  const [activeFilter, setActiveFilter] = useState<TradeStatus | 'ALL'>('ALL');
+  const [refreshing, setRefreshing] = useState(false);
 
-  if (error) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity testID="retry-button" style={styles.retryButton} onPress={fetchTrades}>
-          <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const load = useCallback(
+    (status?: TradeStatus | 'ALL') => {
+      const s = status ?? activeFilter;
+      fetchTrades(s === 'ALL' ? undefined : { status: s });
+    },
+    [activeFilter, fetchTrades]
+  );
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchTrades(activeFilter === 'ALL' ? undefined : { status: activeFilter });
+    setRefreshing(false);
+  }, [activeFilter, fetchTrades]);
+
+  const handleFilterChange = (value: TradeStatus | 'ALL') => {
+    setActiveFilter(value);
+    fetchTrades(value === 'ALL' ? undefined : { status: value });
+  };
+
+  const handleLogout = async () => {
+    await clearAuth();
+    navigation.replace('WalletConnect');
+  };
+
+  // TradeListScreen only triggers load actions (`fetchTrades`), so a
+  // single slot is enough — no dual-slot `lastActionErrorView` here.
+  const visibleErrorView = errorView;
+
+  const openSupportMailto = useCallback(() => {
+    void Linking.openURL(buildSupportMailto(visibleErrorView, 'trade list'));
+  }, [visibleErrorView]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>{t('trades.title')}</Text>
+        <Text style={styles.headerTitle}>🌾 Trades</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('DriverHome')}
+            testID="open-driver"
+            accessibilityRole="button"
+            accessibilityLabel="Open driver mode"
+            style={styles.headerBtn}
+          >
+            <Text style={styles.createBtnText}>Driver</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Marketplace')}
+            testID="open-marketplace"
+            accessibilityRole="button"
+            accessibilityLabel="Open marketplace"
+            style={styles.headerBtn}
+          >
+            <Text style={styles.createBtnText}>Market</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CreateTrade')}
+            accessibilityRole="button"
+            accessibilityLabel="Create new trade"
+            style={styles.headerBtn}
+          >
+            <Text style={styles.createBtnText}>+ New</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleLogout}
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            style={styles.headerBtn}
+          >
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
+      {/* Filter tabs */}
+      <View style={styles.filterRow}>
+        {STATUS_FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f.value}
+            style={[styles.filterTab, activeFilter === f.value && styles.filterTabActive]}
+            onPress={() => handleFilterChange(f.value)}
+            accessibilityRole="tab"
+            accessibilityLabel={`Filter by ${f.label}`}
+            accessibilityState={{ selected: activeFilter === f.value }}
+          >
+            <Text style={[styles.filterLabel, activeFilter === f.value && styles.filterLabelActive]}>
+              {f.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Error banner — renders an inline AdminErrorBanner above the
+          list using the load slot from the store. */}
+      {visibleErrorView ? (
+        <View style={styles.bannerWrap}>
+          <AdminErrorBanner
+            view={visibleErrorView}
+            onRetry={() => {
+              const s = activeFilter;
+              void fetchTrades(s === 'ALL' ? undefined : { status: s });
+            }}
+            onSignOut={handleLogout}
+            onGoBack={clearErrorView}
+            onContactSupport={openSupportMailto}
+          />
+        </View>
+      ) : null}
+
+      {/* List */}
+      {isLoading && !refreshing ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2d6a2d" />
+        </View>
+      ) : (
         <FlatList
-          horizontal
-          data={filters}
-          keyExtractor={(item) => item.key}
-          showsHorizontalScrollIndicator={false}
+          data={trades}
+          keyExtractor={(item) => item.tradeId}
+          contentContainerStyle={trades.length === 0 ? styles.emptyContainer : styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2d6a2d" />}
           renderItem={({ item }) => (
-            <TouchableOpacity
-              testID={`filter-${item.key}`}
-              style={[
-                styles.filterTab,
-                filter === item.key && styles.filterTabActive,
-              ]}
-              onPress={() => setFilter(item.key)}
-            >
-              <Text
-                style={[
-                  styles.filterText,
-                  filter === item.key && styles.filterTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
+            <TradeCard
+              trade={item}
+              onPress={() => navigation.navigate('TradeDetail', { tradeId: item.tradeId })}
+            />
           )}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>📦</Text>
+              <Text style={styles.emptyTitle}>No trades found</Text>
+              <Text style={styles.emptyBody}>
+                {activeFilter === 'ALL'
+                  ? 'You have no trades yet.'
+                  : `No trades with status "${activeFilter}".`}
+              </Text>
+            </View>
+          }
         />
-      </View>
-
-      {/* Trades List */}
-      <FlatList
-        data={filteredTrades}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>{t('trades.noTrades')}</Text>
-          </View>
-        }
-      />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f4f7f4',
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#f0f4f0' },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8e0',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1f3d1f',
-  },
-  filterContainer: {
-    paddingHorizontal: 16,
-    marginBottom: 16,
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#1a3a1a' },
+  headerActions: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+  headerBtn: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' },
+  createBtnText: { fontSize: 14, color: '#2d6a2d', fontWeight: '700' },
+  logoutText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500' },
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8e0',
+    gap: 6,
   },
   filterTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#fff',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    backgroundColor: '#f0f4f0',
   },
-  filterTabActive: {
-    backgroundColor: '#2d6a2d',
-    borderColor: '#2d6a2d',
-  },
-  filterText: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  filterTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  list: {
-    padding: 16,
-    paddingTop: 0,
-  },
-  tradeCard: {
+  filterTabActive: { backgroundColor: '#2d6a2d' },
+  filterLabel: { fontSize: 13, color: '#4a6a4a', fontWeight: '500' },
+  filterLabelActive: { color: '#fff' },
+  bannerWrap: { paddingHorizontal: 16, paddingTop: 12 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  listContent: { padding: 16, gap: 12 },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  emptyState: { alignItems: 'center' },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: '#1a3a1a', marginBottom: 8 },
+  emptyBody: { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 22 },
+  card: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    gap: 8,
   },
-  tradeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  tradeProduct: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f3d1f',
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  tradeAmount: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1f3d1f',
-    marginBottom: 8,
-  },
-  tradeFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  tradeCounterparty: {
-    fontSize: 13,
-    color: '#6b7280',
-  },
-  tradeDate: {
-    fontSize: 13,
-    color: '#9ca3af',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#dc2626',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#2d6a2d',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  tradeId: { fontSize: 13, color: '#888', fontFamily: 'monospace' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  amount: { fontSize: 20, fontWeight: '700', color: '#1a3a1a' },
+  addressLabel: { fontSize: 12, color: '#888' },
+  address: { color: '#2d6a2d', fontFamily: 'monospace' },
 });

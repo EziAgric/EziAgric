@@ -1,216 +1,225 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Linking,
-  StyleSheet,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  ActivityIndicator,
+  StyleSheet,
+  Alert,
+  Linking,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
+import { useAuthStore } from '../stores/authStore';
+import { authApi } from '../api/auth';
 
-interface WalletInfo {
-  address: string;
-  name: string;
-  connected: boolean;
-}
+type Props = StackScreenProps<RootStackParamList, 'WalletConnect'>;
 
-/**
- * WalletConnectScreen handles Stellar wallet connection
- * Supports deep-link handling for wallet callbacks
- */
-export default function WalletConnectScreen() {
-  const insets = useSafeAreaInsets();
-  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// WalletConnect / deep-link session state
+type SessionStatus =
+  | 'idle'
+  | 'awaiting_wallet'   // deep-link sent, waiting for wallet to return
+  | 'signing'           // wallet returned, verifying challenge
+  | 'error';
 
-  // Handle deep-link callback from wallet
-  const handleDeepLink = useCallback(async (url: string) => {
-    // Parse the deep-link URL
-    // Format: eziagric://wallet/callback?address=XXX&signature=XXX
-    try {
-      const parsedUrl = new URL(url);
-      const params = parsedUrl.searchParams;
-      
-      if (params.has('address')) {
-        const address = params.get('address');
-        const name = params.get('name') || 'Connected Wallet';
-        
-        setWalletInfo({
-          address: address!,
-          name,
-          connected: true,
-        });
-      }
-    } catch (err) {
-      console.error('Failed to parse deep-link:', err);
-    }
+const SESSION_TIMEOUT_MS = 3 * 60 * 1000; // 3 min — expire waiting sessions
+
+export default function WalletConnectScreen({ navigation }: Props) {
+  const [status, setStatus] = useState<SessionStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { setWalletAddress, setToken } = useAuthStore();
+
+  // Pending challenge payload for the current WalletConnect session
+  const pendingSession = useRef<{
+    address: string;
+    challenge: string;
+    expiresAt: number;
+  } | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSession = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    pendingSession.current = null;
+    timeoutRef.current = null;
   }, []);
 
-  // Listen for deep-links
-  useEffect(() => {
-    const subscription = Linking.addEventListener('url', (event) => {
-      handleDeepLink(event.url);
-    });
+  const expireSession = useCallback(() => {
+    clearSession();
+    setStatus('error');
+    setErrorMessage('Wallet connection timed out. Please try again.');
+  }, [clearSession]);
 
-    // Check if app was opened via deep-link
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink(url);
+  // Handle deep-link callback from wallet (e.g. amana://wc-callback?address=G…&signed=…)
+  const handleDeepLink = useCallback(
+    async (url: string) => {
+      if (!url.includes('wc-callback')) return;
+      const parsed = new URL(url);
+      const address = parsed.searchParams.get('address');
+      const signed = parsed.searchParams.get('signed');
+
+      const session = pendingSession.current;
+      if (!session || !address || !signed) {
+        setStatus('error');
+        setErrorMessage('Invalid wallet response. Please try again.');
+        return;
       }
-    });
 
+      if (Date.now() > session.expiresAt) {
+        expireSession();
+        return;
+      }
+
+      if (address !== session.address) {
+        setStatus('error');
+        setErrorMessage('Wallet address mismatch. Please reconnect.');
+        clearSession();
+        return;
+      }
+
+      clearSession();
+      setStatus('signing');
+      try {
+        const { token } = await authApi.verifyChallenge(address, signed);
+        await setToken(token);
+        setWalletAddress(address);
+        navigation.replace('TradeList');
+      } catch (err: unknown) {
+        setStatus('error');
+        setErrorMessage((err as Error)?.message ?? 'Verification failed. Please try again.');
+      }
+    },
+    [clearSession, expireSession, navigation, setToken, setWalletAddress],
+  );
+
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleDeepLink(url);
+    });
+    // Handle cold-start deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink(url);
+    });
     return () => {
       subscription.remove();
+      clearSession();
     };
-  }, [handleDeepLink]);
+  }, [handleDeepLink, clearSession]);
 
-  const connectWallet = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Simulate wallet connection
-      // In production, this would use @stellar/freighter-api or @albedo.link
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // For demo, simulate successful connection
-      setWalletInfo({
-        address: 'GAC2ZUXLLFS7CIM2KOH6G3W7KXXXXX',
-        name: 'My Wallet',
-        connected: true,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect wallet');
-    } finally {
-      setLoading(false);
+  const initiateWalletConnect = async (address: string) => {
+    if (!address.startsWith('G') || address.length < 56) {
+      Alert.alert('Invalid address', 'Please enter a valid Stellar public key (starts with G, 56+ chars).');
+      setStatus('idle');
+      return;
     }
-  }, []);
 
-  const disconnectWallet = useCallback(() => {
-    setWalletInfo(null);
-  }, []);
+    try {
+      const { challenge } = await authApi.generateChallenge(address);
+      const expiresAt = Date.now() + SESSION_TIMEOUT_MS;
 
-  const copyAddress = useCallback(() => {
-    // In production, use Clipboard API
-    // Clipboard.setString(walletInfo?.address || '');
-  }, [walletInfo]);
+      pendingSession.current = { address, challenge, expiresAt };
+      timeoutRef.current = setTimeout(expireSession, SESSION_TIMEOUT_MS);
 
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#2d6a2d" />
-        <Text style={styles.loadingText}>Connecting wallet...</Text>
-      </View>
+      // Build deep-link URI for Stellar WalletConnect / LOBSTR / xBull compatible wallets
+      // Wallets that support the Stellar Web Authentication (SEP-10) deep-link scheme
+      // will sign the challenge XDR and redirect back via amana://wc-callback
+      const callbackUri = encodeURIComponent(`amana://wc-callback?address=${address}`);
+      const wcUri = `web+stellar:sign?xdr=${encodeURIComponent(challenge)}&callback=${callbackUri}`;
+
+      const supported = await Linking.canOpenURL(wcUri);
+      if (!supported) {
+        // Fall back: show challenge for manual signing in wallets without deep-link support
+        Alert.alert(
+          'No wallet app found',
+          'Install LOBSTR or xBull to sign transactions. If you have a wallet, use the address entry below.',
+          [{ text: 'OK', onPress: () => { clearSession(); setStatus('idle'); } }],
+        );
+        return;
+      }
+
+      setStatus('awaiting_wallet');
+      await Linking.openURL(wcUri);
+    } catch (err: unknown) {
+      clearSession();
+      setStatus('error');
+      setErrorMessage((err as Error)?.message ?? 'Failed to initiate wallet connection.');
+    }
+  };
+
+  const handleConnect = () => {
+    setStatus('idle');
+    setErrorMessage(null);
+
+    Alert.prompt(
+      'Enter Wallet Address',
+      'Paste your Stellar wallet public key (G…)',
+      (address) => {
+        if (!address) { setStatus('idle'); return; }
+        initiateWalletConnect(address.trim());
+      },
+      'plain-text',
     );
-  }
+  };
+
+  const isLoading = status === 'awaiting_wallet' || status === 'signing';
+
+  const statusLabel: Record<SessionStatus, string> = {
+    idle: 'Connect Wallet',
+    awaiting_wallet: 'Waiting for wallet…',
+    signing: 'Verifying…',
+    error: 'Retry',
+  };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Connect Wallet</Text>
+    <View style={styles.container}>
+      <View style={styles.hero}>
+        <Text style={styles.logo}>🌾</Text>
+        <Text style={styles.title}>Amana</Text>
+        <Text style={styles.subtitle}>Trust as a Service{'\n'}for Agricultural Products</Text>
       </View>
 
-      <View style={styles.content}>
-        {error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
-              testID="retry-button" 
-              style={styles.retryButton} 
-              onPress={connectWallet}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : walletInfo?.connected ? (
-          // Connected state
-          <View style={styles.connectedCard}>
-            <View style={styles.walletIcon}>
-              <Text style={styles.walletIconText}>★</Text>
-            </View>
-            <Text style={styles.connectedTitle}>Wallet Connected</Text>
-            <Text style={styles.walletName}>{walletInfo.name}</Text>
-            
-            <View style={styles.addressContainer}>
-              <Text style={styles.addressLabel}>Address</Text>
-              <TouchableOpacity 
-                testID="copy-address-button"
-                onPress={copyAddress}
-                accessibilityLabel="Copy wallet address"
-              >
-                <Text style={styles.addressText} numberOfLines={2}>
-                  {walletInfo.address}
-                </Text>
-              </TouchableOpacity>
-            </View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Connect your Stellar Wallet</Text>
+        <Text style={styles.cardBody}>
+          Link your wallet using WalletConnect or a Stellar deep-link compatible app (LOBSTR, xBull) to start trading securely with escrow-backed protection.
+        </Text>
 
-            <TouchableOpacity 
-              testID="disconnect-button"
-              style={styles.disconnectButton}
-              onPress={disconnectWallet}
+        {errorMessage ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        ) : null}
+
+        {status === 'awaiting_wallet' ? (
+          <View style={styles.awaitingBox}>
+            <ActivityIndicator color="#2d6a2d" style={styles.awaitingSpinner} accessibilityLabel="Waiting for wallet" />
+            <Text style={styles.awaitingText}>
+              Your wallet app should have opened.{'\n'}Approve the sign request, then return here.
+            </Text>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => { clearSession(); setStatus('idle'); setErrorMessage(null); }}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel wallet connection"
             >
-              <Text style={styles.disconnectButtonText}>Disconnect</Text>
+              <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          // Disconnected state - show connect options
-          <View style={styles.disconnectedCard}>
-            <Text style={styles.subtitle}>
-              Connect your Stellar wallet to manage your trades and vault
-            </Text>
-
-            <View style={styles.walletOptions}>
-              <TouchableOpacity 
-                testID="connect-freighter"
-                style={styles.walletOption}
-                onPress={connectWallet}
-                accessibilityLabel="Connect Freighter wallet"
-                accessibilityRole="button"
-              >
-                <View style={styles.walletOptionIcon}>
-                  <Text style={styles.walletOptionIconText}>F</Text>
-                </View>
-                <View style={styles.walletOptionInfo}>
-                  <Text style={styles.walletOptionName}>Freighter</Text>
-                  <Text style={styles.walletOptionDesc}>Stellar wallet browser extension</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                testID="connect-albedo"
-                style={styles.walletOption}
-                onPress={connectWallet}
-                accessibilityLabel="Connect Albedo wallet"
-                accessibilityRole="button"
-              >
-                <View style={styles.walletOptionIcon}>
-                  <Text style={styles.walletOptionIconText}>A</Text>
-                </View>
-                <View style={styles.walletOptionInfo}>
-                  <Text style={styles.walletOptionName}>Albedo</Text>
-                  <Text style={styles.walletOptionDesc}>Web wallet with stellar.toml</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                testID="connect-xbull"
-                style={styles.walletOption}
-                onPress={connectWallet}
-                accessibilityLabel="Connect xBull wallet"
-                accessibilityRole="button"
-              >
-                <View style={styles.walletOptionIcon}>
-                  <Text style={styles.walletOptionIconText}>X</Text>
-                </View>
-                <View style={styles.walletOptionInfo}>
-                  <Text style={styles.walletOptionName}>xBull</Text>
-                  <Text style={styles.walletOptionDesc}>Mobile wallet for Stellar</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={handleConnect}
+            disabled={isLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Connect Wallet"
+            accessibilityState={{ disabled: isLoading, busy: isLoading }}
+            accessible
+          >
+            {status === 'signing' ? (
+              <ActivityIndicator color="#fff" accessibilityLabel="Signing with wallet" />
+            ) : (
+              <Text style={styles.buttonText}>{statusLabel[status]}</Text>
+            )}
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -220,157 +229,97 @@ export default function WalletConnectScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f7f4',
-  },
-  centered: {
+    backgroundColor: '#f0f4f0',
     justifyContent: 'center',
-    alignItems: 'center',
+    padding: 24,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+  hero: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logo: {
+    fontSize: 64,
+    marginBottom: 8,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1f3d1f',
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  errorContainer: {
-    alignItems: 'center',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#dc2626',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#2d6a2d',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  disconnectedCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#1a3a1a',
   },
   subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  walletOptions: {
-    gap: 12,
-  },
-  walletOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  walletOptionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2d6a2d',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  walletOptionIconText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  walletOptionInfo: {
-    flex: 1,
-  },
-  walletOptionName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1f3d1f',
+    color: '#4a6a4a',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 24,
   },
-  walletOptionDesc: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  connectedCard: {
+  card: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 24,
-    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  walletIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#2d6a2d',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  walletIconText: {
-    fontSize: 28,
-    color: '#fff',
-  },
-  connectedTitle: {
+  cardTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#1f3d1f',
-    marginBottom: 4,
+    fontWeight: '600',
+    color: '#1a3a1a',
+    marginBottom: 8,
   },
-  walletName: {
+  cardBody: {
     fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 20,
+    color: '#555',
+    lineHeight: 22,
+    marginBottom: 24,
   },
-  addressContainer: {
-    width: '100%',
-    backgroundColor: '#f9fafb',
+  errorBox: {
+    backgroundColor: '#fee2e2',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  addressLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 4,
+  errorText: {
+    color: '#991b1b',
+    fontSize: 13,
+    lineHeight: 20,
   },
-  addressText: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-    color: '#1f3d1f',
+  awaitingBox: {
+    alignItems: 'center',
+    paddingVertical: 8,
   },
-  disconnectButton: {
+  awaitingSpinner: {
+    marginBottom: 12,
+  },
+  awaitingText: {
+    fontSize: 13,
+    color: '#555',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  cancelButton: {
+    paddingVertical: 8,
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#dc2626',
   },
-  disconnectButtonText: {
-    color: '#dc2626',
+  cancelText: {
+    color: '#2d6a2d',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  button: {
+    backgroundColor: '#2d6a2d',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

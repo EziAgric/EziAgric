@@ -1,126 +1,68 @@
 {
   "common": {
-    "loading": "Na-ebu...",
-    "error": "Njehie mere",
-    "retry": "Lee anya",
-    "cancel": "Kpachapụ",
-    "submit": "Nyefee",
-    "save": "Chekwaa",
-    "delete": "Hichapụ",
-    "edit": "Dezie",
-    "back": "Lagachi",
-    "next": "Na-esote",
-    "done": "Emela",
-    "search": "Chọọ",
-    "noResults": "Enweghị nsona"
-  },
-  "home": {
-    "title": "Nabataghachi",
-    "subtitle": "Nke a bụ nyocha azụmahịa gị",
-    "activeTrades": "Azụmahịa na-arụ ọrụ",
-    "totalVault": "Vault",
-    "pendingDisputes": "Mkpara",
-    "quickActions": "Omume ngwa ngwa",
-    "newTrade": "Azụmahịa ọhụrụ",
-    "vault": "Vault",
-    "disputes": "Mkpara",
-    "recentActivity": "Omume kacha nso"
-  },
-  "profile": {
-    "title": "Profile",
-    "trustScore": "Score ntụkwasị",
-    "totalTrades": "Azụmahịa niile",
-    "successfulTrades": "Azụmahịa ndị nwereuccess",
-    "successRate": "Oke nwereuccess",
-    "memberSince": "Onye otu site na",
-    "loadingProfile": "Na-ebu profile..."
-  },
-  "trustScore": {
-    "title": "Score ntụkwasị",
-    "calculating": "Na-akọ score ntụkwasị...",
-    "excellent": "Mma",
-    "good": "Ọ dị mma",
-    "fair": "Zụlite",
-    "needsImprovement": "Chọrọ mbelata",
-    "scoreBreakdown": "Nkewa score",
-    "completedTrades": "Azụmahịa emela",
-    "successfulDisputes": "Mkpara ndị nwereuccess",
-    "responseTime": "Oge azịza",
-    "ratingQuality": "Ogo ntinye aka",
-    "scoreHistory": "Akụkọ score"
-  },
-  "vault": {
-    "title": "Dashboard Vault",
-    "totalBalance": "Mgbalị niile",
-    "active": "Na-arụ ọrụ",
-    "completed": "Emela",
-    "recentTrades": "Azụmahịa kacha nso",
-    "noTrades": "Enweghị azụmahịa",
-    "loadingVault": "Na-ebu data vault..."
+    "loading": "Na-ebudata…",
+    "retry": "Nwalee ọzọ",
+    "cancel": "Kagbuo",
+    "confirm": "Kwenye",
+    "back": "Laghachi",
+    "ok": "Ọ dị mma",
+    "error": "Njehie",
+    "offline": "Ị nọ n'èzí ịntanetị",
+    "unknown_error": "Njehie amaghị eme"
   },
   "wallet": {
-    "title": "Jikọọ Wallet",
-    "connecting": "Na-ejikọ wallet...",
-    "connected": "Wallet ejikọọ",
-    "discut": "Kpuchie",
-    "address": "Adreesị",
-    "copyAddress": "Detuo adreesị wallet",
-    "selectWallet": "Họrọ wallet iji jikọọ",
-    "freighter": "Freighter",
-    "freighterDesc": "Stellar wallet browser",
-    "albedo": "Albedo",
-    "albedoDesc": "Web wallet",
-    "xbull": "xBull",
-    "xbullDesc": "Mobile wallet"
+    "connect_title": "Jikọọ akpa ego Stellar gị",
+    "connect_body": "Jikọọ akpa ego gị site na WalletConnect ma ọ bụ ngwa dabara na Stellar (LOBSTR, xBull) iji malite azụmahịa nchekwa.",
+    "connect_button": "Jikọọ Akpa Ego",
+    "retry_button": "Nwalee ọzọ",
+    "awaiting_wallet": "Na-atọ ndị akpa ego…",
+    "verifying": "Na-enyocha…",
+    "awaiting_instructions": "Ngwa akpa ego gị kwesịrị emepe.\nKwetaa arịọ mbinye aka, wee laghachi ebe a.",
+    "prompt_title": "Tinye Adreesị Akpa Ego",
+    "prompt_body": "Tụọ igodo ọha Stellar akpa ego gị (G…)",
+    "invalid_address": "Adreesị ezighi ezi",
+    "invalid_address_message": "Biko tinye igodo ọha Stellar ziri ezi (na-amalite na G, mkpụrụedemede 56+).",
+    "connection_failed": "Njikọ dara ada",
+    "no_wallet_app": "Ahụghị ngwa akpa ego",
+    "no_wallet_message": "Wụnye LOBSTR ma ọ bụ xBull iji bịa nka azụmahịa.",
+    "timeout_error": "Njikọ akpa ego agwụla oge. Biko nwalee ọzọ.",
+    "address_mismatch": "Adreesị akpa ego adabaghị. Biko jikọọ ọzọ.",
+    "invalid_response": "Nzaghachi akpa ego ezighi ezi. Biko nwalee ọzọ.",
+    "verification_failed": "Nyocha dara ada. Biko nwalee ọzọ."
   },
-  "dispute": {
-    "title": "Nkọwa mkpara",
-    "loading": "Na-ebu nkọwa mkpara...",
-    "tradeInfo": "Nkọwa azụmahịa",
-    "disputeInfo": "Nkọwa mkpara",
-    "reason": "Ihe kpatara",
-    "raisedBy": "Bịanyere aka",
-    "raisedOn": "Na",
-    "evidence": "Ihe akaebe",
-    "resolution": "Nchịpụ",
-    "buyerWins": "Onye na-eme achọ nwetachara",
-    "sellerWins": "Onye na-ere nwetachara",
-    "split": "Kewaa",
-    "status": {
-      "open": "Mepee",
-      "underReview": "Na-eme nyocha",
-      "resolved": "Emela"
-    }
+  "home": {
+    "title": "Amana Mobile",
+    "subtitle": "Ntụkwasị Obi dị ka Ọrụ maka Ngwongwo Ọrụ Ugbo",
+    "tagline": "Ntụkwasị Obi dị ka Ọrụ\nmaka Ngwongwo Ọrụ Ugbo",
+    "getting_started": "Ịmalite",
+    "getting_started_body": "Nke a bụ ngwa mkpanaka Amana gị. Jikọọ akpa ego Stellar gị iji malite azụmahịa nchekwa."
   },
-  "review": {
-    "title": "Depụta nlebanya",
-    "yourRating": "Ntinye aka gị",
-    "reviewTitle": "Aha nlebanya",
-    "reviewTitlePlaceholder": "Kọwapụta ahụmahụ gị",
-    "yourReview": "Nlebanya gị",
-    "reviewPlaceholder": "Kọwaa ndụmọdụ gị...",
-    "submitReview": "Nyefee nlebanya",
-    "submitted": "E nyefere nlebanya!",
-    "thankYou": "Daalụ. Nlebanya gị na-akwalite ntụkwasị.",
-    "validation": {
-      "ratingRequired": "Họrọ ntinye aka",
-      "titleRequired": "Dịa aha nlebanya",
-      "titleTooShort": "Aha ga-enwerịrị opekempe ederede 3",
-      "commentRequired": "Dịta nkọwa",
-      "commentTooShort": "Nkọwa ga-enwerịrị opekempe ederede 10"
-    },
-    "ratings": {
-      "poor": "Ọ dị njọ",
-      "fair": "Zụlite",
-      "good": "Ọ dị mma",
-      "veryGood": "Ọ dị mma ukwuu",
-      "excellence": "Kacha mma"
-    }
+  "trade": {
+    "list_title": "Azụmahịa",
+    "empty": "Ahụghị azụmahịa ọ bụla",
+    "status_all": "Niile",
+    "status_pending": "Na-atọ ndị",
+    "status_active": "Na-arụ ọrụ",
+    "status_disputed": "Esemokwu",
+    "status_done": "Mechara",
+    "confirm_delivery": "Kwenye Nnyefe",
+    "release_funds": "Wepụ Ego",
+    "deposit": "Depọzịt",
+    "initiate_dispute": "Malite Esemokwu",
+    "dispute_reason_placeholder": "Kọọ nsogbu ahụ…",
+    "load_error": "Ọ dapụtara imebudata azụmahịa",
+    "action_error": "Omume dara ada"
   },
-  "navigation": {
-    "home": "Ụlọ",
-    "trades": "Azụmahịa",
-    "vault": "Vault",
-    "profile": "Profile"
+  "auth": {
+    "sign_out": "Pụọ",
+    "sign_out_confirm": "Ị chefuo ịpụ?"
+  },
+  "language": {
+    "select_language": "Họrọ Asụsụ",
+    "english": "Bekee",
+    "hausa": "Hausa",
+    "yoruba": "Yoruba",
+    "igbo": "Igbo",
+    "pidgin": "Pidgin"
   }
 }

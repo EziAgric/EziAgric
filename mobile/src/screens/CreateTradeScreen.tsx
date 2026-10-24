@@ -1,419 +1,646 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   ScrollView,
-  StyleSheet,
+  TouchableOpacity,
+  TextInput,
   Alert,
   ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
-import { useTranslation } from 'react-i18next';
-import '../i18n';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
+import { useTradeStore } from '../stores/tradeStore';
+import type { TradePrefill } from '../lib/tradePrefill';
 
-export interface Product {
-  id: string;
-  name: string;
+type Props = StackScreenProps<RootStackParamList, 'CreateTrade'>;
+
+const COMMODITIES = ['Maize', 'Rice', 'Sorghum', 'Millet', 'Cassava', 'Yam', 'Groundnut', 'Soybean'];
+const UNITS = ['kg', 'tonnes', 'bags (50kg)', 'bags (100kg)'];
+
+interface FormData {
+  commodity: string;
+  quantity: string;
+  unit: string;
+  pricePerUnit: string;
+  sellerAddress: string;
+  buyerRatio: number;
+  sellerRatio: number;
+  deliveryDays: string;
 }
 
-export interface Seller {
-  id: string;
-  name: string;
-  address: string;
+const defaults: FormData = {
+  commodity: '',
+  quantity: '',
+  unit: 'kg',
+  pricePerUnit: '',
+  sellerAddress: '',
+  buyerRatio: 50,
+  sellerRatio: 50,
+  deliveryDays: '7',
+};
+
+/** Initial form state; listing-prefilled fields override the blank defaults. */
+export function buildInitialFormData(prefill?: TradePrefill): FormData {
+  if (!prefill) return defaults;
+  return {
+    ...defaults,
+    commodity: prefill.commodity,
+    quantity: prefill.quantity,
+    unit: prefill.unit,
+    pricePerUnit: prefill.pricePerUnit,
+    sellerAddress: prefill.sellerAddress,
+  };
 }
 
-export interface CreateTradeFormData {
-  productId: string;
-  amount: string;
-  sellerId: string;
-  lossRatio: string;
+function StepIndicator({ current, total }: { current: number; total: number }) {
+  return (
+    <View style={siStyles.container}>
+      {Array.from({ length: total }, (_, i) => (
+        <View key={i} style={siStyles.row}>
+          <View
+            style={[siStyles.dot, i < current && siStyles.dotDone, i === current && siStyles.dotActive]}
+            accessible
+            accessibilityLabel={`Step ${i + 1} of ${total}${i < current ? ', completed' : i === current ? ', current' : ''}`}
+          >
+            {i < current ? (
+              <Text style={siStyles.dotText}>✓</Text>
+            ) : (
+              <Text style={[siStyles.dotText, i === current && siStyles.dotTextActive]}>{i + 1}</Text>
+            )}
+          </View>
+          {i < total - 1 && <View style={[siStyles.line, i < current && siStyles.lineDone]} />}
+        </View>
+      ))}
+    </View>
+  );
 }
 
-interface CreateTradeScreenProps {
-  products?: Product[];
-  sellers?: Seller[];
-  onSubmit?: (data: CreateTradeFormData) => Promise<{ success: boolean; tradeId?: string; error?: string }>;
-  onCancel?: () => void;
-  onWalletSign?: () => Promise<{ signed: boolean; error?: string }>;
-}
+const siStyles = StyleSheet.create({
+  container: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  dot: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#e0e8e0',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  dotDone: { backgroundColor: '#2d6a2d' },
+  dotActive: { backgroundColor: '#fff', borderWidth: 2, borderColor: '#2d6a2d' },
+  dotText: { fontSize: 12, fontWeight: '700', color: '#888' },
+  dotTextActive: { color: '#2d6a2d' },
+  line: { width: 40, height: 2, backgroundColor: '#e0e8e0', marginHorizontal: 4 },
+  lineDone: { backgroundColor: '#2d6a2d' },
+});
 
-const LOSS_RATIO_OPTIONS = ['50/50', '70/30', '80/20', '90/10'];
-
-export function CreateTradeScreen({
-  products = [],
-  sellers = [],
-  onSubmit,
-  onCancel,
-  onWalletSign,
-}: CreateTradeScreenProps) {
-  const { t } = useTranslation();
-  const [formData, setFormData] = useState<CreateTradeFormData>({
-    productId: '',
-    amount: '',
-    sellerId: '',
-    lossRatio: '50/50',
-  });
-  const [errors, setErrors] = useState<Partial<Record<keyof CreateTradeFormData, string>>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showProductPicker, setShowProductPicker] = useState(false);
-  const [showSellerPicker, setShowSellerPicker] = useState(false);
-
-  const validateForm = useCallback((): boolean => {
-    const newErrors: Partial<Record<keyof CreateTradeFormData, string>> = {};
-
-    if (!formData.productId) {
-      newErrors.productId = t('trade.create.validation.productRequired');
-    }
-
-    if (!formData.amount) {
-      newErrors.amount = t('trade.create.validation.amountRequired');
-    } else if (isNaN(Number(formData.amount)) || Number(formData.amount) <= 0) {
-      newErrors.amount = t('trade.create.validation.amountPositive');
-    }
-
-    if (!formData.sellerId) {
-      newErrors.sellerId = t('trade.create.validation.sellerRequired');
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [formData, t]);
-
-  const handleSubmit = useCallback(async () => {
-    if (!validateForm()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // First, sign with wallet if required
-      if (onWalletSign) {
-        try {
-          const signResult = await onWalletSign();
-          if (!signResult.signed) {
-            Alert.alert(t('common.error'), signResult.error || 'Wallet signing failed');
-            setIsSubmitting(false);
-            return;
-          }
-        } catch (signError) {
-          Alert.alert(
-            t('common.error'),
-            signError instanceof Error ? signError.message : 'Wallet signing failed'
-          );
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // Then submit the trade
-      if (onSubmit) {
-        const result = await onSubmit(formData);
-        if (result.success) {
-          Alert.alert(t('common.success'), t('trade.create.success'));
-          // Reset form
-          setFormData({
-            productId: '',
-            amount: '',
-            sellerId: '',
-            lossRatio: '50/50',
-          });
-        } else {
-          Alert.alert(t('common.error'), result.error || t('trade.create.error'));
-        }
-      }
-    } catch (submitError) {
-      Alert.alert(
-        t('common.error'),
-        submitError instanceof Error ? submitError.message : t('trade.create.error')
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [formData, onSubmit, onWalletSign, validateForm, t]);
-
-  const selectedProduct = products.find((p) => p.id === formData.productId);
-  const selectedSeller = sellers.find((s) => s.id === formData.sellerId);
+function Step1Details({
+  data,
+  update,
+  onNext,
+}: {
+  data: FormData;
+  update: (p: Partial<FormData>) => void;
+  onNext: () => void;
+}) {
+  const qty = parseFloat(data.quantity);
+  const price = parseFloat(data.pricePerUnit);
+  const totalValue = !isNaN(qty) && !isNaN(price) ? `NGN ${(qty * price).toLocaleString()}` : '—';
+  const isAddressValid = data.sellerAddress.startsWith('G') && data.sellerAddress.length >= 56;
+  const valid = data.commodity !== '' && qty > 0 && price > 0 && isAddressValid;
 
   return (
-    <ScrollView style={styles.container} testID="create-trade-screen">
-      <View style={styles.header}>
-        <Text style={styles.title}>{t('trade.create.title')}</Text>
+    <View style={stepStyles.container}>
+      <Text style={styles.sectionTitle}>Step 1: Details</Text>
+
+      <View style={stepStyles.field}>
+        <Text style={stepStyles.label}>Commodity</Text>
+        <View style={stepStyles.optionsRow}>
+          {COMMODITIES.map((c) => (
+            <TouchableOpacity
+              key={c}
+              style={[stepStyles.chip, data.commodity === c && stepStyles.chipActive]}
+              onPress={() => update({ commodity: c })}
+              accessibilityRole="radio"
+              accessibilityLabel={c}
+              accessibilityState={{ selected: data.commodity === c }}
+            >
+              <Text style={[stepStyles.chipText, data.commodity === c && stepStyles.chipTextActive]}>{c}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
-      <View style={styles.form}>
-        {/* Product Selection */}
-        <View style={styles.field}>
-          <Text style={styles.label}>{t('trade.create.selectProduct')}</Text>
-          <TouchableOpacity
-            style={[styles.picker, errors.productId && styles.pickerError]}
-            onPress={() => setShowProductPicker(!showProductPicker)}
-            testID="product-picker"
-          >
-            <Text style={selectedProduct ? styles.pickerText : styles.pickerPlaceholder}>
-              {selectedProduct?.name || t('trade.create.selectProduct')}
-            </Text>
-          </TouchableOpacity>
-          {errors.productId && <Text style={styles.errorText}>{errors.productId}</Text>}
-          {showProductPicker && (
-            <View style={styles.pickerOptions}>
-              {products.map((product) => (
-                <TouchableOpacity
-                  key={product.id}
-                  style={styles.pickerOption}
-                  onPress={() => {
-                    setFormData((prev) => ({ ...prev, productId: product.id }));
-                    setShowProductPicker(false);
-                    setErrors((prev) => ({ ...prev, productId: undefined }));
-                  }}
-                >
-                  <Text style={styles.pickerOptionText}>{product.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Amount Input */}
-        <View style={styles.field}>
-          <Text style={styles.label}>{t('trade.create.enterAmount')}</Text>
+      <View style={stepStyles.row}>
+        <View style={[stepStyles.field, { flex: 2 }]}>
+          <Text style={stepStyles.label}>Quantity</Text>
           <TextInput
-            style={[styles.input, errors.amount && styles.inputError]}
-            value={formData.amount}
-            onChangeText={(text) => {
-              setFormData((prev) => ({ ...prev, amount: text }));
-              setErrors((prev) => ({ ...prev, amount: undefined }));
-            }}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-            placeholderTextColor="#9ca3af"
-            testID="amount-input"
+            style={stepStyles.input}
+            keyboardType="numeric"
+            placeholder="e.g. 500"
+            value={data.quantity}
+            onChangeText={(v) => update({ quantity: v })}
+            accessibilityLabel="Quantity"
           />
-          {errors.amount && <Text style={styles.errorText}>{errors.amount}</Text>}
         </View>
-
-        {/* Seller Selection */}
-        <View style={styles.field}>
-          <Text style={styles.label}>{t('trade.create.selectSeller')}</Text>
-          <TouchableOpacity
-            style={[styles.picker, errors.sellerId && styles.pickerError]}
-            onPress={() => setShowSellerPicker(!showSellerPicker)}
-            testID="seller-picker"
-          >
-            <Text style={selectedSeller ? styles.pickerText : styles.pickerPlaceholder}>
-              {selectedSeller?.name || t('trade.create.selectSeller')}
-            </Text>
-          </TouchableOpacity>
-          {errors.sellerId && <Text style={styles.errorText}>{errors.sellerId}</Text>}
-          {showSellerPicker && (
-            <View style={styles.pickerOptions}>
-              {sellers.map((seller) => (
-                <TouchableOpacity
-                  key={seller.id}
-                  style={styles.pickerOption}
-                  onPress={() => {
-                    setFormData((prev) => ({ ...prev, sellerId: seller.id }));
-                    setShowSellerPicker(false);
-                    setErrors((prev) => ({ ...prev, sellerId: undefined }));
-                  }}
-                >
-                  <Text style={styles.pickerOptionText}>{seller.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Loss Ratio Selection */}
-        <View style={styles.field}>
-          <Text style={styles.label}>{t('trade.create.lossRatio')}</Text>
-          <View style={styles.lossRatioContainer}>
-            {LOSS_RATIO_OPTIONS.map((ratio) => (
+        <View style={[stepStyles.field, { flex: 1 }]}>
+          <Text style={stepStyles.label}>Unit</Text>
+          <View style={stepStyles.picker}>
+            {UNITS.map((u) => (
               <TouchableOpacity
-                key={ratio}
-                style={[
-                  styles.lossRatioOption,
-                  formData.lossRatio === ratio && styles.lossRatioSelected,
-                ]}
-                onPress={() => setFormData((prev) => ({ ...prev, lossRatio: ratio }))}
-                testID={`loss-ratio-${ratio.replace('/', '-')}`}
+                key={u}
+                style={[stepStyles.chipSmall, data.unit === u && stepStyles.chipActive]}
+                onPress={() => update({ unit: u })}
+                accessibilityRole="radio"
+                accessibilityLabel={u}
+                accessibilityState={{ selected: data.unit === u }}
               >
-                <Text
-                  style={[
-                    styles.lossRatioText,
-                    formData.lossRatio === ratio && styles.lossRatioTextSelected,
-                  ]}
-                >
-                  {ratio}
-                </Text>
+                <Text style={[stepStyles.chipTextSmall, data.unit === u && stepStyles.chipTextActive]}>{u}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
+      </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={handleSubmit}
-            disabled={isSubmitting}
-            testID="submit-button"
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitButtonText}>{t('trade.create.submit')}</Text>
-            )}
-          </TouchableOpacity>
+      <View style={stepStyles.field}>
+        <Text style={stepStyles.label}>Price per unit (NGN)</Text>
+        <TextInput
+          style={stepStyles.input}
+          keyboardType="numeric"
+          placeholder="e.g. 450"
+          value={data.pricePerUnit}
+          onChangeText={(v) => update({ pricePerUnit: v })}
+          accessibilityLabel="Price per unit in NGN"
+        />
+      </View>
 
-          {onCancel && (
+      <View style={stepStyles.totalRow}>
+        <Text style={stepStyles.totalLabel}>Estimated Total</Text>
+        <Text style={stepStyles.totalValue}>{totalValue}</Text>
+      </View>
+
+      <View style={stepStyles.field}>
+        <Text style={stepStyles.label}>Seller Stellar Address</Text>
+        <TextInput
+          style={stepStyles.input}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="G..."
+          value={data.sellerAddress}
+          onChangeText={(v) => update({ sellerAddress: v })}
+          accessibilityLabel="Seller Stellar address"
+        />
+      </View>
+
+      <TouchableOpacity
+        style={[stepStyles.btn, !valid && stepStyles.btnDisabled]}
+        onPress={onNext}
+        disabled={!valid}
+        accessibilityRole="button"
+        accessibilityLabel="Continue to negotiation step"
+        accessibilityState={{ disabled: !valid }}
+      >
+        <Text style={stepStyles.btnText}>Continue</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function Step2Negotiation({
+  data,
+  update,
+  onBack,
+  onNext,
+}: {
+  data: FormData;
+  update: (p: Partial<FormData>) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <View style={stepStyles.container}>
+      <Text style={styles.sectionTitle}>Step 2: Negotiation</Text>
+
+      <View style={stepStyles.field}>
+        <Text style={stepStyles.label}>Loss Ratio</Text>
+        <Text style={stepStyles.ratioSubtitle}>
+          How much each party bears if a dispute is resolved against them.
+        </Text>
+
+        {/* Preset chips */}
+        <View style={stepStyles.presetRow}>
+          {([
+            { label: 'Equal\n50/50', buyer: 50 },
+            { label: 'Buyer-lean\n70/30', buyer: 70 },
+            { label: 'Seller-lean\n30/70', buyer: 30 },
+            { label: 'Full buyer\n100/0', buyer: 100 },
+            { label: 'Full seller\n0/100', buyer: 0 },
+          ] as { label: string; buyer: number }[]).map(({ label, buyer }) => (
             <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={onCancel}
-              testID="cancel-button"
+              key={buyer}
+              style={[stepStyles.presetChip, data.buyerRatio === buyer && stepStyles.presetChipActive]}
+              onPress={() => update({ buyerRatio: buyer, sellerRatio: 100 - buyer })}
+              accessibilityLabel={`Preset ${label.replace('\n', ' ')}`}
             >
-              <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
+              <Text style={[stepStyles.presetChipText, data.buyerRatio === buyer && stepStyles.presetChipTextActive]}>
+                {label}
+              </Text>
             </TouchableOpacity>
-          )}
+          ))}
+        </View>
+
+        {/* Fine-grained row */}
+        <View style={stepStyles.ratioRow}>
+          <TouchableOpacity
+            style={stepStyles.ratioBtn}
+            onPress={() => {
+              const newBuyer = Math.max(0, data.buyerRatio - 1);
+              update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Decrease buyer loss ratio by 1 percent"
+            accessibilityState={{ disabled: data.buyerRatio <= 0 }}
+          >
+            <Text style={stepStyles.ratioBtnText}>−1%</Text>
+          </TouchableOpacity>
+          <View
+            style={stepStyles.ratioDisplay}
+            accessibilityLabel={`Buyer ${data.buyerRatio} percent, Seller ${data.sellerRatio} percent`}
+          >
+            <Text style={stepStyles.ratioValue}>{data.buyerRatio}</Text>
+            <Text style={stepStyles.ratioSlash}>/</Text>
+            <Text style={stepStyles.ratioValue}>{data.sellerRatio}</Text>
+          </View>
+          <TouchableOpacity
+            style={stepStyles.ratioBtn}
+            onPress={() => {
+              const newBuyer = Math.min(100, data.buyerRatio + 1);
+              update({ buyerRatio: newBuyer, sellerRatio: 100 - newBuyer });
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Increase buyer loss ratio by 1 percent"
+            accessibilityState={{ disabled: data.buyerRatio >= 100 }}
+          >
+            <Text style={stepStyles.ratioBtnText}>+1%</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Visual bar */}
+        <View style={stepStyles.ratioBar}>
+          <View style={[stepStyles.ratioBarBuyer, { flex: data.buyerRatio || 0.01 }]} />
+          <View style={[stepStyles.ratioBarSeller, { flex: data.sellerRatio || 0.01 }]} />
+        </View>
+        <View style={stepStyles.ratioBarLabels}>
+          <Text style={stepStyles.ratioBarLabel}>Buyer {data.buyerRatio}%</Text>
+          <Text style={stepStyles.ratioBarLabel}>Seller {data.sellerRatio}%</Text>
+        </View>
+
+        {/* Example text */}
+        <View style={stepStyles.lossExampleCard}>
+          <Text style={stepStyles.lossExampleTitle}>Example</Text>
+          <Text style={stepStyles.lossExampleText}>
+            On a 1,000 cNGN trade, if a dispute is ruled against the buyer, they bear{' '}
+            <Text style={stepStyles.lossExampleBold}>{data.buyerRatio * 10} cNGN</Text>. If ruled
+            against the seller, they bear{' '}
+            <Text style={stepStyles.lossExampleBold}>{data.sellerRatio * 10} cNGN</Text>.
+          </Text>
         </View>
       </View>
-    </ScrollView>
+
+      <View style={stepStyles.field}>
+        <Text style={stepStyles.label}>Delivery Window (days)</Text>
+        <TextInput
+          style={stepStyles.input}
+          keyboardType="numeric"
+          placeholder="7"
+          value={data.deliveryDays}
+          onChangeText={(v) => update({ deliveryDays: v })}
+          accessibilityLabel="Delivery window in days"
+        />
+      </View>
+
+      <View style={stepStyles.noteCard}>
+        <Text style={stepStyles.noteText}>
+          Funds will be locked as cNGN. The 1% platform fee is deducted on settlement.
+        </Text>
+      </View>
+
+      <View style={stepStyles.btnRow}>
+        <TouchableOpacity
+          style={stepStyles.btnSecondary}
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back to trade details step"
+        >
+          <Text style={stepStyles.btnSecondaryText}>Back</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={stepStyles.btn}
+          onPress={onNext}
+          accessibilityRole="button"
+          accessibilityLabel="Review trade before submitting"
+        >
+          <Text style={stepStyles.btnText}>Review</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function Step3Review({
+  data,
+  onBack,
+  onSubmit,
+  submitting,
+}: {
+  data: FormData;
+  onBack: () => void;
+  onSubmit: () => void;
+  submitting: boolean;
+}) {
+  const qty = parseFloat(data.quantity);
+  const price = parseFloat(data.pricePerUnit);
+  const total = !isNaN(qty) && !isNaN(price) ? (qty * price).toLocaleString() : '—';
+
+  return (
+    <View style={stepStyles.container}>
+      <Text style={styles.sectionTitle}>Step 3: Review & Submit</Text>
+
+      <View style={stepStyles.reviewCard}>
+        <ReviewRow label="Commodity" value={data.commodity} />
+        <ReviewRow label="Quantity" value={`${data.quantity} ${data.unit}`} />
+        <ReviewRow label="Total Value" value={`NGN ${total}`} />
+        <ReviewRow label="Seller" value={data.sellerAddress} mono />
+        <ReviewRow label="Loss Ratio" value={`Buyer ${data.buyerRatio}% / Seller ${data.sellerRatio}%`} />
+        <ReviewRow label="Delivery" value={`${data.deliveryDays} days`} />
+      </View>
+
+      <View style={stepStyles.noteCard}>
+        <Text style={stepStyles.noteText}>
+          By submitting, you authorize a Stellar transaction to create an escrow trade.
+        </Text>
+      </View>
+
+      <View style={stepStyles.btnRow}>
+        <TouchableOpacity
+          style={stepStyles.btnSecondary}
+          onPress={onBack}
+          disabled={submitting}
+          accessibilityRole="button"
+          accessibilityLabel="Go back to negotiation step"
+          accessibilityState={{ disabled: submitting }}
+        >
+          <Text style={stepStyles.btnSecondaryText}>Back</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[stepStyles.btn, stepStyles.btnSubmit, submitting && stepStyles.btnDisabled]}
+          onPress={onSubmit}
+          disabled={submitting}
+          accessibilityRole="button"
+          accessibilityLabel="Create trade"
+          accessibilityState={{ disabled: submitting, busy: submitting }}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#fff" accessibilityLabel="Creating trade" />
+          ) : (
+            <Text style={stepStyles.btnText}>Create Trade</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function ReviewRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <View style={stepStyles.reviewRow}>
+      <Text style={stepStyles.reviewLabel}>{label}</Text>
+      <Text style={[stepStyles.reviewValue, mono && stepStyles.mono]}>{value}</Text>
+    </View>
+  );
+}
+
+export default function CreateTradeScreen({ navigation, route }: Props) {
+  const insets = useSafeAreaInsets();
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState<FormData>(() => buildInitialFormData(route.params?.prefill));
+  const [submitting, setSubmitting] = useState(false);
+  const { createTrade } = useTradeStore();
+
+  const update = useCallback((partial: Partial<FormData>) => {
+    setData((prev) => ({ ...prev, ...partial }));
+  }, []);
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      const qty = parseFloat(data.quantity);
+      const price = parseFloat(data.pricePerUnit);
+      const amountCngn = !isNaN(qty) && !isNaN(price) ? String(qty * price) : '0';
+
+      const result = await createTrade({
+        sellerAddress: data.sellerAddress,
+        amountUsdc: amountCngn,
+        buyerLossBps: data.buyerRatio * 100,
+        sellerLossBps: data.sellerRatio * 100,
+        commodity: data.commodity,
+        quantity: data.quantity,
+        unit: data.unit,
+      });
+
+      if (result) {
+        Alert.alert('Trade Created', `Trade ${result.tradeId} has been created. Sign the transaction with your wallet to deposit funds.`);
+        navigation.replace('TradeDetail', { tradeId: result.tradeId });
+      } else {
+        Alert.alert('Error', 'Failed to create trade. Please try again.');
+      }
+    } catch (err) {
+      Alert.alert('Error', (err as Error)?.message ?? 'Failed to create trade');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => { if (step > 0) setStep(step - 1); else navigation.goBack(); }}
+          accessibilityRole="button"
+          accessibilityLabel={step > 0 ? 'Go to previous step' : 'Go back'}
+          style={styles.backBtn}
+        >
+          <Text style={styles.backBtnText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} accessibilityRole="header">Create Trade</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        <StepIndicator current={step} total={3} />
+
+        {step === 0 && (
+          <Step1Details data={data} update={update} onNext={() => setStep(1)} />
+        )}
+        {step === 1 && (
+          <Step2Negotiation data={data} update={update} onBack={() => setStep(0)} onNext={() => setStep(2)} />
+        )}
+        {step === 2 && (
+          <Step3Review data={data} onBack={() => setStep(1)} onSubmit={handleSubmit} submitting={submitting} />
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
+  container: { flex: 1, backgroundColor: '#f0f4f0' },
   header: {
-    padding: 24,
-    paddingTop: 48,
-    backgroundColor: '#059669',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  form: {
-    padding: 16,
-  },
-  field: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    padding: 14,
-    fontSize: 16,
-    color: '#1f2937',
-  },
-  inputError: {
-    borderColor: '#ef4444',
-  },
-  errorText: {
-    color: '#ef4444',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  picker: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    padding: 14,
-  },
-  pickerError: {
-    borderColor: '#ef4444',
-  },
-  pickerText: {
-    fontSize: 16,
-    color: '#1f2937',
-  },
-  pickerPlaceholder: {
-    fontSize: 16,
-    color: '#9ca3af',
-  },
-  pickerOptions: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    marginTop: 4,
-    overflow: 'hidden',
-  },
-  pickerOption: {
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  pickerOptionText: {
-    fontSize: 16,
-    color: '#1f2937',
-  },
-  lossRatioContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  lossRatioOption: {
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    paddingVertical: 12,
     backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8e0',
   },
-  lossRatioSelected: {
-    backgroundColor: '#059669',
-    borderColor: '#059669',
-  },
-  lossRatioText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  lossRatioTextSelected: {
-    color: '#fff',
-  },
-  actions: {
-    marginTop: 24,
-  },
-  submitButton: {
-    backgroundColor: '#059669',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  cancelButton: {
-    backgroundColor: '#fff',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  cancelButtonText: {
-    color: '#6b7280',
-    fontSize: 16,
-    fontWeight: '500',
-  },
+  backBtn: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
+  backBtnText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
+  content: { padding: 16, gap: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a', marginBottom: 12 },
 });
 
-export default CreateTradeScreen;
+const stepStyles = StyleSheet.create({
+  container: { gap: 16 },
+  field: { gap: 6 },
+  label: { fontSize: 14, fontWeight: '600', color: '#333' },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d0d8d0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#1a3a1a',
+    backgroundColor: '#fff',
+  },
+  row: { flexDirection: 'row', gap: 12 },
+  optionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#d0d8d0',
+  },
+  chipActive: { backgroundColor: '#2d6a2d', borderColor: '#2d6a2d' },
+  chipText: { fontSize: 13, color: '#555' },
+  chipTextActive: { color: '#fff', fontWeight: '600' },
+  chipSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#d0d8d0',
+  },
+  chipTextSmall: { fontSize: 11, color: '#555' },
+  picker: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0f8f0',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d0e8d0',
+  },
+  totalLabel: { fontSize: 14, color: '#555' },
+  totalValue: { fontSize: 14, fontWeight: '700', color: '#2d6a2d' },
+  ratioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  ratioBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#e0e8e0',
+    borderRadius: 8,
+  },
+  ratioBtnText: { fontSize: 14, fontWeight: '600', color: '#333' },
+  ratioValue: { fontSize: 20, fontWeight: '700', color: '#1a3a1a' },
+  ratioSlash: { fontSize: 20, color: '#aaa', marginHorizontal: 4 },
+  ratioDisplay: { flexDirection: 'row', alignItems: 'center' },
+  ratioSubtitle: { fontSize: 12, color: '#888', marginBottom: 8, lineHeight: 17 },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  presetChip: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: '#d0e8d0', backgroundColor: '#f8faf8',
+  },
+  presetChipActive: { borderColor: '#2d6a2d', backgroundColor: '#e8f5e8' },
+  presetChipText: { fontSize: 11, color: '#666', textAlign: 'center' },
+  presetChipTextActive: { color: '#1a3a1a', fontWeight: '700' },
+  ratioBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 10 },
+  ratioBarBuyer: { backgroundColor: '#2563EB' },
+  ratioBarSeller: { backgroundColor: '#16A34A' },
+  ratioBarLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  ratioBarLabel: { fontSize: 11, color: '#888' },
+  lossExampleCard: {
+    marginTop: 10, backgroundColor: '#FFF7ED', borderRadius: 8,
+    padding: 12, borderWidth: 1, borderColor: '#FED7AA', gap: 4,
+  },
+  lossExampleTitle: { fontSize: 12, fontWeight: '700', color: '#C2410C' },
+  lossExampleText: { fontSize: 12, color: '#7C2D12', lineHeight: 18 },
+  lossExampleBold: { fontWeight: '700' },
+  noteCard: {
+    backgroundColor: '#f0f8f0',
+    padding: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d0e8d0',
+  },
+  noteText: { fontSize: 13, color: '#4a6a4a', lineHeight: 20 },
+  btnRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  btn: {
+    flex: 1,
+    backgroundColor: '#2d6a2d',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  btnSecondary: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#e0e8e0',
+  },
+  btnSecondaryText: { fontSize: 15, fontWeight: '600', color: '#555' },
+  btnSubmit: { backgroundColor: '#2d6a2d' },
+  btnDisabled: { opacity: 0.6 },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  reviewCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    gap: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  reviewLabel: { fontSize: 13, color: '#888', flex: 1 },
+  reviewValue: { fontSize: 13, color: '#1a3a1a', flex: 1.5, textAlign: 'right', fontWeight: '500' },
+  mono: { fontFamily: 'monospace', fontSize: 11 },
+});

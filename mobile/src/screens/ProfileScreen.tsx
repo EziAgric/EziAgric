@@ -1,306 +1,259 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
+import apiClient from '../api/client';
+import { useAuthStore } from '../stores/authStore';
 
-interface UserProfile {
+type Props = StackScreenProps<RootStackParamList, 'Profile'>;
+
+interface ReviewSummary {
   id: string;
-  name: string;
-  email: string;
+  rating: number;
+  comment: string;
+  reviewerAddress: string;
+  createdAt: string;
+}
+
+interface ProfileData {
+  address: string;
+  displayName?: string;
   trustScore: number;
   totalTrades: number;
-  successfulTrades: number;
-  memberSince: string;
+  completedTrades: number;
+  disputeRate: number;
+  recentReviews: ReviewSummary[];
 }
 
-interface TrustScoreResponse {
-  score: number;
-  totalRatings: number;
-  averageRating: number;
+function StarRating({ rating }: { rating: number }) {
+  return (
+    <View style={starStyles.row}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Text key={n} style={[starStyles.star, n <= rating && starStyles.starFilled]}>
+          ★
+        </Text>
+      ))}
+    </View>
+  );
 }
 
-/**
- * ProfileScreen displays user profile information including trust score.
- * Fetches trust score from backend API.
- */
-export default function ProfileScreen() {
+const starStyles = StyleSheet.create({
+  row: { flexDirection: 'row', gap: 2 },
+  star: { fontSize: 16, color: '#d0d0d0' },
+  starFilled: { color: '#F59E0B' },
+});
+
+export default function ProfileScreen({ route, navigation }: Props) {
+  const { address, isSelf } = route.params;
   const insets = useSafeAreaInsets();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [trustScore, setTrustScore] = useState<TrustScoreResponse | null>(null);
+  const { token } = useAuthStore();
+
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchProfile = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Simulated API call - replace with actual API
-      const mockProfile: UserProfile = {
-        id: 'user-123',
-        name: 'John Farmer',
-        email: 'john@example.com',
-        trustScore: 85,
-        totalTrades: 24,
-        successfulTrades: 22,
-        memberSince: '2024-01-15',
-      };
-      const mockTrustScore: TrustScoreResponse = {
-        score: 85,
-        totalRatings: 18,
-        averageRating: 4.2,
-      };
-      setProfile(mockProfile);
-      setTrustScore(mockTrustScore);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
+    apiClient
+      .get(`/users/${encodeURIComponent(address)}/profile`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      .then((r) => setProfile(r.data))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load profile'))
+      .finally(() => setLoading(false));
+  }, [address, token]);
 
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#2d6a2d" />
-        <Text style={styles.loadingText}>Loading profile...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity testID="retry-button" style={styles.retryButton} onPress={fetchProfile}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (!profile || !trustScore) {
-    return null;
-  }
-
-  const successRate = profile.totalTrades > 0 
-    ? Math.round((profile.successfulTrades / profile.totalTrades) * 100) 
-    : 0;
+  const scoreColor = (s: number) => {
+    if (s >= 80) return '#16A34A';
+    if (s >= 50) return '#D97706';
+    return '#DC2626';
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Profile</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{isSelf ? 'My Profile' : 'Counterparty'}</Text>
+        <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>
-              {profile.name.charAt(0).toUpperCase()}
-            </Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        {loading && <ActivityIndicator color="#2d6a2d" size="large" />}
+        {error && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
           </View>
-          <Text style={styles.name}>{profile.name}</Text>
-          <Text style={styles.email}>{profile.email}</Text>
-        </View>
+        )}
 
-        <View style={styles.trustScoreCard}>
-          <Text style={styles.sectionTitle}>Trust Score</Text>
-          <View style={styles.scoreRow}>
-            <Text style={styles.scoreValue}>{trustScore.score}</Text>
-            <View style={styles.starContainer}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Text
-                  key={star}
-                  testID={`star-${star}`}
-                  style={[
-                    styles.star,
-                    star <= Math.round(trustScore.averageRating) && styles.starFilled,
-                  ]}
-                >
-                  ★
+        {profile && (
+          <>
+            {/* Identity card */}
+            <View style={styles.identityCard}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {(profile.displayName ?? profile.address).slice(0, 2).toUpperCase()}
                 </Text>
+              </View>
+              <Text style={styles.displayName}>{profile.displayName ?? 'Anonymous'}</Text>
+              <Text style={styles.addressText}>{profile.address.slice(0, 20)}…</Text>
+            </View>
+
+            {/* Trust score */}
+            <TouchableOpacity
+              style={styles.scoreCard}
+              onPress={() => navigation.navigate('TrustScore', { address })}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.scoreCardLabel}>Trust Score</Text>
+              <Text style={[styles.scoreValue, { color: scoreColor(profile.trustScore) }]}>
+                {profile.trustScore}
+              </Text>
+              <Text style={styles.scoreMax}>/100</Text>
+              <Text style={styles.scoreHint}>Tap for breakdown →</Text>
+            </TouchableOpacity>
+
+            {/* Stats */}
+            <View style={styles.statsCard}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{profile.totalTrades}</Text>
+                <Text style={styles.statLabel}>Trades</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{profile.completedTrades}</Text>
+                <Text style={styles.statLabel}>Completed</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, profile.disputeRate > 10 && styles.statValueWarn]}>
+                  {profile.disputeRate.toFixed(1)}%
+                </Text>
+                <Text style={styles.statLabel}>Dispute rate</Text>
+              </View>
+            </View>
+
+            {/* Reviews */}
+            <View style={styles.reviewsCard}>
+              <Text style={styles.sectionTitle}>Recent Reviews ({profile.recentReviews.length})</Text>
+              {profile.recentReviews.length === 0 && (
+                <Text style={styles.noReviews}>No reviews yet.</Text>
+              )}
+              {profile.recentReviews.map((rev) => (
+                <View key={rev.id} style={styles.reviewItem}>
+                  <View style={styles.reviewTop}>
+                    <StarRating rating={rev.rating} />
+                    <Text style={styles.reviewDate}>
+                      {new Date(rev.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  {rev.comment ? (
+                    <Text style={styles.reviewComment}>{rev.comment}</Text>
+                  ) : null}
+                  <Text style={styles.reviewBy}>by {rev.reviewerAddress.slice(0, 14)}…</Text>
+                </View>
               ))}
             </View>
-          </View>
-          <Text style={styles.ratingText}>
-            {trustScore.averageRating.toFixed(1)} out of 5 ({trustScore.totalRatings} ratings)
-          </Text>
-        </View>
-
-        <View style={styles.statsCard}>
-          <Text style={styles.sectionTitle}>Trade Statistics</Text>
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{profile.totalTrades}</Text>
-              <Text style={styles.statLabel}>Total Trades</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{profile.successfulTrades}</Text>
-              <Text style={styles.statLabel}>Successful</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{successRate}%</Text>
-              <Text style={styles.statLabel}>Success Rate</Text>
-            </View>
-          </View>
-          <Text style={styles.memberSince}>
-            Member since {profile.memberSince}
-          </Text>
-        </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f4f7f4',
+  container: { flex: 1, backgroundColor: '#f0f4f0' },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8e0',
   },
-  centered: {
+  backText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500', width: 60 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
+  content: { padding: 16, gap: 16 },
+  identityCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#2d6a2d',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1f3d1f',
-  },
-  scroll: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  profileCard: {
+  avatarText: { color: '#fff', fontSize: 28, fontWeight: '700' },
+  displayName: { fontSize: 20, fontWeight: '700', color: '#1a3a1a' },
+  addressText: { fontSize: 12, color: '#888', fontFamily: 'monospace' },
+  scoreCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
     alignItems: 'center',
-    marginBottom: 16,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#2d6a2d',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarText: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  name: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1f3d1f',
-    marginBottom: 4,
-  },
-  email: {
-    fontSize: 14,
-    color: '#4f5d4f',
-  },
-  trustScoreCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f3d1f',
-    marginBottom: 12,
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  scoreValue: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#2d6a2d',
-    marginRight: 12,
-  },
-  starContainer: {
-    flexDirection: 'row',
-  },
-  star: {
-    fontSize: 20,
-    color: '#d1d5db',
-    marginRight: 2,
-  },
-  starFilled: {
-    color: '#fbbf24',
-  },
-  ratingText: {
-    fontSize: 13,
-    color: '#6b7280',
-  },
+  scoreCardLabel: { fontSize: 13, color: '#888' },
+  scoreValue: { fontSize: 52, fontWeight: '700' },
+  scoreMax: { fontSize: 14, color: '#888', marginTop: -8 },
+  scoreHint: { fontSize: 12, color: '#2563EB', marginTop: 4 },
   statsCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-  },
-  statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 12,
-  },
-  statItem: {
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1f3d1f',
+  statItem: { flex: 1, alignItems: 'center', gap: 4 },
+  statValue: { fontSize: 22, fontWeight: '700', color: '#1a3a1a' },
+  statValueWarn: { color: '#DC2626' },
+  statLabel: { fontSize: 11, color: '#888' },
+  statDivider: { width: 1, height: 40, backgroundColor: '#e0e8e0' },
+  reviewsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  statLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  memberSince: {
-    fontSize: 12,
-    color: '#6b7280',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#dc2626',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#2d6a2d',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1a3a1a' },
+  noReviews: { fontSize: 13, color: '#888' },
+  reviewItem: { gap: 4, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f0f4f0' },
+  reviewTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reviewDate: { fontSize: 11, color: '#aaa' },
+  reviewComment: { fontSize: 13, color: '#333', lineHeight: 18 },
+  reviewBy: { fontSize: 11, color: '#aaa', fontFamily: 'monospace' },
+  errorBanner: { backgroundColor: '#FEE2E2', padding: 12, borderRadius: 8 },
+  errorText: { color: '#DC2626', fontSize: 13 },
 });

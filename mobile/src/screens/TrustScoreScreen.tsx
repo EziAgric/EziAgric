@@ -1,326 +1,188 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
+import apiClient from '../api/client';
+import { useAuthStore } from '../stores/authStore';
 
-interface TrustScoreData {
+type Props = StackScreenProps<RootStackParamList, 'TrustScore'>;
+
+interface ScoreComponent {
+  label: string;
   score: number;
-  breakdown: {
-    completedTrades: number;
-    successfulDisputes: number;
-    responseTime: number;
-    ratingQuality: number;
-  };
-  history: Array<{
-    date: string;
-    score: number;
-    change: number;
-  }>;
+  maxScore: number;
+  detail: string;
 }
 
-/**
- * TrustScoreScreen fetches and displays the user's trust score.
- * Shows score breakdown and historical trend.
- */
-export default function TrustScoreScreen() {
+interface TrustScoreData {
+  address: string;
+  overallScore: number;
+  components: ScoreComponent[];
+  computedAt: string;
+}
+
+function ScoreBar({ score, maxScore }: { score: number; maxScore: number }) {
+  const pct = Math.min(100, Math.round((score / maxScore) * 100));
+  const color = pct >= 80 ? '#16A34A' : pct >= 50 ? '#D97706' : '#DC2626';
+  return (
+    <View style={barStyles.track}>
+      <View style={[barStyles.fill, { width: `${pct}%` as `${number}%`, backgroundColor: color }]} />
+    </View>
+  );
+}
+
+const barStyles = StyleSheet.create({
+  track: { height: 8, backgroundColor: '#e0e8e0', borderRadius: 4, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 4 },
+});
+
+export default function TrustScoreScreen({ route, navigation }: Props) {
+  const { address } = route.params;
   const insets = useSafeAreaInsets();
-  const [trustData, setTrustData] = useState<TrustScoreData | null>(null);
+  const { token } = useAuthStore();
+
+  const [data, setData] = useState<TrustScoreData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTrustScore = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Simulated API call - replace with actual API
-      const mockData: TrustScoreData = {
-        score: 85,
-        breakdown: {
-          completedTrades: 45,
-          successfulDisputes: 3,
-          responseTime: 92,
-          ratingQuality: 88,
-        },
-        history: [
-          { date: '2024-10', score: 82, change: 0 },
-          { date: '2024-09', score: 80, change: -2 },
-          { date: '2024-08', score: 78, change: -2 },
-          { date: '2024-07', score: 75, change: -3 },
-          { date: '2024-06', score: 70, change: -5 },
-        ],
-      };
-      setTrustData(mockData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load trust score');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchTrustScore();
-  }, [fetchTrustScore]);
+    apiClient
+      .get(`/users/${encodeURIComponent(address)}/trust-score`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      .then((r) => setData(r.data))
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load trust score'))
+      .finally(() => setLoading(false));
+  }, [address, token]);
 
-  const getScoreColor = (score: number): string => {
-    if (score >= 80) return '#2d6a2d';
-    if (score >= 60) return '#d97706';
-    return '#dc2626';
+  const overallColor = (s: number) => {
+    if (s >= 80) return '#16A34A';
+    if (s >= 50) return '#D97706';
+    return '#DC2626';
   };
-
-  const getScoreLabel = (score: number): string => {
-    if (score >= 80) return 'Excellent';
-    if (score >= 60) return 'Good';
-    if (score >= 40) return 'Fair';
-    return 'Needs Improvement';
-  };
-
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#2d6a2d" />
-        <Text style={styles.loadingText}>Calculating trust score...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity testID="retry-button" style={styles.retryButton} onPress={fetchTrustScore}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (!trustData) {
-    return null;
-  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Trust Score</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Trust Score</Text>
+        <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Main Score Card */}
-        <View style={styles.scoreCard}>
-          <Text style={styles.scoreLabel}>{getScoreLabel(trustData.score)}</Text>
-          <Text style={[styles.scoreValue, { color: getScoreColor(trustData.score) }]}>
-            {trustData.score}
-          </Text>
-          <Text style={styles.scoreMax}>/ 100</Text>
-        </View>
-
-        {/* Breakdown Section */}
-        <View style={styles.breakdownCard}>
-          <Text style={styles.sectionTitle}>Score Breakdown</Text>
-          
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownLabel}>Completed Trades</Text>
-              <Text style={styles.breakdownValue}>{trustData.breakdown.completedTrades}</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${Math.min(trustData.breakdown.completedTrades, 100)}%` }]} />
-            </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        {loading && <ActivityIndicator color="#2d6a2d" size="large" />}
+        {error && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
           </View>
+        )}
 
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownLabel}>Successful Disputes</Text>
-              <Text style={styles.breakdownValue}>{trustData.breakdown.successfulDisputes}</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${Math.min(trustData.breakdown.successfulDisputes * 20, 100)}%` }]} />
-            </View>
-          </View>
-
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownLabel}>Response Time</Text>
-              <Text style={styles.breakdownValue}>{trustData.breakdown.responseTime}%</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${trustData.breakdown.responseTime}%` }]} />
-            </View>
-          </View>
-
-          <View style={styles.breakdownItem}>
-            <View style={styles.breakdownHeader}>
-              <Text style={styles.breakdownLabel}>Rating Quality</Text>
-              <Text style={styles.breakdownValue}>{trustData.breakdown.ratingQuality}%</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${trustData.breakdown.ratingQuality}%` }]} />
-            </View>
-          </View>
-        </View>
-
-        {/* History Section */}
-        <View style={styles.historyCard}>
-          <Text style={styles.sectionTitle}>Score History</Text>
-          {trustData.history.map((item, index) => (
-            <View key={index} style={styles.historyItem}>
-              <Text style={styles.historyDate}>{item.date}</Text>
-              <Text style={[styles.historyScore, { color: getScoreColor(item.score) }]}>
-                {item.score}
+        {data && (
+          <>
+            <View style={styles.overallCard}>
+              <Text style={styles.overallLabel}>Overall Trust Score</Text>
+              <Text style={[styles.overallValue, { color: overallColor(data.overallScore) }]}>
+                {data.overallScore}
               </Text>
-              <Text style={[
-                styles.historyChange,
-                { color: item.change >= 0 ? '#2d6a2d' : '#dc2626' }
-              ]}>
-                {item.change >= 0 ? '+' : ''}{item.change}
+              <Text style={styles.overallMax}>/100</Text>
+              <Text style={styles.computedAt}>
+                Computed {new Date(data.computedAt).toLocaleDateString()}
               </Text>
             </View>
-          ))}
-        </View>
+
+            <View style={styles.breakdownCard}>
+              <Text style={styles.sectionTitle}>Score Breakdown</Text>
+              {data.components.map((c) => (
+                <View key={c.label} style={styles.component}>
+                  <View style={styles.componentHeader}>
+                    <Text style={styles.componentLabel}>{c.label}</Text>
+                    <Text style={styles.componentScore}>
+                      {c.score}/{c.maxScore}
+                    </Text>
+                  </View>
+                  <ScoreBar score={c.score} maxScore={c.maxScore} />
+                  <Text style={styles.componentDetail}>{c.detail}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.noteCard}>
+              <Text style={styles.noteText}>
+                Trust scores are computed from completed trades, dispute history, peer reviews, and
+                on-chain activity. Scores update after each completed trade.
+              </Text>
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f4f7f4',
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#f0f4f0' },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8e0',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1f3d1f',
-  },
-  scroll: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  scoreCard: {
+  backText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500', width: 60 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
+  content: { padding: 16, gap: 16 },
+  overallCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 24,
     alignItems: 'center',
-    marginBottom: 16,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  scoreLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 8,
-  },
-  scoreValue: {
-    fontSize: 64,
-    fontWeight: '700',
-  },
-  scoreMax: {
-    fontSize: 18,
-    color: '#9ca3af',
-    marginTop: -8,
-  },
+  overallLabel: { fontSize: 13, color: '#888' },
+  overallValue: { fontSize: 64, fontWeight: '700' },
+  overallMax: { fontSize: 14, color: '#888', marginTop: -8 },
+  computedAt: { fontSize: 11, color: '#aaa', marginTop: 4 },
   breakdownCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
+    gap: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f3d1f',
-    marginBottom: 16,
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1a3a1a' },
+  component: { gap: 6 },
+  componentHeader: { flexDirection: 'row', justifyContent: 'space-between' },
+  componentLabel: { fontSize: 14, fontWeight: '600', color: '#333' },
+  componentScore: { fontSize: 13, color: '#888' },
+  componentDetail: { fontSize: 12, color: '#888', lineHeight: 17 },
+  noteCard: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
-  breakdownItem: {
-    marginBottom: 16,
-  },
-  breakdownHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  breakdownLabel: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  breakdownValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f3d1f',
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#2d6a2d',
-    borderRadius: 4,
-  },
-  historyCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-  },
-  historyItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  historyDate: {
-    fontSize: 14,
-    color: '#6b7280',
-    flex: 1,
-  },
-  historyScore: {
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
-    textAlign: 'center',
-  },
-  historyChange: {
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'right',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#dc2626',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#2d6a2d',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  noteText: { fontSize: 12, color: '#1D4ED8', lineHeight: 18 },
+  errorBanner: { backgroundColor: '#FEE2E2', padding: 12, borderRadius: 8 },
+  errorText: { color: '#DC2626', fontSize: 13 },
 });

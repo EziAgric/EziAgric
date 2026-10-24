@@ -1,155 +1,68 @@
 {
   "common": {
-    "loading": "Loading...",
-    "error": "An error occurred",
+    "loading": "Loading…",
     "retry": "Retry",
     "cancel": "Cancel",
-    "submit": "Submit",
-    "save": "Save",
-    "delete": "Delete",
-    "edit": "Edit",
+    "confirm": "Confirm",
     "back": "Back",
-    "next": "Next",
-    "done": "Done",
-    "search": "Search",
-    "noResults": "No results found"
-  },
-  "home": {
-    "title": "Welcome back",
-    "subtitle": "Here's your trade overview",
-    "activeTrades": "Active Trades",
-    "totalVault": "Vault",
-    "pendingDisputes": "Disputes",
-    "quickActions": "Quick Actions",
-    "newTrade": "New Trade",
-    "vault": "Vault",
-    "disputes": "Disputes",
-    "recentActivity": "Recent Activity"
-  },
-  "profile": {
-    "title": "Profile",
-    "trustScore": "Trust Score",
-    "totalTrades": "Total Trades",
-    "successfulTrades": "Successful",
-    "successRate": "Success Rate",
-    "memberSince": "Member since",
-    "loadingProfile": "Loading profile..."
-  },
-  "trustScore": {
-    "title": "Trust Score",
-    "calculating": "Calculating trust score...",
-    "excellent": "Excellent",
-    "good": "Good",
-    "fair": "Fair",
-    "needsImprovement": "Needs Improvement",
-    "scoreBreakdown": "Score Breakdown",
-    "completedTrades": "Completed Trades",
-    "successfulDisputes": "Successful Disputes",
-    "responseTime": "Response Time",
-    "ratingQuality": "Rating Quality",
-    "scoreHistory": "Score History"
-  },
-  "vault": {
-    "title": "Vault Dashboard",
-    "totalBalance": "Total Balance",
-    "active": "Active",
-    "completed": "Completed",
-    "recentTrades": "Recent Trades",
-    "noTrades": "No trades yet",
-    "loadingVault": "Loading vault data..."
+    "ok": "OK",
+    "error": "Error",
+    "offline": "You are offline",
+    "unknown_error": "An unknown error occurred"
   },
   "wallet": {
-    "title": "Connect Wallet",
-    "connecting": "Connecting wallet...",
-    "connected": "Wallet Connected",
-    "disconnect": "Disconnect",
-    "address": "Address",
-    "copyAddress": "Copy wallet address",
-    "selectWallet": "Select a wallet to connect",
-    "freighter": "Freighter",
-    "freighterDesc": "Stellar wallet browser extension",
-    "albedo": "Albedo",
-    "albedoDesc": "Web wallet with stellar.toml",
-    "xbull": "xBull",
-    "xbullDesc": "Mobile wallet for Stellar"
+    "connect_title": "Connect your Stellar Wallet",
+    "connect_body": "Link your wallet using WalletConnect or a Stellar deep-link compatible app (LOBSTR, xBull) to start trading securely with escrow-backed protection.",
+    "connect_button": "Connect Wallet",
+    "retry_button": "Retry",
+    "awaiting_wallet": "Waiting for wallet…",
+    "verifying": "Verifying…",
+    "awaiting_instructions": "Your wallet app should have opened.\nApprove the sign request, then return here.",
+    "prompt_title": "Enter Wallet Address",
+    "prompt_body": "Paste your Stellar wallet public key (G…)",
+    "invalid_address": "Invalid address",
+    "invalid_address_message": "Please enter a valid Stellar public key (starts with G, 56+ chars).",
+    "connection_failed": "Connection failed",
+    "no_wallet_app": "No wallet app found",
+    "no_wallet_message": "Install LOBSTR or xBull to sign transactions.",
+    "timeout_error": "Wallet connection timed out. Please try again.",
+    "address_mismatch": "Wallet address mismatch. Please reconnect.",
+    "invalid_response": "Invalid wallet response. Please try again.",
+    "verification_failed": "Verification failed. Please try again."
   },
-  "dispute": {
-    "title": "Dispute Details",
-    "loading": "Loading dispute details...",
-    "tradeInfo": "Trade Information",
-    "disputeInfo": "Dispute Information",
-    "reason": "Reason",
-    "raisedBy": "Raised By",
-    "raisedOn": "Raised On",
-    "evidence": "Evidence",
-    "resolution": "Resolution",
-    "buyerWins": "Buyer Wins",
-    "sellerWins": "Seller Wins",
-    "split": "Split",
-    "status": {
-      "open": "Open",
-      "underReview": "Under Review",
-      "resolved": "Resolved"
-    }
+  "home": {
+    "title": "Amana Mobile",
+    "subtitle": "Trust as a Service for Agricultural Products",
+    "tagline": "Trust as a Service\nfor Agricultural Products",
+    "getting_started": "Getting Started",
+    "getting_started_body": "This is your Amana mobile application. Connect your Stellar wallet to begin trading securely."
   },
-  "review": {
-    "title": "Leave a Review",
-    "yourRating": "Your Rating",
-    "reviewTitle": "Review Title",
-    "reviewTitlePlaceholder": "Summarize your experience",
-    "yourReview": "Your Review",
-    "reviewPlaceholder": "Share details about your experience with this trade...",
-    "submitReview": "Submit Review",
-    "submitted": "Review Submitted!",
-    "thankYou": "Thank you for your feedback. Your review helps build trust in our community.",
-    "validation": {
-      "ratingRequired": "Please select a rating",
-      "titleRequired": "Please enter a review title",
-      "titleTooShort": "Title must be at least 3 characters",
-      "commentRequired": "Please enter your review comment",
-      "commentTooShort": "Comment must be at least 10 characters"
-    },
-    "ratings": {
-      "poor": "Poor",
-      "fair": "Fair",
-      "good": "Good",
-      "veryGood": "Very Good",
-      "excellent": "Excellent"
-    }
+  "trade": {
+    "list_title": "Trades",
+    "empty": "No trades found",
+    "status_all": "All",
+    "status_pending": "Pending",
+    "status_active": "Active",
+    "status_disputed": "Disputed",
+    "status_done": "Done",
+    "confirm_delivery": "Confirm Delivery",
+    "release_funds": "Release Funds",
+    "deposit": "Deposit",
+    "initiate_dispute": "Initiate Dispute",
+    "dispute_reason_placeholder": "Describe the issue…",
+    "load_error": "Failed to load trades",
+    "action_error": "Action failed"
   },
-  "marketplace": {
-    "title": "Marketplace",
-    "loading": "Loading listings...",
-    "noResults": "No listings found"
+  "auth": {
+    "sign_out": "Sign Out",
+    "sign_out_confirm": "Are you sure you want to sign out?"
   },
-  "trades": {
-    "title": "My Trades",
-    "loading": "Loading trades...",
-    "noTrades": "No trades found",
-    "filterAll": "All",
-    "filterPending": "Pending",
-    "filterFunded": "Funded",
-    "filterCompleted": "Completed",
-    "filterDisputed": "Disputed",
-    "statusPending": "Pending",
-    "statusFunded": "Funded",
-    "statusCompleted": "Completed",
-    "statusDisputed": "Disputed"
-  },
-  "navigation": {
-    "home": "Home",
-    "trades": "Trades",
-    "vault": "Vault",
-    "profile": "Profile"
-  },
-  "notification": {
-    "tradeFunded": "Trade Funded",
-    "tradeFundedBody": "Your trade has been funded successfully",
-    "tradeCompleted": "Trade Completed",
-    "tradeCompletedBody": "Your trade has been completed successfully",
-    "disputeRaised": "Dispute Raised",
-    "disputeRaisedBody": "A dispute has been raised for one of your trades",
-    "evidenceSubmitted": "Evidence Submitted",
-    "evidenceSubmittedBody": "New evidence has been submitted for dispute resolution"
+  "language": {
+    "select_language": "Select Language",
+    "english": "English",
+    "hausa": "Hausa",
+    "yoruba": "Yoruba",
+    "igbo": "Igbo",
+    "pidgin": "Pidgin"
   }
 }

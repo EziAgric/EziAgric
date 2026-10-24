@@ -1,110 +1,133 @@
-import { EmitterSubscription } from 'react-native';
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
 
-export interface Notification {
-  type: 'trade_funded' | 'trade_completed' | 'dispute_raised' | 'evidence_submitted';
-  data: {
-    tradeId?: string;
-    disputeId?: string;
-    [key: string]: unknown;
-  };
+const PUSH_TOKEN_KEY = "amana_push_token";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+export interface NotificationData {
+  type?: "trade" | "dispute" | "general";
+  tradeId?: string;
+  disputeId?: string;
+  screen?: string;
 }
 
-type NotificationHandler = (notification: Notification) => void;
+export async function registerForPushNotifications(): Promise<string | null> {
+  try {
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
 
-/**
- * Notification service for handling push notifications
- * In production, this would integrate with a push notification provider
- * like Firebase Cloud Messaging or Expo Notifications
- */
-
-// Store for notification handlers
-const handlers: Set<NotificationHandler> = new Set();
-
-/**
- * Register a handler for incoming notifications
- * @param handler Function to call when a notification is received
- * @returns Subscription that can be removed
- */
-export function onNotification(handler: NotificationHandler): EmitterSubscription {
-  handlers.add(handler);
-  
-  // Return a mock subscription
-  return {
-    remove: () => {
-      handlers.delete(handler);
-    },
-  } as EmitterSubscription;
-}
-
-/**
- * Remove a notification handler
- * @deprecated Use the remove method on the subscription instead
- */
-export function offNotification(handler: NotificationHandler): void {
-  handlers.delete(handler);
-}
-
-/**
- * Get the device push token for push notifications
- */
-export async function getDeviceToken(): Promise<string | null> {
-  // In production, this would fetch the actual push token
-  // from FCM, Expo Push Notifications, or similar
-  return null;
-}
-
-/**
- * Request notification permissions
- */
-export async function requestPermissions(): Promise<boolean> {
-  // In production, this would request actual permissions
-  // from the OS notification system
-  return true;
-}
-
-/**
- * Configure the notification service with platform-specific settings
- */
-export async function configure(): Promise<void> {
-  // Initialize any platform-specific notification configuration
-  // This would set up FCM, APNs, or Expo Push Notifications
-}
-
-/**
- * Handle a notification that was received while the app was in the foreground
- * This is called by the native notification receiver
- */
-export function handleNotification(notification: Notification): void {
-  // Notify all registered handlers
-  handlers.forEach((handler) => {
-    try {
-      handler(notification);
-    } catch (error) {
-      console.error('Error in notification handler:', error);
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
     }
-  });
+
+    if (finalStatus !== "granted") {
+      return null;
+    }
+
+    const token = await Notifications.getExpoPushTokenAsync();
+    const pushToken = token.data;
+
+    await SecureStore.setItemAsync(PUSH_TOKEN_KEY, pushToken);
+    return pushToken;
+  } catch {
+    return null;
+  }
 }
 
-/**
- * Handle a notification tap/action
- */
-export function handleNotificationTap(notification: Notification): void {
-  // Route to appropriate screen based on notification type
-  const { type, data } = notification;
-  
-  switch (type) {
-    case 'trade_funded':
-    case 'trade_completed':
-      // Navigation would be handled by the app's navigation system
-      // navigation.navigate('TradeDetail', { tradeId: data.tradeId });
-      break;
-    case 'dispute_raised':
-    case 'evidence_submitted':
-      // Navigation would be handled by the app's navigation system
-      // navigation.navigate('DisputeDetail', { disputeId: data.disputeId });
-      break;
-    default:
-      // Unknown notification type - could log for analytics
-      break;
+export async function getStoredPushToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(PUSH_TOKEN_KEY);
+  } catch {
+    return null;
   }
+}
+
+export async function storePushTokenOnBackend(
+  pushToken: string,
+  authToken: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      "https://api.amana.io/user/push-token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ pushToken }),
+      },
+    );
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export function setupNotificationListeners(
+  onNotificationTap: (data: NotificationData) => void,
+): () => void {
+  const subscription = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      const data = response.notification.request.content.data as NotificationData;
+      onNotificationTap(data);
+    },
+  );
+
+  return () => subscription.remove();
+}
+
+export function setupForegroundNotificationHandler(
+  onNotification: (notification: Notifications.Notification) => void,
+): () => void {
+  const subscription = Notifications.addNotificationReceivedListener(
+    (notification) => {
+      onNotification(notification);
+    },
+  );
+
+  return () => subscription.remove();
+}
+
+export async function scheduleLocalNotification(
+  title: string,
+  body: string,
+  data?: NotificationData,
+): Promise<string> {
+  const identifier = await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      data: data || {},
+      sound: true,
+    },
+    trigger: null,
+  });
+
+  return identifier;
+}
+
+export async function checkNotificationPermissions(): Promise<boolean> {
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "default",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#FF231F7C",
+    });
+  }
+
+  const { status } = await Notifications.getPermissionsAsync();
+  return status === "granted";
 }

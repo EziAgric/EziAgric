@@ -1,442 +1,610 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { useTranslation } from 'react-i18next';
-import '../i18n';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Linking,
+  StyleSheet,
+  TextInput,
+  Modal,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
+import type { Trade, TradeStatus } from '../types/trade';
+import { useTradeStore } from '../stores/tradeStore';
+import { useAuthStore } from '../stores/authStore';
+import apiClient from '../api/client';
+import { AdminErrorBanner } from '../components/AdminErrorBanner';
+import { buildSupportMailto } from '../constants/support';
+import type { AdminErrorView } from '../api/errors';
 
-export type TradeStatus = 
-  | 'pending' 
-  | 'funded' 
-  | 'dispatched' 
-  | 'delivered' 
-  | 'completed' 
-  | 'disputed' 
-  | 'resolved' 
-  | 'cancelled';
+type Props = StackScreenProps<RootStackParamList, 'TradeDetail'>;
 
-export interface TradeDetail {
-  id: string;
-  product: string;
-  amount: string;
-  status: TradeStatus;
-  seller: string;
-  buyer: string;
-  driver?: string;
-  vehicle?: string;
-  lossRatio: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface TradeDetailScreenProps {
-  tradeId: string;
-  fetchTrade?: (id: string) => Promise<TradeDetail>;
-  onConfirmDelivery?: (tradeId: string) => Promise<{ success: boolean; error?: string }>;
-  onRaiseDispute?: (tradeId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
-  onViewEvidence?: (tradeId: string) => void;
-}
-
-const STATUS_KEYS: Record<TradeStatus, string> = {
-  pending: 'trade.detail.statuses.pending',
-  funded: 'trade.detail.statuses.funded',
-  dispatched: 'trade.detail.statuses.dispatched',
-  delivered: 'trade.detail.statuses.delivered',
-  completed: 'trade.detail.statuses.completed',
-  disputed: 'trade.detail.statuses.disputed',
-  resolved: 'trade.detail.statuses.resolved',
-  cancelled: 'trade.detail.statuses.cancelled',
+const STATUS_COLORS: Record<TradeStatus, string> = {
+  PENDING: '#F59E0B',
+  FUNDED: '#3B82F6',
+  IN_TRANSIT: '#14B8A6',
+  DELIVERED: '#34D399',
+  DISPUTED: '#EF4444',
+  COMPLETED: '#34D399',
+  REFUNDED: '#6B7280',
 };
 
-export function TradeDetailScreen({
-  tradeId,
-  fetchTrade,
-  onConfirmDelivery,
-  onRaiseDispute,
-  onViewEvidence,
-}: TradeDetailScreenProps) {
-  const { t } = useTranslation();
-  const [trade, setTrade] = useState<TradeDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isActionLoading, setIsActionLoading] = useState(false);
+const STATUS_LABELS: Record<TradeStatus, string> = {
+  PENDING: 'Pending',
+  FUNDED: 'Funded',
+  IN_TRANSIT: 'In Transit',
+  DELIVERED: 'Delivered',
+  DISPUTED: 'Disputed',
+  COMPLETED: 'Completed',
+  REFUNDED: 'Refunded',
+};
 
-  const loadTrade = useCallback(async () => {
-    if (!fetchTrade) {
-      setError('No fetch function provided');
-      setIsLoading(false);
-      return;
-    }
+interface TimelineEvent {
+  eventType: string;
+  timestamp: string;
+  actor: string;
+  metadata: Record<string, unknown>;
+}
 
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await fetchTrade(tradeId);
-      setTrade(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('trade.detail.error'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchTrade, tradeId, t]);
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, mono && styles.mono]}>{value}</Text>
+    </View>
+  );
+}
+
+function ContractCard({ trade }: { trade: Trade }) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Contract</Text>
+      <InfoRow label="Loss Ratio" value={`Buyer ${trade.buyerLossBps ?? 5000} / Seller ${trade.sellerLossBps ?? 5000} bps`} />
+      <InfoRow label="Fee" value="1% (seller)" />
+      <InfoRow label="Token" value="cNGN" />
+      {trade.commodity && <InfoRow label="Commodity" value={trade.commodity} />}
+      {trade.quantity && <InfoRow label="Quantity" value={`${trade.quantity} ${trade.unit ?? ''}`} />}
+    </View>
+  );
+}
+
+function eventLabel(eventType: string): string {
+  const map: Record<string, string> = {
+    TRADE_CREATED: 'Trade Created',
+    FUNDED: 'Funded',
+    IN_TRANSIT: 'In Transit',
+    DELIVERED: 'Delivered',
+    COMPLETED: 'Completed',
+    DISPUTED: 'Dispute Opened',
+    REFUNDED: 'Refunded',
+    EVIDENCE_UPLOADED: 'Evidence Uploaded',
+    MEDIATOR_ASSIGNED: 'Mediator Assigned',
+    DISPUTE_RESOLVED: 'Dispute Resolved',
+  };
+  return map[eventType] ?? eventType.replace(/_/g, ' ');
+}
+
+function TradeTimeline({ tradeId, token }: { tradeId: string; token: string | null }) {
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadTrade();
-  }, [loadTrade]);
+    if (!token) { setLoading(false); return; }
+    apiClient
+      .get(`/trades/${tradeId}/timeline`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((r) => setEvents(r.data?.events ?? r.data ?? []))
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false));
+  }, [tradeId, token]);
 
-  const handleConfirmDelivery = useCallback(async () => {
+  return (
+    <View style={styles.section} accessibilityLabel="Trade timeline">
+      <Text style={styles.sectionTitle}>Timeline</Text>
+      {loading && <ActivityIndicator color="#2d6a2d" />}
+      {!loading && events.length === 0 && (
+        <Text style={styles.timelineLabel}>No timeline events yet.</Text>
+      )}
+      {events.map((ev, i) => (
+        <View
+          key={`${ev.eventType}-${i}`}
+          style={styles.timelineRow}
+          accessibilityLabel={`${eventLabel(ev.eventType)} at ${new Date(ev.timestamp).toLocaleString()}`}
+        >
+          <View style={styles.timelineDot}>
+            <View style={[styles.timelineDotInner, i === 0 && styles.timelineDotActive]} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.timelineLabel, i === 0 && styles.timelineLabelActive]}>
+              {eventLabel(ev.eventType)}
+            </Text>
+            <Text style={styles.timelineMeta}>
+              {new Date(ev.timestamp).toLocaleString()} · {ev.actor.slice(0, 10)}…
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export default function TradeDetailScreen({ route, navigation }: Props) {
+  const { tradeId } = route.params;
+  const insets = useSafeAreaInsets();
+  const {
+    currentTrade,
+    isLoading,
+    errorView,
+    lastActionErrorView,
+    fetchTrade,
+    confirmDelivery,
+    initiateDispute,
+    releaseFunds,
+    deposit,
+    clearErrorView,
+  } = useTradeStore();
+  const { clearAuth, token } = useAuthStore();
+
+  const [disputeModalVisible, setDisputeModalVisible] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  useEffect(() => {
+    fetchTrade(tradeId);
+  }, [tradeId, fetchTrade]);
+
+  // Action errors take precedence over stale load errors so a
+  // background poll doesn't bury a still-relevant mutation banner —
+  // mirrors the dual-state pattern used by the admin screens.
+  const visibleErrorView: AdminErrorView | null =
+    lastActionErrorView ?? errorView;
+
+  const isActionError = lastActionErrorView !== null;
+
+  const openSupportMailto = useCallback(
+    (view: AdminErrorView | null) => {
+      void Linking.openURL(buildSupportMailto(view, 'trade detail'));
+    },
+    []
+  );
+
+  const handleDeposit = useCallback(() => {
     Alert.alert(
-      t('trade.detail.confirmDeliveryTitle'),
-      t('trade.detail.confirmDeliveryMessage'),
+      'Deposit Funds',
+      'Send the trade amount to the escrow contract?',
       [
-        { text: t('common.cancel'), style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: t('common.confirm'),
+          text: 'Deposit',
+          style: 'default',
           onPress: async () => {
-            if (!onConfirmDelivery) return;
-            setIsActionLoading(true);
-            try {
-              const result = await onConfirmDelivery(tradeId);
-              if (result.success) {
-                Alert.alert(t('common.success'), t('trade.create.success'));
-                loadTrade();
-              } else {
-                Alert.alert(t('common.error'), result.error || t('trade.create.error'));
-              }
-            } catch (err) {
-              Alert.alert(
-                t('common.error'),
-                err instanceof Error ? err.message : t('trade.create.error')
-              );
-            } finally {
-              setIsActionLoading(false);
-            }
+            setActionLoading(true);
+            await deposit(tradeId);
+            setActionLoading(false);
           },
         },
       ]
     );
-  }, [onConfirmDelivery, tradeId, t, loadTrade]);
+  }, [tradeId, deposit]);
 
-  const handleRaiseDispute = useCallback(() => {
-    Alert.prompt(
-      t('trade.detail.disputeTitle'),
-      t('trade.detail.disputeReason'),
-      async (reason?: string) => {
-        if (!reason || !onRaiseDispute) return;
-        
-        setIsActionLoading(true);
-        try {
-          const result = await onRaiseDispute(tradeId, reason);
-          if (result.success) {
-            Alert.alert(t('common.success'), 'Dispute raised successfully');
-            loadTrade();
-          } else {
-            Alert.alert(t('common.error'), result.error || 'Failed to raise dispute');
-          }
-        } catch (err) {
-          Alert.alert(
-            t('common.error'),
-            err instanceof Error ? err.message : 'Failed to raise dispute'
-          );
-        } finally {
-          setIsActionLoading(false);
-        }
-      },
-      'plain-text',
-      '',
-      'default'
+  const handleConfirmDelivery = useCallback(() => {
+    Alert.alert(
+      'Confirm Delivery',
+      'Are you sure you received the goods in good condition?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          style: 'default',
+          onPress: async () => {
+            setActionLoading(true);
+            await confirmDelivery(tradeId);
+            setActionLoading(false);
+          },
+        },
+      ]
     );
-  }, [onRaiseDispute, tradeId, t, loadTrade]);
+  }, [tradeId, confirmDelivery]);
 
-  const handleViewEvidence = useCallback(() => {
-    if (onViewEvidence) {
-      onViewEvidence(tradeId);
+  const handleReleaseFunds = useCallback(() => {
+    Alert.alert(
+      'Release Funds',
+      'Release funds to the seller? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Release',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            await releaseFunds(tradeId);
+            setActionLoading(false);
+          },
+        },
+      ]
+    );
+  }, [tradeId, releaseFunds]);
+
+  const handleDisputeSubmit = useCallback(async () => {
+    if (!disputeReason.trim()) {
+      Alert.alert('Reason required', 'Please describe the issue before submitting a dispute.');
+      return;
     }
-  }, [onViewEvidence, tradeId]);
+    setActionLoading(true);
+    await initiateDispute(tradeId, disputeReason.trim());
+    setActionLoading(false);
+    setDisputeModalVisible(false);
+    setDisputeReason('');
+  }, [tradeId, disputeReason, initiateDispute]);
 
-  const getStatusColor = (status: TradeStatus) => {
-    switch (status) {
-      case 'pending':
-        return '#f59e0b';
-      case 'funded':
-        return '#3b82f6';
-      case 'dispatched':
-        return '#8b5cf6';
-      case 'delivered':
-        return '#06b6d4';
-      case 'completed':
-        return '#22c55e';
-      case 'disputed':
-        return '#ef4444';
-      case 'resolved':
-        return '#22c55e';
-      case 'cancelled':
-        return '#6b7280';
-      default:
-        return '#6b7280';
-    }
-  };
+  const status = currentTrade?.status ?? 'PENDING';
+  const canDeposit = status === 'PENDING';
+  const canConfirm = status === 'IN_TRANSIT' || status === 'FUNDED';
+  const canRelease = status === 'DELIVERED';
+  const canDispute =
+    status === 'IN_TRANSIT' ||
+    status === 'FUNDED' ||
+    status === 'DELIVERED';
+  const canUploadEvidence = status === 'DISPUTED';
 
-  if (isLoading) {
+  if (isLoading && !currentTrade) {
     return (
-      <View style={styles.container} testID="trade-detail-loading">
-        <ActivityIndicator size="large" color="#059669" />
-        <Text style={styles.loadingText}>{t('common.loading')}</Text>
+      <View style={[styles.center, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color="#2d6a2d" />
       </View>
     );
   }
 
-  if (error) {
+  if (!currentTrade) {
+    // Fallback banner for trades the server won't return (404, removed,
+    // etc.). When `errorView` is null (e.g. cold-load race) we surface a
+    // synthetic `TRADE_NOT_FOUND` view so the banner buttons are still
+    // meaningful; `action === 'go_back'` renders a single "Go back" CTA.
+    const notFoundView: AdminErrorView = errorView ?? {
+      title: 'Trade not found',
+      message:
+        'This trade could not be loaded. It may have been completed or removed — go back to your trade list and try again.',
+      action: 'go_back',
+      code: 'TRADE_NOT_FOUND',
+    };
+
+    // Banner wires the same set of hooks as the inline banner below so
+    // any action in the map (sign-out, retry, etc.) renders correctly.
     return (
-      <View style={styles.container} testID="trade-detail-error">
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadTrade} testID="retry-button">
-          <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
-        </TouchableOpacity>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Trade Detail</Text>
+          <View style={{ width: 60 }} />
+        </View>
+        <View style={styles.bannerWrap}>
+          <AdminErrorBanner
+            view={notFoundView}
+            onGoBack={() => navigation.goBack()}
+            onRetry={
+              notFoundView.action === 'retry' || notFoundView.action === 'wait_then_retry'
+                ? () => void fetchTrade(tradeId)
+                : undefined
+            }
+            onSignOut={
+              notFoundView.action === 'sign_out_required'
+                ? () => void clearAuth()
+                : undefined
+            }
+            onContactSupport={() => openSupportMailto(notFoundView)}
+          />
+        </View>
       </View>
     );
   }
 
-  if (!trade) {
-    return null;
-  }
+  const statusColor = STATUS_COLORS[status] ?? '#6B7280';
 
   return (
-    <ScrollView style={styles.container} testID="trade-detail-loaded">
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>{t('trade.detail.title')}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(trade.status) }]}>
-          <Text style={styles.statusBadgeText}>{t(STATUS_KEYS[trade.status])}</Text>
-        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Trade Detail</Text>
+        <View style={{ width: 60 }} />
       </View>
 
-      <View style={styles.content}>
-        {/* Trade ID */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.tradeId')}</Text>
-          <Text style={styles.value}>{trade.id}</Text>
-        </View>
-
-        {/* Product */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.product')}</Text>
-          <Text style={styles.value}>{trade.product}</Text>
-        </View>
-
-        {/* Amount */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.amount')}</Text>
-          <Text style={styles.value}>{trade.amount}</Text>
-        </View>
-
-        {/* Status */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.status')}</Text>
-          <Text style={[styles.value, { color: getStatusColor(trade.status) }]}>
-            {t(STATUS_KEYS[trade.status])}
-          </Text>
-        </View>
-
-        {/* Seller */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.seller')}</Text>
-          <Text style={styles.value}>{trade.seller}</Text>
-        </View>
-
-        {/* Buyer */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.buyer')}</Text>
-          <Text style={styles.value}>{trade.buyer}</Text>
-        </View>
-
-        {/* Driver (if available) */}
-        {trade.driver && (
-          <View style={styles.row}>
-            <Text style={styles.label}>{t('trade.detail.driver')}</Text>
-            <Text style={styles.value}>{trade.driver}</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* Status card */}
+        <View style={styles.statusCard}>
+          <Text style={styles.tradeIdText}>#{currentTrade.tradeId.slice(0, 12)}…</Text>
+          <View style={[styles.statusBadge, { backgroundColor: `${statusColor}22` }]}>
+            <Text style={[styles.statusText, { color: statusColor }]}>{STATUS_LABELS[status]}</Text>
           </View>
-        )}
+          <Text style={styles.amountText}>{currentTrade.amountUsdc} USDC</Text>
+          {currentTrade.commodity && (
+            <Text style={styles.commodityText}>{currentTrade.commodity}{currentTrade.quantity ? ` — ${currentTrade.quantity} ${currentTrade.unit ?? ''}` : ''}</Text>
+          )}
+        </View>
 
-        {/* Vehicle (if available) */}
-        {trade.vehicle && (
-          <View style={styles.row}>
-            <Text style={styles.label}>{t('trade.detail.vehicle')}</Text>
-            <Text style={styles.value}>{trade.vehicle}</Text>
+        {/* Error banner — dual-slot display via `lastActionErrorView
+            ?? errorView` above. Successful loads do NOT wipe a stale
+            action banner, so we explicitly clear as needed. */}
+        {visibleErrorView ? (
+          <View style={styles.bannerWrap}>
+            <AdminErrorBanner
+              view={visibleErrorView}
+              // Only offer "Try again" when the error came from a load
+              // action; action errors must be re-fired from the action
+              // row itself (which the user still sees intact).
+              onRetry={
+                !isActionError && visibleErrorView.action !== 'go_back'
+                  ? () => void fetchTrade(tradeId)
+                  : undefined
+              }
+              onSignOut={
+                visibleErrorView.action === 'sign_out_required'
+                  ? () => void clearAuth()
+                  : undefined
+              }
+              onGoBack={clearErrorView}
+              onContactSupport={() => openSupportMailto(visibleErrorView)}
+            />
           </View>
-        )}
+        ) : null}
 
-        {/* Loss Ratio */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.lossRatio')}</Text>
-          <Text style={styles.value}>{trade.lossRatio}</Text>
+        {/* Trade info */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Trade Info</Text>
+          <InfoRow label="Trade ID" value={currentTrade.tradeId} mono />
+          <InfoRow label="Buyer" value={currentTrade.buyerAddress} mono />
+          <InfoRow label="Seller" value={currentTrade.sellerAddress} mono />
+          {currentTrade.createdAt && (
+            <InfoRow label="Created" value={new Date(currentTrade.createdAt).toLocaleDateString()} />
+          )}
+          {currentTrade.updatedAt && (
+            <InfoRow label="Updated" value={new Date(currentTrade.updatedAt).toLocaleDateString()} />
+          )}
         </View>
 
-        {/* Created At */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.createdAt')}</Text>
-          <Text style={styles.value}>{trade.createdAt}</Text>
-        </View>
+        {/* Contract card */}
+        <ContractCard trade={currentTrade} />
 
-        {/* Updated At */}
-        <View style={styles.row}>
-          <Text style={styles.label}>{t('trade.detail.updatedAt')}</Text>
-          <Text style={styles.value}>{trade.updatedAt}</Text>
-        </View>
+        {/* Timeline */}
+        <TradeTimeline tradeId={currentTrade.tradeId} token={token} />
 
         {/* Actions */}
-        <View style={styles.actions}>
-          {(trade.status === 'delivered' || trade.status === 'dispatched') && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Actions</Text>
+
+          {canDeposit && (
             <TouchableOpacity
-              style={styles.primaryAction}
-              onPress={handleConfirmDelivery}
-              disabled={isActionLoading}
-              testID="confirm-delivery-button"
+              style={[styles.actionBtn, styles.depositBtn, actionLoading && styles.btnDisabled]}
+              onPress={handleDeposit}
+              disabled={actionLoading}
             >
-              {isActionLoading ? (
-                <ActivityIndicator color="#fff" size="small" />
+              {actionLoading ? (
+                <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.primaryActionText}>{t('trade.detail.actions.confirmDelivery')}</Text>
+                <Text style={styles.actionBtnText}>💰 Deposit Funds</Text>
               )}
             </TouchableOpacity>
           )}
 
-          {(trade.status !== 'completed' && trade.status !== 'cancelled' && trade.status !== 'disputed') && (
+          {canConfirm && (
             <TouchableOpacity
-              style={styles.dangerAction}
-              onPress={handleRaiseDispute}
-              disabled={isActionLoading}
-              testID="raise-dispute-button"
+              style={[styles.actionBtn, styles.confirmBtn, actionLoading && styles.btnDisabled]}
+              onPress={handleConfirmDelivery}
+              disabled={actionLoading}
             >
-              <Text style={styles.dangerActionText}>{t('trade.detail.actions.raiseDispute')}</Text>
+              {actionLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.actionBtnText}>✅ Confirm Delivery</Text>
+              )}
             </TouchableOpacity>
           )}
 
-          {trade.status === 'disputed' && (
+          {canRelease && (
             <TouchableOpacity
-              style={styles.secondaryAction}
-              onPress={handleViewEvidence}
-              testID="view-evidence-button"
+              style={[styles.actionBtn, styles.releaseBtn, actionLoading && styles.btnDisabled]}
+              onPress={handleReleaseFunds}
+              disabled={actionLoading}
             >
-              <Text style={styles.secondaryActionText}>{t('trade.detail.actions.viewEvidence')}</Text>
+              {actionLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.actionBtnText}>💸 Release Funds</Text>
+              )}
             </TouchableOpacity>
           )}
+
+          {canDispute && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.disputeBtn, actionLoading && styles.btnDisabled]}
+              onPress={() => setDisputeModalVisible(true)}
+              disabled={actionLoading}
+            >
+              <Text style={styles.actionBtnText}>⚠️ Initiate Dispute</Text>
+            </TouchableOpacity>
+          )}
+
+          {canUploadEvidence && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.evidenceBtn]}
+              onPress={() => navigation.navigate('EvidenceCapture', { tradeId: currentTrade.tradeId })}
+            >
+              <Text style={styles.actionBtnText}>📹 Upload Evidence</Text>
+            </TouchableOpacity>
+          )}
+
+          {!canDeposit && !canConfirm && !canRelease && !canDispute && !canUploadEvidence && (
+            <Text style={styles.noActionsText}>No actions available for this trade status.</Text>
+          )}
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* Dispute reason modal */}
+      <Modal
+        visible={disputeModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDisputeModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Initiate Dispute</Text>
+            <Text style={styles.modalBody}>Describe the issue with this trade:</Text>
+            <TextInput
+              style={styles.textInput}
+              multiline
+              numberOfLines={4}
+              placeholder="e.g. Goods arrived damaged, quantity mismatch…"
+              value={disputeReason}
+              onChangeText={setDisputeReason}
+              textAlignVertical="top"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn]}
+                onPress={() => { setDisputeModalVisible(false); setDisputeReason(''); }}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.submitBtn, actionLoading && styles.btnDisabled]}
+                onPress={handleDisputeSubmit}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Submit</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
+  container: { flex: 1, backgroundColor: '#f0f4f0' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   header: {
-    padding: 24,
-    paddingTop: 48,
-    backgroundColor: '#059669',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  content: {
-    padding: 16,
-  },
-  row: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#fff',
-    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8e0',
+  },
+  backText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500', width: 60 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
+  content: { padding: 16, gap: 16 },
+  statusCard: {
+    backgroundColor: '#fff',
     borderRadius: 12,
-    marginBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    padding: 20,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  label: {
-    fontSize: 14,
-    color: '#6b7280',
-    fontWeight: '500',
+  tradeIdText: { fontSize: 12, color: '#888', fontFamily: 'monospace' },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16 },
+  statusText: { fontSize: 13, fontWeight: '700' },
+  amountText: { fontSize: 28, fontWeight: '800', color: '#1a3a1a' },
+  commodityText: { fontSize: 14, color: '#555', marginTop: 4 },
+  bannerWrap: { paddingHorizontal: 0 },
+  section: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  value: {
-    fontSize: 16,
-    color: '#1f2937',
-    fontWeight: '500',
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1a3a1a', marginBottom: 4 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  infoLabel: { fontSize: 13, color: '#888', flex: 1 },
+  infoValue: { fontSize: 13, color: '#1a3a1a', flex: 2, textAlign: 'right' },
+  mono: { fontFamily: 'monospace', fontSize: 11 },
+  timelineRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  timelineDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#d0d8d0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  actions: {
-    marginTop: 24,
+  timelineDotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2d6a2d',
+  },
+  timelineDotActive: {
+    backgroundColor: '#14B8A6',
+  },
+  timelineLabel: { fontSize: 13, color: '#888' },
+  timelineLabelActive: { color: '#1a3a1a', fontWeight: '600' },
+  timelineMeta: { fontSize: 11, color: '#aaa', marginTop: 2 },
+  actionBtn: {
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  depositBtn: { backgroundColor: '#3B82F6' },
+  confirmBtn: { backgroundColor: '#2d6a2d' },
+  releaseBtn: { backgroundColor: '#14B8A6' },
+  disputeBtn: { backgroundColor: '#DC2626' },
+  evidenceBtn: { backgroundColor: '#2563EB' },
+  btnDisabled: { opacity: 0.6 },
+  actionBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  noActionsText: { fontSize: 14, color: '#888', textAlign: 'center', paddingVertical: 8 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
     gap: 12,
   },
-  primaryAction: {
-    backgroundColor: '#059669',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  primaryActionText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  dangerAction: {
-    backgroundColor: '#ef4444',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  dangerActionText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryAction: {
-    backgroundColor: '#fff',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
+  modalBody: { fontSize: 14, color: '#555' },
+  textInput: {
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  secondaryActionText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#6b7280',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#ef4444',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#059669',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    borderColor: '#d0d8d0',
     borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#1a3a1a',
+    minHeight: 100,
   },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
+  modalActions: { flexDirection: 'row', gap: 12 },
+  modalBtn: { flex: 1, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  cancelBtn: { backgroundColor: '#f0f4f0' },
+  cancelBtnText: { color: '#555', fontSize: 15, fontWeight: '600' },
+  submitBtn: { backgroundColor: '#DC2626' },
+  submitBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });
-
-export default TradeDetailScreen;

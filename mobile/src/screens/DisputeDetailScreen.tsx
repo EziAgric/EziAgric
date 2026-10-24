@@ -1,244 +1,129 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
+  View,
   Text,
   TouchableOpacity,
-  View,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { StackScreenProps } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
+import apiClient from '../api/client';
+import { useAuthStore } from '../stores/authStore';
 
-interface Evidence {
-  id: string;
-  type: 'video' | 'image' | 'text';
-  submittedBy: 'buyer' | 'seller' | 'driver';
-  submittedAt: string;
-  cid?: string;
-  description?: string;
-}
+type Props = StackScreenProps<RootStackParamList, 'DisputeDetail'>;
 
-interface DisputeDetails {
+interface Dispute {
   id: string;
   tradeId: string;
-  productName: string;
-  amount: number;
-  status: 'open' | 'under_review' | 'resolved';
   reason: string;
-  raisedBy: string;
-  raisedAt: string;
-  evidence: Evidence[];
-  resolution?: {
-    outcome: 'buyer_wins' | 'seller_wins' | 'split';
-    decidedAt: string;
-    notes?: string;
-  };
+  status: 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED';
+  buyerAddress: string;
+  sellerAddress: string;
+  createdAt: string;
+  resolution?: string;
 }
 
-/**
- * DisputeDetailScreen shows detailed information about a trade dispute
- */
-export default function DisputeDetailScreen() {
+export default function DisputeDetailScreen({ route, navigation }: Props) {
+  const { id } = route.params;
   const insets = useSafeAreaInsets();
-  const [dispute, setDispute] = useState<DisputeDetails | null>(null);
+  const { token } = useAuthStore();
+  const [isMediatorRole, setIsMediatorRole] = useState(false);
+
+  const [dispute, setDispute] = useState<Dispute | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDispute = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Simulated API call - replace with actual API
-      const mockDispute: DisputeDetails = {
-        id: 'dispute-001',
-        tradeId: 'trade-004',
-        productName: 'Cassava Flour (20kg)',
-        amount: 8000,
-        status: 'under_review',
-        reason: 'Goods received were of inferior quality and damaged in transit',
-        raisedBy: 'Buyer',
-        raisedAt: '2024-10-12T14:30:00Z',
-        evidence: [
-          {
-            id: 'ev-001',
-            type: 'video',
-            submittedBy: 'buyer',
-            submittedAt: '2024-10-12T14:35:00Z',
-            cid: 'QmVideo123',
-            description: 'Video showing damaged goods upon delivery',
-          },
-          {
-            id: 'ev-002',
-            type: 'text',
-            submittedBy: 'driver',
-            submittedAt: '2024-10-12T10:00:00Z',
-            description: 'Confirmed that goods were in good condition at pickup',
-          },
-        ],
-      };
-      setDispute(mockDispute);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dispute details');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchDispute();
-  }, [fetchDispute]);
+    apiClient
+      .get(`/disputes/${id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => {
+        setDispute(r.data);
+        // Backend sets X-User-Role header on authenticated dispute responses
+        if (r.headers?.['x-user-role'] === 'mediator' || r.headers?.['x-user-role'] === 'admin') {
+          setIsMediatorRole(true);
+        }
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load dispute'))
+      .finally(() => setLoading(false));
+  }, [id, token]);
 
-  const getStatusColor = (status: DisputeDetails['status']) => {
-    switch (status) {
-      case 'open':
-        return '#d97706';
-      case 'under_review':
-        return '#2563eb';
-      case 'resolved':
-        return '#2d6a2d';
-      default:
-        return '#6b7280';
-    }
+  const statusColor = (s: string) => {
+    if (s === 'OPEN') return '#DC2626';
+    if (s === 'UNDER_REVIEW') return '#D97706';
+    return '#16A34A';
   };
-
-  const getStatusLabel = (status: DisputeDetails['status']) => {
-    switch (status) {
-      case 'open':
-        return 'Open';
-      case 'under_review':
-        return 'Under Review';
-      case 'resolved':
-        return 'Resolved';
-      default:
-        return status;
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#2d6a2d" />
-        <Text style={styles.loadingText}>Loading dispute details...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity testID="retry-button" style={styles.retryButton} onPress={fetchDispute}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (!dispute) {
-    return null;
-  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Dispute Details</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Dispute</Text>
+        <View style={{ width: 60 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Status Banner */}
-        <View style={[styles.statusBanner, { backgroundColor: getStatusColor(dispute.status) }]}>
-          <Text style={styles.statusBannerText}>
-            {getStatusLabel(dispute.status)}
-          </Text>
-        </View>
-
-        {/* Trade Info */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Trade Information</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Trade ID</Text>
-            <Text style={styles.infoValue}>{dispute.tradeId}</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        {loading && <ActivityIndicator color="#2d6a2d" size="large" />}
+        {error && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
           </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Product</Text>
-            <Text style={styles.infoValue}>{dispute.productName}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Amount</Text>
-            <Text style={styles.infoValue}>{dispute.amount.toLocaleString()} NGN</Text>
-          </View>
-        </View>
-
-        {/* Dispute Info */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Dispute Information</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Raised By</Text>
-            <Text style={styles.infoValue}>{dispute.raisedBy}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Raised On</Text>
-            <Text style={styles.infoValue}>{formatDate(dispute.raisedAt)}</Text>
-          </View>
-          <View style={styles.reasonContainer}>
-            <Text style={styles.infoLabel}>Reason</Text>
-            <Text style={styles.reasonText}>{dispute.reason}</Text>
-          </View>
-        </View>
-
-        {/* Evidence Section */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Evidence ({dispute.evidence.length})</Text>
-          {dispute.evidence.map((item) => (
-            <View key={item.id} style={styles.evidenceItem}>
-              <View style={styles.evidenceHeader}>
-                <Text style={styles.evidenceType}>{item.type.toUpperCase()}</Text>
-                <Text style={styles.evidenceSubmittedBy}>
-                  Submitted by {item.submittedBy}
+        )}
+        {dispute && (
+          <>
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <Text style={styles.label}>Status</Text>
+                <Text style={[styles.status, { color: statusColor(dispute.status) }]}>
+                  {dispute.status.replace('_', ' ')}
                 </Text>
               </View>
-              {item.description && (
-                <Text style={styles.evidenceDescription}>{item.description}</Text>
-              )}
-              {item.cid && (
-                <Text style={styles.evidenceCid}>CID: {item.cid}</Text>
-              )}
-              <Text style={styles.evidenceDate}>{formatDate(item.submittedAt)}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Resolution (if resolved) */}
-        {dispute.resolution && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Resolution</Text>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Outcome</Text>
-              <Text style={[
-                styles.infoValue,
-                { color: dispute.resolution.outcome === 'buyer_wins' ? '#2d6a2d' : '#d97706' }
-              ]}>
-                {dispute.resolution.outcome === 'buyer_wins' ? 'Buyer Wins' :
-                 dispute.resolution.outcome === 'seller_wins' ? 'Seller Wins' : 'Split'}
-              </Text>
-            </View>
-            {dispute.resolution.notes && (
-              <View style={styles.reasonContainer}>
-                <Text style={styles.infoLabel}>Notes</Text>
-                <Text style={styles.reasonText}>{dispute.resolution.notes}</Text>
+              <View style={styles.row}>
+                <Text style={styles.label}>Trade</Text>
+                <Text style={styles.value}>{dispute.tradeId.slice(0, 16)}…</Text>
               </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>Buyer</Text>
+                <Text style={styles.value}>{dispute.buyerAddress.slice(0, 16)}…</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>Seller</Text>
+                <Text style={styles.value}>{dispute.sellerAddress.slice(0, 16)}…</Text>
+              </View>
+              <View style={styles.reasonBox}>
+                <Text style={styles.label}>Reason</Text>
+                <Text style={styles.reason}>{dispute.reason}</Text>
+              </View>
+              {dispute.resolution && (
+                <View style={styles.reasonBox}>
+                  <Text style={styles.label}>Resolution</Text>
+                  <Text style={styles.reason}>{dispute.resolution}</Text>
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.evidenceBtn}
+              onPress={() => navigation.navigate('EvidenceCapture', { tradeId: dispute.tradeId })}
+            >
+              <Text style={styles.evidenceBtnText}>📎 Upload Evidence</Text>
+            </TouchableOpacity>
+
+            {isMediatorRole && (
+              <TouchableOpacity
+                style={styles.reviewBtn}
+                onPress={() =>
+                  navigation.navigate('MediatorDisputeReview', { disputeId: dispute.id })
+                }
+              >
+                <Text style={styles.reviewBtnText}>⚖️ Review as Mediator</Text>
+              </TouchableOpacity>
             )}
-          </View>
+          </>
         )}
       </ScrollView>
     </View>
@@ -246,129 +131,52 @@ export default function DisputeDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f4f7f4',
-  },
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#f0f4f0' },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1f3d1f',
-  },
-  scroll: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  statusBanner: {
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e8e0',
   },
-  statusBannerText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
+  backText: { fontSize: 14, color: '#2d6a2d', fontWeight: '500', width: 60 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a3a1a' },
+  content: { padding: 16, gap: 16 },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f3d1f',
-    marginBottom: 12,
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  label: { fontSize: 13, color: '#888', fontWeight: '500' },
+  value: { fontSize: 13, color: '#333', fontFamily: 'monospace' },
+  status: { fontSize: 13, fontWeight: '700' },
+  reasonBox: { gap: 4 },
+  reason: { fontSize: 14, color: '#333', lineHeight: 20 },
+  errorBanner: { backgroundColor: '#FEE2E2', padding: 12, borderRadius: 8 },
+  errorText: { color: '#DC2626', fontSize: 13 },
+  evidenceBtn: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    paddingVertical: 14,
+    alignItems: 'center',
   },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+  evidenceBtnText: { color: '#2563EB', fontSize: 15, fontWeight: '600' },
+  reviewBtn: {
+    backgroundColor: '#7C3AED',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
   },
-  infoLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f3d1f',
-  },
-  reasonContainer: {
-    paddingTop: 12,
-  },
-  reasonText: {
-    fontSize: 14,
-    color: '#374151',
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  evidenceItem: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
-  },
-  evidenceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  evidenceType: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#2d6a2d',
-  },
-  evidenceSubmittedBy: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  evidenceDescription: {
-    fontSize: 14,
-    color: '#374151',
-    marginBottom: 6,
-  },
-  evidenceCid: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  evidenceDate: {
-    fontSize: 11,
-    color: '#9ca3af',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#dc2626',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#2d6a2d',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
+  reviewBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });
