@@ -1,0 +1,65 @@
+name: Architecture Diagrams
+
+# Renders the Mermaid diagrams-as-code under docs/architecture and checks
+# their links (#275). `Architecture Diagrams Gate` is a required status check
+# (see docs/branch-protection-policy.md), so the workflow runs on every PR and
+# skips its work — while still reporting success — when no docs paths changed.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  diagrams:
+    name: Architecture Diagrams Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+              - 'README.md'
+              - 'contracts/amana_escrow/src/*.rs'
+              - 'scripts/render-architecture-diagrams.sh'
+              - 'scripts/check-architecture-links.mjs'
+              - '.github/workflows/architecture-diagrams.yml'
+
+      - name: Skip note
+        if: steps.filter.outputs.docs != 'true' && github.event_name != 'workflow_dispatch'
+        run: echo "No docs or diagram changes — architecture diagram gate skipped."
+
+      - uses: actions/setup-node@v4
+        if: steps.filter.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
+        with:
+          node-version: 20
+
+      - name: Check diagram links and anchors
+        if: steps.filter.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
+        run: node scripts/check-architecture-links.mjs
+
+      - name: Render Mermaid diagrams
+        if: steps.filter.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
+        run: ./scripts/render-architecture-diagrams.sh
+        env:
+          DIAGRAMS_OUT: ${{ runner.temp }}/diagrams
+
+      - name: Upload rendered previews
+        if: always() && (steps.filter.outputs.docs == 'true' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-diagrams
+          path: ${{ runner.temp }}/diagrams
+          if-no-files-found: warn

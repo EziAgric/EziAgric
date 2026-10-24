@@ -23,6 +23,7 @@ gitleaks-report.sarif
 .kiro/specs/avatar-component/tasks.md
 
 .kiro/
+<<<<<<< HEAD
 
 # Terraform (Issue #267) — state is remote; bootstrap state lives in the break-glass vault
 **/.terraform/
@@ -30,3 +31,6 @@ gitleaks-report.sarif
 *.tfstate.*
 *.tfplan
 tfplan
+=======
+.diagrams-out/
+>>>>>>> pr-484
