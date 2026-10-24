@@ -1,216 +1,108 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Linking,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import '../i18n';
 
-interface WalletInfo {
-  address: string;
-  name: string;
-  connected: boolean;
+export type WalletStatus = 'connected' | 'disconnected' | 'pending' | 'error';
+
+interface WalletConnectScreenProps {
+  onConnect?: () => Promise<void>;
+  onDisconnect?: () => void;
+  initialStatus?: WalletStatus;
 }
 
-/**
- * WalletConnectScreen handles Stellar wallet connection
- * Supports deep-link handling for wallet callbacks
- */
-export default function WalletConnectScreen() {
-  const insets = useSafeAreaInsets();
-  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export const statusLabels: Record<WalletStatus, string> = {
+  connected: 'wallet.status.connected',
+  disconnected: 'wallet.status.disconnected',
+  pending: 'wallet.status.pending',
+  error: 'wallet.status.error',
+};
 
-  // Handle deep-link callback from wallet
-  const handleDeepLink = useCallback(async (url: string) => {
-    // Parse the deep-link URL
-    // Format: eziagric://wallet/callback?address=XXX&signature=XXX
+export function WalletConnectScreen({
+  onConnect,
+  onDisconnect,
+  initialStatus = 'disconnected',
+}: WalletConnectScreenProps) {
+  const { t } = useTranslation();
+  const [status, setStatus] = useState<WalletStatus>(initialStatus);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleConnect = useCallback(async () => {
+    if (!onConnect) return;
+    setIsLoading(true);
+    setStatus('pending');
     try {
-      const parsedUrl = new URL(url);
-      const params = parsedUrl.searchParams;
-      
-      if (params.has('address')) {
-        const address = params.get('address');
-        const name = params.get('name') || 'Connected Wallet';
-        
-        setWalletInfo({
-          address: address!,
-          name,
-          connected: true,
-        });
-      }
-    } catch (err) {
-      console.error('Failed to parse deep-link:', err);
-    }
-  }, []);
-
-  // Listen for deep-links
-  useEffect(() => {
-    const subscription = Linking.addEventListener('url', (event) => {
-      handleDeepLink(event.url);
-    });
-
-    // Check if app was opened via deep-link
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink(url);
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [handleDeepLink]);
-
-  const connectWallet = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Simulate wallet connection
-      // In production, this would use @stellar/freighter-api or @albedo.link
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // For demo, simulate successful connection
-      setWalletInfo({
-        address: 'GAC2ZUXLLFS7CIM2KOH6G3W7KXXXXX',
-        name: 'My Wallet',
-        connected: true,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect wallet');
+      await onConnect();
+      setStatus('connected');
+    } catch {
+      setStatus('error');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  }, []);
+  }, [onConnect]);
 
-  const disconnectWallet = useCallback(() => {
-    setWalletInfo(null);
-  }, []);
+  const handleDisconnect = useCallback(() => {
+    if (onDisconnect) {
+      onDisconnect();
+    }
+    setStatus('disconnected');
+  }, [onDisconnect]);
 
-  const copyAddress = useCallback(() => {
-    // In production, use Clipboard API
-    // Clipboard.setString(walletInfo?.address || '');
-  }, [walletInfo]);
+  useEffect(() => {
+    if (initialStatus !== status) {
+      setStatus(initialStatus);
+    }
+  }, [initialStatus, status]);
 
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#2d6a2d" />
-        <Text style={styles.loadingText}>Connecting wallet...</Text>
-      </View>
-    );
-  }
+  const getStatusColor = () => {
+    switch (status) {
+      case 'connected':
+        return '#22c55e';
+      case 'disconnected':
+        return '#6b7280';
+      case 'pending':
+        return '#f59e0b';
+      case 'error':
+        return '#ef4444';
+      default:
+        return '#6b7280';
+    }
+  };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Connect Wallet</Text>
-      </View>
-
+    <View style={styles.container}>
       <View style={styles.content}>
-        {error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
-              testID="retry-button" 
-              style={styles.retryButton} 
-              onPress={connectWallet}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : walletInfo?.connected ? (
-          // Connected state
-          <View style={styles.connectedCard}>
-            <View style={styles.walletIcon}>
-              <Text style={styles.walletIconText}>★</Text>
-            </View>
-            <Text style={styles.connectedTitle}>Wallet Connected</Text>
-            <Text style={styles.walletName}>{walletInfo.name}</Text>
-            
-            <View style={styles.addressContainer}>
-              <Text style={styles.addressLabel}>Address</Text>
-              <TouchableOpacity 
-                testID="copy-address-button"
-                onPress={copyAddress}
-                accessibilityLabel="Copy wallet address"
-              >
-                <Text style={styles.addressText} numberOfLines={2}>
-                  {walletInfo.address}
-                </Text>
-              </TouchableOpacity>
-            </View>
+        <Text style={styles.appName}>{t('wallet.appName')}</Text>
+        <Text style={styles.tagline}>{t('wallet.tagline')}</Text>
 
-            <TouchableOpacity 
-              testID="disconnect-button"
-              style={styles.disconnectButton}
-              onPress={disconnectWallet}
-            >
-              <Text style={styles.disconnectButtonText}>Disconnect</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.statusContainer}>
+          <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
+          <Text style={styles.statusText}>{t(statusLabels[status])}</Text>
+        </View>
+
+        <Text style={styles.instructions}>{t('wallet.instructions')}</Text>
+
+        {status === 'disconnected' || status === 'error' ? (
+          <TouchableOpacity
+            style={styles.connectButton}
+            onPress={handleConnect}
+            disabled={isLoading}
+            testID="connect-wallet-button"
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.connectButtonText}>{t('wallet.connect')}</Text>
+            )}
+          </TouchableOpacity>
         ) : (
-          // Disconnected state - show connect options
-          <View style={styles.disconnectedCard}>
-            <Text style={styles.subtitle}>
-              Connect your Stellar wallet to manage your trades and vault
-            </Text>
-
-            <View style={styles.walletOptions}>
-              <TouchableOpacity 
-                testID="connect-freighter"
-                style={styles.walletOption}
-                onPress={connectWallet}
-                accessibilityLabel="Connect Freighter wallet"
-                accessibilityRole="button"
-              >
-                <View style={styles.walletOptionIcon}>
-                  <Text style={styles.walletOptionIconText}>F</Text>
-                </View>
-                <View style={styles.walletOptionInfo}>
-                  <Text style={styles.walletOptionName}>Freighter</Text>
-                  <Text style={styles.walletOptionDesc}>Stellar wallet browser extension</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                testID="connect-albedo"
-                style={styles.walletOption}
-                onPress={connectWallet}
-                accessibilityLabel="Connect Albedo wallet"
-                accessibilityRole="button"
-              >
-                <View style={styles.walletOptionIcon}>
-                  <Text style={styles.walletOptionIconText}>A</Text>
-                </View>
-                <View style={styles.walletOptionInfo}>
-                  <Text style={styles.walletOptionName}>Albedo</Text>
-                  <Text style={styles.walletOptionDesc}>Web wallet with stellar.toml</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                testID="connect-xbull"
-                style={styles.walletOption}
-                onPress={connectWallet}
-                accessibilityLabel="Connect xBull wallet"
-                accessibilityRole="button"
-              >
-                <View style={styles.walletOptionIcon}>
-                  <Text style={styles.walletOptionIconText}>X</Text>
-                </View>
-                <View style={styles.walletOptionInfo}>
-                  <Text style={styles.walletOptionName}>xBull</Text>
-                  <Text style={styles.walletOptionDesc}>Mobile wallet for Stellar</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={styles.disconnectButton}
+            onPress={handleDisconnect}
+            testID="disconnect-wallet-button"
+          >
+            <Text style={styles.disconnectButtonText}>{t('wallet.disconnect')}</Text>
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -220,157 +112,80 @@ export default function WalletConnectScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f7f4',
-  },
-  centered: {
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1f3d1f',
+    padding: 24,
   },
   content: {
-    flex: 1,
-    padding: 16,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  errorContainer: {
+    width: '100%',
+    maxWidth: 400,
     alignItems: 'center',
   },
-  errorText: {
-    fontSize: 14,
-    color: '#dc2626',
-    textAlign: 'center',
-    marginBottom: 16,
+  appName: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 8,
   },
-  retryButton: {
-    backgroundColor: '#2d6a2d',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  disconnectedCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
-  },
-  subtitle: {
-    fontSize: 14,
+  tagline: {
+    fontSize: 16,
     color: '#6b7280',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
+    marginBottom: 32,
   },
-  walletOptions: {
-    gap: 12,
-  },
-  walletOption: {
+  statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
+    marginBottom: 24,
+    padding: 12,
+    backgroundColor: '#f3f4f6',
     borderRadius: 8,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
   },
-  walletOptionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#2d6a2d',
-    justifyContent: 'center',
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  instructions: {
+    fontSize: 14,
+    color: '#4b5563',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  connectButton: {
+    backgroundColor: '#059669',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    width: '100%',
     alignItems: 'center',
-    marginRight: 12,
   },
-  walletOptionIconText: {
-    fontSize: 20,
-    fontWeight: '700',
+  connectButtonText: {
     color: '#fff',
-  },
-  walletOptionInfo: {
-    flex: 1,
-  },
-  walletOptionName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1f3d1f',
-  },
-  walletOptionDesc: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  connectedCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-  },
-  walletIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#2d6a2d',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  walletIconText: {
-    fontSize: 28,
-    color: '#fff',
-  },
-  connectedTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1f3d1f',
-    marginBottom: 4,
-  },
-  walletName: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 20,
-  },
-  addressContainer: {
-    width: '100%',
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
-  },
-  addressLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  addressText: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-    color: '#1f3d1f',
   },
   disconnectButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    backgroundColor: '#ef4444',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#dc2626',
+    width: '100%',
+    alignItems: 'center',
   },
   disconnectButtonText: {
-    color: '#dc2626',
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
 });
+
+export default WalletConnectScreen;

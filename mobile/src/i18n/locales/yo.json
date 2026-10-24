@@ -1,126 +1,95 @@
 {
   "common": {
-    "loading": "Nnkan n lọ...",
-    "error": "Aṣiṣe ti ṣẹlẹ",
-    "retry": "ṣe apejuwe",
-    "cancel": "Fọ",
-    "submit": "Fi silẹ",
-    "save": "Fipamọ",
-    "po": "Paarẹ",
-    "satunkọ": "Satunkọ",
-    "padà": "Padà",
-    "next": "Ti nbo",
-    "ti o完成": "Ti o完成",
-    "search": "Wa",
-    "noResults": "Ko si abajade"
-  },
-  "home": {
-    "title": "Kuọ abọ",
-    "subtitle": "Oye iṣowo rẹ",
-    "activeTrades": "Iṣowo ti n lọ",
-    "totalVault": "Ile itọ́",
-    "pendingDisputes": "Aṣẹ ti o npọndọ",
-    "quickActions": "Awọn iṣe",
-    "newTrade": "Iṣowo tuntun",
-    "vault": "Ile itọ́",
-    "disputes": "Aṣẹ",
-    "recentActivity": "Iṣe ti o kẹyìn"
-  },
-  "profile": {
-    "title": "Profaili",
-    "trustScore": "Ipele iw信任",
-    "totalTrades": "Ipele iṣowo",
-    "successfulTrades": "Iṣowo ti o ni idan",
-    "successRate": "Ipele aṣeyọri",
-    "memberSince": "Ọba lati",
-    "loadingProfile": "Nnkan n lọ profaili..."
-  },
-  "trustScore": {
-    "title": "Ipele iw信任",
-    "calculating": "Nnkan ṣe iwọn iw信任...",
-    "excellent": "O dara julọ",
-    "good": "O dara",
-    "fair": "O ye",
-    "needsImprovement": "Nifẹ si Ilọsiwaju",
-    "scoreBreakdown": "Ipinnu iwọn",
-    "completedTrades": "Iṣowo ti o ti pari",
-    "successfulDisputes": "Aṣẹ ti o ni idan",
-    "responseTime": "Akoko idahunsi",
-    "ratingQuality": "Didana iwọn",
-    "scoreHistory": "Itan iwọn"
-  },
-  "vault": {
-    "title": "Dashoboodu ile itọ́",
-    "totalBalance": "Iye owo lapapọ",
-    "active": "Ti n lọ",
-    "completed": "Ti pari",
-    "recentTrades": "Iṣowo ti o kẹyìn",
-    "noTrades": "Ko si iṣowo",
-    "loadingVault": "Nnkan n lọ..."
+    "loading": "Nnkan ti n ko...",
+    "error": "Aṣiṣe",
+    "retry": "Gbìyànju",
+    "cancel": "Fagilė",
+    "confirm": "Ji àǹfààní",
+    "submit": "Fikunsilė",
+    "save": "Fi pamọ́",
+    "pad": "Ẹ̀ẹ́́",
+    "next": "Ìsàlė",
+    "success": "Aṣeyọri",
+    "failed": "Aṣiṣe"
   },
   "wallet": {
-    "title": "So Wallet",
-    "connecting": "Nnkan so wallet...",
-    "connected": "Wallet ti so",
-    "discut": "Kọ",
-    "address": "Adirẹsi",
-    "copyAddress": "Da adirẹsi pada",
-    "selectWallet": "Yan wallet lati so",
-    "freighter": "Freighter",
-    "freighterDesc": "Aṣà browser Stellar",
-    "albedo": "Albedo",
-    "albedoDesc": "Wallet ayelujara",
-    "xbull": "xBull",
-    "xbullDesc": "Wallet fọ̀nú"
-  },
-  "dispute": {
-    "title": "Alaye aṣẹ",
-    "loading": "Nnkan n lọ alaye aṣẹ...",
-    "tradeInfo": "Alaye iṣowo",
-    "disputeInfo": "Alaye aṣẹ",
-    "reason": "Ọpọlọpọ",
-    "raisedBy": "Ọgbà ti o kọ",
-    "raisedOn": "Lọ́jọ́",
-    "evidence": "Ẹri",
-    "resolution": "Atilẹ",
-    "buyerWins": "Oniṣowo jawe",
-    "sellerWins": "Alaja jawe",
-    "split": "Pin",
+    "appName": "EziAgric",
+    "tagline": "Igbérun bii Ise Fun ṣowo Àgbè",
+    "connect": "So Wallet",
+    "connecting": "Nnkan ti n so...",
+    "disconnect": "Kọ́Wallet",
+    "instructions": "Lati bẹ̀, so wallet Stellar rẹ pẹlu Freighter tabi Albedo.",
     "status": {
-      "open": "Sii",
-      "underReview": "Ni akawe",
-      "resolved": "Ti seto"
+      "connected": "Ti so",
+      "disconnected": "Ti kọ́",
+      "pending": "Njẹ́",
+      "error": "Aṣiṣe asopọ"
     }
   },
-  "review": {
-    "title": "Fi esi silẹ",
-    "yourRating": "Iwọn rẹ",
-    "reviewTitle": "Akọle ase",
-    "reviewTitlePlaceholder": "Ipari iriri rẹ",
-    "yourReview": "Ase rẹ",
-    "reviewPlaceholder": "Pin iriri rẹ...",
-    "submitReview": "Fi silẹ",
-    "submitted": "A ti fi silẹ!",
-    "thankYou": "E dupe. Ase rẹ ngba iwọle lagbara.",
-    "validation": {
-      "ratingRequired": "Yan iwọn",
-      "titleRequired": "Fi akọle silẹ",
-      "titleTooShort": "Akọle gbọdọ ni odo 3 lọọ",
-      "commentRequired": "Fi ase silẹ",
-      "commentTooShort": "Ase gbọdọ ni odo 10 lọọ"
+  "home": {
+    "welcome": "Ku àbọ̀ si EziAgric",
+    "subtitle": "Oowo ajalu lori blockchain",
+    "createTrade": "Ṣe Iṣowo",
+    "myTrades": "Iṣowo mi",
+    "marketplace": " Marketplace",
+    "settings": "Eto",
+    "recentTrades": "Iṣowo ti o kọja",
+    "noTrades": "Ko si iṣowo",
+    "viewAll": "Wo gbogbo",
+    "activeTrades": "Iṣowo ti n ṣiṣẹ́",
+    "completedTrades": "Iṣowo ti o ti pari"
+  },
+  "trade": {
+    "create": {
+      "title": "Ṣe Iṣowo",
+      "selectProduct": "Yan Sisan",
+      "enterAmount": "F输入ipo",
+      "selectSeller": "Yan Oniṣowo",
+      "lossRatio": "Ipinsile Ewu",
+      "submit": "Fi Iṣowo silė",
+      "success": "Iṣowo ti ni aṣeyọri!",
+      "error": "Iṣowo kọ́ silė",
+      "validation": {
+        "amountRequired": "ipo dẹ̀",
+        "amountPositive": "ipo gbọdọ̀ jẹ́ òtítọ́",
+        "productRequired": "Yan sisan",
+        "sellerRequired": "Yan oniṣowo"
+      }
     },
-    "ratings": {
-      "poor": "Buburu",
-      "fair": "O ye",
-      "good": "O dara",
-      "veryGood": "O dara pupọ",
-      "excellent": "Ti o dara julo"
+    "detail": {
+      "title": "Alaye Iṣowo",
+      "tradeId": "ID Iṣowo",
+      "status": "Ipele",
+      "amount": "Ipo",
+      "product": "Sisan",
+      "seller": "Oniṣowo",
+      "buyer": "Oniṣumẹ̀",
+      "driver": "Driver",
+      "vehicle": "Oso",
+      "lossRatio": "Ipinsile Ewu",
+      "createdAt": "Ti ṣẹ̀da",
+      "updatedAt": "Ìṣàyẹ̀wò ti o kọja",
+      "actions": {
+        "confirmDelivery": "Ji àǹfààní fifi àgọ̀ silė",
+      "raiseDispute": "Kọ́ àlàáyė",
+        "viewEvidence": "Wo ẹ̀ẹ́́fà"
+      },
+      "statuses": {
+        "pending": "Njẹ́",
+        "funded": "Ti fi owó ṣe",
+        "dispatched": "Ti fi ṣe",
+        "delivered": "Ti fi kọ̀",
+        "completed": "Ti pari",
+        "disputed": "A ti kọ́",
+        "resolved": "A ti yanjú",
+        "cancelled": "Ti fagilė"
+      },
+      "confirmDeliveryTitle": "Ji àǹfààní fifi àgọ̀ silė",
+      "confirmDeliveryMessage": "Ṣe o fẹ́ ji àǹfààní fifi àgọ̀ silė? Eiye ki yoo pada.",
+      "disputeTitle": "Kọ́ àlàáyė",
+      "disputeReason": "Ọ̀rọ̀ ti o fa àlàáyė",
+      "disputePlaceholder": "Sọ alaye...",
+      "error": "Kii ṣe ki o gba alaye iṣowo"
     }
-  },
-  "navigation": {
-    "home": "Ile",
-    "trades": "Iṣowo",
-    "vault": "Ile itọ́",
-    "profile": "Profaili"
   }
 }

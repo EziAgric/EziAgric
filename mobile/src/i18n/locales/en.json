@@ -1,155 +1,95 @@
 {
   "common": {
     "loading": "Loading...",
-    "error": "An error occurred",
+    "error": "Error",
     "retry": "Retry",
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "submit": "Submit",
     "save": "Save",
-    "delete": "Delete",
-    "edit": "Edit",
     "back": "Back",
     "next": "Next",
-    "done": "Done",
-    "search": "Search",
-    "noResults": "No results found"
-  },
-  "home": {
-    "title": "Welcome back",
-    "subtitle": "Here's your trade overview",
-    "activeTrades": "Active Trades",
-    "totalVault": "Vault",
-    "pendingDisputes": "Disputes",
-    "quickActions": "Quick Actions",
-    "newTrade": "New Trade",
-    "vault": "Vault",
-    "disputes": "Disputes",
-    "recentActivity": "Recent Activity"
-  },
-  "profile": {
-    "title": "Profile",
-    "trustScore": "Trust Score",
-    "totalTrades": "Total Trades",
-    "successfulTrades": "Successful",
-    "successRate": "Success Rate",
-    "memberSince": "Member since",
-    "loadingProfile": "Loading profile..."
-  },
-  "trustScore": {
-    "title": "Trust Score",
-    "calculating": "Calculating trust score...",
-    "excellent": "Excellent",
-    "good": "Good",
-    "fair": "Fair",
-    "needsImprovement": "Needs Improvement",
-    "scoreBreakdown": "Score Breakdown",
-    "completedTrades": "Completed Trades",
-    "successfulDisputes": "Successful Disputes",
-    "responseTime": "Response Time",
-    "ratingQuality": "Rating Quality",
-    "scoreHistory": "Score History"
-  },
-  "vault": {
-    "title": "Vault Dashboard",
-    "totalBalance": "Total Balance",
-    "active": "Active",
-    "completed": "Completed",
-    "recentTrades": "Recent Trades",
-    "noTrades": "No trades yet",
-    "loadingVault": "Loading vault data..."
+    "success": "Success",
+    "failed": "Failed"
   },
   "wallet": {
-    "title": "Connect Wallet",
-    "connecting": "Connecting wallet...",
-    "connected": "Wallet Connected",
+    "appName": "EziAgric",
+    "tagline": "Trust as a Service for Agricultural Trade",
+    "connect": "Connect Wallet",
+    "connecting": "Connecting...",
     "disconnect": "Disconnect",
-    "address": "Address",
-    "copyAddress": "Copy wallet address",
-    "selectWallet": "Select a wallet to connect",
-    "freighter": "Freighter",
-    "freighterDesc": "Stellar wallet browser extension",
-    "albedo": "Albedo",
-    "albedoDesc": "Web wallet with stellar.toml",
-    "xbull": "xBull",
-    "xbullDesc": "Mobile wallet for Stellar"
-  },
-  "dispute": {
-    "title": "Dispute Details",
-    "loading": "Loading dispute details...",
-    "tradeInfo": "Trade Information",
-    "disputeInfo": "Dispute Information",
-    "reason": "Reason",
-    "raisedBy": "Raised By",
-    "raisedOn": "Raised On",
-    "evidence": "Evidence",
-    "resolution": "Resolution",
-    "buyerWins": "Buyer Wins",
-    "sellerWins": "Seller Wins",
-    "split": "Split",
+    "instructions": "To get started, connect your Stellar wallet using Freighter or Albedo.",
     "status": {
-      "open": "Open",
-      "underReview": "Under Review",
-      "resolved": "Resolved"
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "pending": "Pending",
+      "error": "Connection Error"
     }
   },
-  "review": {
-    "title": "Leave a Review",
-    "yourRating": "Your Rating",
-    "reviewTitle": "Review Title",
-    "reviewTitlePlaceholder": "Summarize your experience",
-    "yourReview": "Your Review",
-    "reviewPlaceholder": "Share details about your experience with this trade...",
-    "submitReview": "Submit Review",
-    "submitted": "Review Submitted!",
-    "thankYou": "Thank you for your feedback. Your review helps build trust in our community.",
-    "validation": {
-      "ratingRequired": "Please select a rating",
-      "titleRequired": "Please enter a review title",
-      "titleTooShort": "Title must be at least 3 characters",
-      "commentRequired": "Please enter your review comment",
-      "commentTooShort": "Comment must be at least 10 characters"
+  "home": {
+    "welcome": "Welcome to EziAgric",
+    "subtitle": "Secure agricultural trade on the blockchain",
+    "createTrade": "Create Trade",
+    "myTrades": "My Trades",
+    "marketplace": "Marketplace",
+    "settings": "Settings",
+    "recentTrades": "Recent Trades",
+    "noTrades": "No trades yet",
+    "viewAll": "View All",
+    "activeTrades": "Active Trades",
+    "completedTrades": "Completed Trades"
+  },
+  "trade": {
+    "create": {
+      "title": "Create Trade",
+      "selectProduct": "Select Product",
+      "enterAmount": "Enter Amount",
+      "selectSeller": "Select Seller",
+      "lossRatio": "Loss Sharing Ratio",
+      "submit": "Submit Trade",
+      "success": "Trade created successfully!",
+      "error": "Failed to create trade",
+      "validation": {
+        "amountRequired": "Amount is required",
+        "amountPositive": "Amount must be positive",
+        "productRequired": "Please select a product",
+        "sellerRequired": "Please select a seller"
+      }
     },
-    "ratings": {
-      "poor": "Poor",
-      "fair": "Fair",
-      "good": "Good",
-      "veryGood": "Very Good",
-      "excellent": "Excellent"
+    "detail": {
+      "title": "Trade Details",
+      "tradeId": "Trade ID",
+      "status": "Status",
+      "amount": "Amount",
+      "product": "Product",
+      "seller": "Seller",
+      "buyer": "Buyer",
+      "driver": "Driver",
+      "vehicle": "Vehicle",
+      "lossRatio": "Loss Ratio",
+      "createdAt": "Created",
+      "updatedAt": "Last Updated",
+      "actions": {
+        "confirmDelivery": "Confirm Delivery",
+        "raiseDispute": "Raise Dispute",
+        "viewEvidence": "View Evidence"
+      },
+      "statuses": {
+        "pending": "Pending",
+        "funded": "Funded",
+        "dispatched": "Dispatched",
+        "delivered": "Delivered",
+        "completed": "Completed",
+        "disputed": "Disputed",
+        "resolved": "Resolved",
+        "cancelled": "Cancelled"
+      },
+      "confirmDeliveryTitle": "Confirm Delivery",
+      "confirmDeliveryMessage": "Are you sure you want to confirm delivery? This action cannot be undone.",
+      "disputeTitle": "Raise Dispute",
+      "disputeReason": "Reason for dispute",
+      "disputePlaceholder": "Describe the issue...",
+      "error": "Failed to load trade details"
     }
-  },
-  "marketplace": {
-    "title": "Marketplace",
-    "loading": "Loading listings...",
-    "noResults": "No listings found"
-  },
-  "trades": {
-    "title": "My Trades",
-    "loading": "Loading trades...",
-    "noTrades": "No trades found",
-    "filterAll": "All",
-    "filterPending": "Pending",
-    "filterFunded": "Funded",
-    "filterCompleted": "Completed",
-    "filterDisputed": "Disputed",
-    "statusPending": "Pending",
-    "statusFunded": "Funded",
-    "statusCompleted": "Completed",
-    "statusDisputed": "Disputed"
-  },
-  "navigation": {
-    "home": "Home",
-    "trades": "Trades",
-    "vault": "Vault",
-    "profile": "Profile"
-  },
-  "notification": {
-    "tradeFunded": "Trade Funded",
-    "tradeFundedBody": "Your trade has been funded successfully",
-    "tradeCompleted": "Trade Completed",
-    "tradeCompletedBody": "Your trade has been completed successfully",
-    "disputeRaised": "Dispute Raised",
-    "disputeRaisedBody": "A dispute has been raised for one of your trades",
-    "evidenceSubmitted": "Evidence Submitted",
-    "evidenceSubmittedBody": "New evidence has been submitted for dispute resolution"
   }
 }
