@@ -92,6 +92,12 @@ import { uploadListingPhoto } from './services/ipfs.service';
 const { original, display, thumbnail } = await uploadListingPhoto(buffer);
 ```
 
+### Inbound Webhooks
+
+See [docs/inbound-webhooks.md](docs/inbound-webhooks.md) for how to register a new
+inbound webhook provider, where secrets live (`INBOUND_WEBHOOK_SECRETS`), and the
+202-vs-200 response semantics.
+
 ### Demo Seed Data
 
 For pilot walkthroughs and demos, a dedicated seed script populates a coherent story:
