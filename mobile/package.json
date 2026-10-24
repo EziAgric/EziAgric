@@ -14,6 +14,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
     "test": "jest",
+    "test:ci": "jest --ci",
     "test:e2e:ios": "detox test --configuration ios.sim.debug",
     "test:e2e:android": "detox test --configuration android.emu.debug",
     "test:e2e:build:ios": "detox build --configuration ios.sim.debug",
