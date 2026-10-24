@@ -1,95 +1,126 @@
 {
   "common": {
-    "loading": "Na-ebuta...",
-    "error": "Njehie",
+    "loading": "Na-ebu...",
+    "error": "Njehie mere",
     "retry": "Lee anya",
-    "cancel": "Kagbuo",
-    "confirm": "Nọgodo",
+    "cancel": "Kpachapụ",
     "submit": "Nyefee",
-    "save": "Chekwa",
-    "back": "Azụ",
+    "save": "Chekwaa",
+    "delete": "Hichapụ",
+    "edit": "Dezie",
+    "back": "Lagachi",
     "next": "Na-esote",
-    "success": "Ịga nke ọma",
-    "failed": "Ewepụla"
-  },
-  "wallet": {
-    "appName": "EziAgric",
-    "tagline": "Nchebe dị ka Ọrụ maka Azụmaahịa Ugh",
-    "connect": "Jikọọ Wallet",
-    "connecting": "Na-edozi...",
-    "disconnect": "Kpụpụ",
-    "instructions": "Iji malite, jikọọ wallet Stellar gị na-eji Freighter ma ọ bụ Albedo.",
-    "status": {
-      "connected": "Jikọrọ",
-      "disconnected": "Kpụpụrụ",
-      "pending": "Na-echere",
-      "error": "Njikọ njehie"
-    }
+    "done": "Emela",
+    "search": "Chọọ",
+    "noResults": "Enweghị nsona"
   },
   "home": {
-    "welcome": "Nnabata na EziAgric",
-    "subtitle": "Azụmaahịa ugbo dị n'ime blockchain",
-    "createTrade": "Mepụta Azụmaahịa",
-    "myTrades": "Azụmaahịa m",
-    "marketplace": "Ahịa",
-    "settings": "Ntọala",
-    "recentTrades": "Azụmaahịa nso",
-    "noTrades": "Enweghị azụmaahịa",
-    "viewAll": "Lelee niile",
-    "activeTrades": "Azụmaahịa na-arụ ọrụ",
-    "completedTrades": "Azụmaahịa emechara"
+    "title": "Nabataghachi",
+    "subtitle": "Nke a bụ nyocha azụmahịa gị",
+    "activeTrades": "Azụmahịa na-arụ ọrụ",
+    "totalVault": "Vault",
+    "pendingDisputes": "Mkpara",
+    "quickActions": "Omume ngwa ngwa",
+    "newTrade": "Azụmahịa ọhụrụ",
+    "vault": "Vault",
+    "disputes": "Mkpara",
+    "recentActivity": "Omume kacha nso"
   },
-  "trade": {
-    "create": {
-      "title": "Mepụta Azụmaahịa",
-      "selectProduct": "Họrọ ngwaahịa",
-      "enterAmount": "Dee ego",
-      "selectSeller": "Họrọ onye na-ere",
-      "lossRatio": "Nkwụsị ego mfu",
-      "submit": "Nyefee Azụmaahịa",
-      "success": "Emepụtara azụmaahịa!",
-      "error": "Enwetela azụmaahịa",
-      "validation": {
-        "amountRequired": "Ego dị mkpa",
-        "amountPositive": "Ego ga-abụrụ akụkụ",
-        "productRequired": "Họrọ ngwaahịa",
-        "sellerRequired": "Họrọ onye na-ere"
-      }
-    },
-    "detail": {
-      "title": "Nhazi Azụmaahịa",
-      "tradeId": "ID azụmaahịa",
-      "status": "Steeti",
-      "amount": "Ego",
-      "product": "Ngwaahịa",
-      "seller": "Onye na-ere",
-      "buyer": "Onye na-azụ",
-      "driver": "Onye na-anya",
-      "vehicle": "Ọkụ",
-      "lossRatio": "Nkwụsị ego",
-      "createdAt": "Mepụtara",
-      "updatedAt": "Emelitere",
-      "actions": {
-        "confirmDelivery": "Nọgodo nnyefe",
-        "raiseDispute": "Mepụta esemokwu",
-        "viewEvidence": "Lele ihe akaebe"
-      },
-      "statuses": {
-        "pending": "Na-echere",
-        "funded": "E nyere ego",
-        "dispatched": "Ezipu",
-        "delivered": "E nyefe",
-        "completed": "Emechara",
-        "disputed": "Nke esemokwu",
-        "resolved": "E zoro",
-        "cancelled": "Kagburu"
-      },
-      "confirmDeliveryTitle": "Nọgodo nnyefe",
-      "confirmDeliveryMessage": "ị nọgodesiri ịnnyefe? Enweghị ike ịlaghachi.",
-      "disputeTitle": "Mepụta esemokwu",
-      "disputeReason": "Ihe kpatara esemokwu",
-      "disputePlaceholder": "Dee nsogbu...",
-      "error": "Enwetaghị nhazi azụmaahịa"
+  "profile": {
+    "title": "Profile",
+    "trustScore": "Score ntụkwasị",
+    "totalTrades": "Azụmahịa niile",
+    "successfulTrades": "Azụmahịa ndị nwereuccess",
+    "successRate": "Oke nwereuccess",
+    "memberSince": "Onye otu site na",
+    "loadingProfile": "Na-ebu profile..."
+  },
+  "trustScore": {
+    "title": "Score ntụkwasị",
+    "calculating": "Na-akọ score ntụkwasị...",
+    "excellent": "Mma",
+    "good": "Ọ dị mma",
+    "fair": "Zụlite",
+    "needsImprovement": "Chọrọ mbelata",
+    "scoreBreakdown": "Nkewa score",
+    "completedTrades": "Azụmahịa emela",
+    "successfulDisputes": "Mkpara ndị nwereuccess",
+    "responseTime": "Oge azịza",
+    "ratingQuality": "Ogo ntinye aka",
+    "scoreHistory": "Akụkọ score"
+  },
+  "vault": {
+    "title": "Dashboard Vault",
+    "totalBalance": "Mgbalị niile",
+    "active": "Na-arụ ọrụ",
+    "completed": "Emela",
+    "recentTrades": "Azụmahịa kacha nso",
+    "noTrades": "Enweghị azụmahịa",
+    "loadingVault": "Na-ebu data vault..."
+  },
+  "wallet": {
+    "title": "Jikọọ Wallet",
+    "connecting": "Na-ejikọ wallet...",
+    "connected": "Wallet ejikọọ",
+    "discut": "Kpuchie",
+    "address": "Adreesị",
+    "copyAddress": "Detuo adreesị wallet",
+    "selectWallet": "Họrọ wallet iji jikọọ",
+    "freighter": "Freighter",
+    "freighterDesc": "Stellar wallet browser",
+    "albedo": "Albedo",
+    "albedoDesc": "Web wallet",
+    "xbull": "xBull",
+    "xbullDesc": "Mobile wallet"
+  },
+  "dispute": {
+    "title": "Nkọwa mkpara",
+    "loading": "Na-ebu nkọwa mkpara...",
+    "tradeInfo": "Nkọwa azụmahịa",
+    "disputeInfo": "Nkọwa mkpara",
+    "reason": "Ihe kpatara",
+    "raisedBy": "Bịanyere aka",
+    "raisedOn": "Na",
+    "evidence": "Ihe akaebe",
+    "resolution": "Nchịpụ",
+    "buyerWins": "Onye na-eme achọ nwetachara",
+    "sellerWins": "Onye na-ere nwetachara",
+    "split": "Kewaa",
+    "status": {
+      "open": "Mepee",
+      "underReview": "Na-eme nyocha",
+      "resolved": "Emela"
     }
+  },
+  "review": {
+    "title": "Depụta nlebanya",
+    "yourRating": "Ntinye aka gị",
+    "reviewTitle": "Aha nlebanya",
+    "reviewTitlePlaceholder": "Kọwapụta ahụmahụ gị",
+    "yourReview": "Nlebanya gị",
+    "reviewPlaceholder": "Kọwaa ndụmọdụ gị...",
+    "submitReview": "Nyefee nlebanya",
+    "submitted": "E nyefere nlebanya!",
+    "thankYou": "Daalụ. Nlebanya gị na-akwalite ntụkwasị.",
+    "validation": {
+      "ratingRequired": "Họrọ ntinye aka",
+      "titleRequired": "Dịa aha nlebanya",
+      "titleTooShort": "Aha ga-enwerịrị opekempe ederede 3",
+      "commentRequired": "Dịta nkọwa",
+      "commentTooShort": "Nkọwa ga-enwerịrị opekempe ederede 10"
+    },
+    "ratings": {
+      "poor": "Ọ dị njọ",
+      "fair": "Zụlite",
+      "good": "Ọ dị mma",
+      "veryGood": "Ọ dị mma ukwuu",
+      "excellence": "Kacha mma"
+    }
+  },
+  "navigation": {
+    "home": "Ụlọ",
+    "trades": "Azụmahịa",
+    "vault": "Vault",
+    "profile": "Profile"
   }
 }

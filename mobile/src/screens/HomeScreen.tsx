@@ -1,241 +1,319 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, ScrollView } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
-import '../i18n';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as notifications from '../services/notification.service';
 
-export interface TradeItem {
+interface TradeNotification {
   id: string;
-  product: string;
-  amount: string;
-  status: 'active' | 'completed';
+  type: 'trade_funded' | 'trade_completed' | 'dispute_raised' | 'evidence_submitted';
+  tradeId: string;
+  title: string;
+  body: string;
+  timestamp: string;
 }
 
-interface HomeScreenProps {
-  onCreateTrade?: () => void;
-  onViewTrades?: () => void;
-  onViewMarketplace?: () => void;
-  onOpenSettings?: () => void;
-  onTradePress?: (tradeId: string) => void;
-  recentTrades?: TradeItem[];
+interface HomeData {
+  activeTrades: number;
+  totalVault: number;
+  pendingDisputes: number;
+  recentNotifications: TradeNotification[];
 }
 
-export function HomeScreen({
-  onCreateTrade,
-  onViewTrades,
-  onViewMarketplace,
-  onOpenSettings,
-  onTradePress,
-  recentTrades = [],
-}: HomeScreenProps) {
+/**
+ * HomeScreen - Main dashboard showing trade overview and notifications
+ * Localized with i18n
+ */
+export default function HomeScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const [homeData, setHomeData] = useState<HomeData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const renderTradeItem = ({ item }: { item: TradeItem }) => (
-    <TouchableOpacity
-      style={styles.tradeItem}
-      onPress={() => onTradePress?.(item.id)}
-      testID={`trade-item-${item.id}`}
-    >
-      <View style={styles.tradeInfo}>
-        <Text style={styles.tradeProduct}>{item.product}</Text>
-        <Text style={styles.tradeAmount}>{item.amount}</Text>
+  // Handle incoming push notifications - routes to appropriate screens
+  const handleNotification = useCallback((notification: notifications.Notification) => {
+    // Route to the appropriate screen based on notification type
+    const { type, data } = notification;
+    
+    switch (type) {
+      case 'trade_funded':
+      case 'trade_completed':
+        // Navigate to trade detail screen
+        // navigation.navigate('TradeDetail', { tradeId: data.tradeId });
+        break;
+      case 'dispute_raised':
+      case 'evidence_submitted':
+        // Navigate to dispute detail screen
+        // navigation.navigate('DisputeDetail', { disputeId: data.disputeId });
+        break;
+      default:
+        // Unknown notification type - could handle gracefully
+        break;
+    }
+  }, []);
+
+  // Set up notification listener
+  useEffect(() => {
+    const subscription = notifications.onNotification(handleNotification);
+    
+    return () => {
+      subscription.remove();
+    };
+  }, [handleNotification]);
+
+  const fetchHomeData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Simulated API call - replace with actual API
+      const mockData: HomeData = {
+        activeTrades: 3,
+        totalVault: 125000,
+        pendingDisputes: 1,
+        recentNotifications: [
+          {
+            id: 'notif-001',
+            type: 'trade_funded',
+            tradeId: 'trade-001',
+            title: t('notification.tradeFunded'),
+            body: t('notification.tradeFundedBody'),
+            timestamp: '2024-10-15T10:00:00Z',
+          },
+          {
+            id: 'notif-002',
+            type: 'evidence_submitted',
+            tradeId: 'trade-004',
+            title: t('notification.evidenceSubmitted'),
+            body: t('notification.evidenceSubmittedBody'),
+            timestamp: '2024-10-12T14:35:00Z',
+          },
+        ],
+      };
+      setHomeData(mockData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    fetchHomeData();
+  }, [fetchHomeData]);
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color="#2d6a2d" />
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
-      <View
-        style={[
-          styles.tradeStatus,
-          item.status === 'active' ? styles.statusActive : styles.statusCompleted,
-        ]}
-      >
-        <Text style={styles.tradeStatusText}>
-          {item.status === 'active' ? t('home.activeTrades') : t('home.completedTrades')}
-        </Text>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centered, { paddingTop: insets.top }]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity testID="retry-button" style={styles.retryButton} onPress={fetchHomeData}>
+          <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
-  );
+    );
+  }
+
+  if (!homeData) {
+    return null;
+  }
 
   return (
-    <ScrollView style={styles.container} testID="home-screen">
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Text style={styles.welcome}>{t('home.welcome')}</Text>
+        <Text style={styles.title}>{t('home.title')}</Text>
         <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
       </View>
 
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={onCreateTrade}
-          testID="create-trade-button"
-        >
-          <Text style={styles.primaryButtonText}>{t('home.createTrade')}</Text>
-        </TouchableOpacity>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {/* Stats Cards */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{homeData.activeTrades}</Text>
+            <Text style={styles.statLabel}>{t('home.activeTrades')}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{homeData.totalVault.toLocaleString()}</Text>
+            <Text style={styles.statLabel}>{t('home.totalVault')}</Text>
+          </View>
+          <View style={[styles.statCard, homeData.pendingDisputes > 0 && styles.statCardAlert]}>
+            <Text style={styles.statValue}>{homeData.pendingDisputes}</Text>
+            <Text style={styles.statLabel}>{t('home.pendingDisputes')}</Text>
+          </View>
+        </View>
 
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={onViewTrades}
-          testID="my-trades-button"
-        >
-          <Text style={styles.secondaryButtonText}>{t('home.myTrades')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={onViewMarketplace}
-          testID="marketplace-button"
-        >
-          <Text style={styles.secondaryButtonText}>{t('home.marketplace')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={onOpenSettings}
-          testID="settings-button"
-        >
-          <Text style={styles.secondaryButtonText}>{t('home.settings')}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.tradesSection}>
-        <View style={styles.tradesSectionHeader}>
-          <Text style={styles.sectionTitle}>{t('home.recentTrades')}</Text>
-          <TouchableOpacity onPress={onViewTrades} testID="view-all-button">
-            <Text style={styles.viewAllText}>{t('home.viewAll')}</Text>
+        {/* Quick Actions */}
+        <Text style={styles.sectionTitle}>{t('home.quickActions')}</Text>
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity testID="create-trade-button" style={styles.actionButton}>
+            <Text style={styles.actionIcon}>📦</Text>
+            <Text style={styles.actionText}>{t('home.newTrade')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity testID="vault-button" style={styles.actionButton}>
+            <Text style={styles.actionIcon}>💰</Text>
+            <Text style={styles.actionText}>{t('home.vault')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity testID="disputes-button" style={styles.actionButton}>
+            <Text style={styles.actionIcon}>⚖️</Text>
+            <Text style={styles.actionText}>{t('home.disputes')}</Text>
           </TouchableOpacity>
         </View>
 
-        {recentTrades.length > 0 ? (
-          <FlatList
-            data={recentTrades}
-            renderItem={renderTradeItem}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            testID="trades-list"
-          />
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>{t('home.noTrades')}</Text>
+        {/* Notifications */}
+        <Text style={styles.sectionTitle}>{t('home.recentActivity')}</Text>
+        {homeData.recentNotifications.map((notif) => (
+          <View key={notif.id} style={styles.notificationCard}>
+            <View style={styles.notificationHeader}>
+              <Text style={styles.notificationTitle}>{notif.title}</Text>
+              <Text style={styles.notificationTime}>
+                {new Date(notif.timestamp).toLocaleDateString()}
+              </Text>
+            </View>
+            <Text style={styles.notificationBody}>{notif.body}</Text>
           </View>
-        )}
-      </View>
-    </ScrollView>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f4f7f4',
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
-    padding: 24,
-    paddingTop: 48,
-    backgroundColor: '#059669',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
-  welcome: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 8,
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f3d1f',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#d1fae5',
-    lineHeight: 24,
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 4,
   },
-  actions: {
+  scroll: {
     padding: 16,
+    paddingTop: 0,
   },
-  primaryButton: {
-    backgroundColor: '#059669',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    backgroundColor: '#fff',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  secondaryButtonText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  tradesSection: {
-    padding: 16,
-    flex: 1,
-  },
-  tradesSectionHeader: {
+  statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 24,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-    marginBottom: 16,
+  },
+  statCardAlert: {
+    backgroundColor: '#fef2f2',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1f3d1f',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  viewAllText: {
-    fontSize: 14,
-    color: '#059669',
-    fontWeight: '500',
-  },
-  tradeItem: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f3d1f',
     marginBottom: 12,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  actionIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  actionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1f3d1f',
+  },
+  notificationCard: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 10,
+  },
+  notificationHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  tradeInfo: {
-    flex: 1,
-  },
-  tradeProduct: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1f2937',
     marginBottom: 4,
   },
-  tradeAmount: {
+  notificationTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f3d1f',
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  notificationBody: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  loadingText: {
+    marginTop: 12,
     fontSize: 14,
     color: '#6b7280',
   },
-  tradeStatus: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusActive: {
-    backgroundColor: '#dbeafe',
-  },
-  statusCompleted: {
-    backgroundColor: '#d1fae5',
-  },
-  tradeStatusText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  emptyState: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyText: {
+  errorText: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: '#dc2626',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#2d6a2d',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
-
-export default HomeScreen;
