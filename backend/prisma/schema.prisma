@@ -698,6 +698,21 @@ model JobHeartbeat {
   @@index([lastCheckedAt])
 }
 
+/// JobHeartbeatEvent keeps a rolling history of heartbeat pings so the
+/// job-health dashboard can compute uptime. Rows older than the retention
+/// window (see src/services/jobUptime.ts) are pruned on each ping.
+model JobHeartbeatEvent {
+  id         Int      @id @default(autoincrement())
+  /// Job identifier, matches JobHeartbeat.jobType
+  jobType    String   @db.VarChar(100)
+  /// Ping status: started|completed|failed
+  status     String   @db.VarChar(50)
+  recordedAt DateTime @default(now())
+
+  @@index([jobType, recordedAt])
+  @@index([recordedAt])
+}
+
 /// EscrowAudit logs every escrow state transition for compliance and outbox completeness verification.
 /// Records both the previous and new status so gap-detection can verify events were emitted.
 model EscrowAudit {
