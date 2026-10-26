@@ -41,7 +41,7 @@ jobs:
         if: steps.filter.outputs.docs != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "No docs or diagram changes — architecture diagram gate skipped."
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.filter.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
         with:
           node-version: 20
