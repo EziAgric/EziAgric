@@ -38,7 +38,7 @@
     "i18next": "^23.11.5",
     "react-i18next": "^14.1.2",
     "expo-device": "^57.0.2",
-    "expo-notifications": "^57.0.22",
+    "expo-notifications": "^58.1.6",
     "expo-secure-store": "^13.0.2",
     "expo-sqlite": "57.0.3",
     "react": "^18.3.1",
