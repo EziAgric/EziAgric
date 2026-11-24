@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Money-Math Parity
 
 on:
@@ -30,7 +32,7 @@ on:
 jobs:
   parity:
     name: Cross-Language Money-Math Parity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7

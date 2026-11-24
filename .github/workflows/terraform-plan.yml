@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Terraform Plan
 
 # Issue #267 — PRs get a read-only plan. The job assumes the *plan* role,
@@ -25,7 +27,7 @@ env:
 jobs:
   fmt-validate:
     name: fmt + validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v4
@@ -47,7 +49,7 @@ jobs:
     needs: fmt-validate
     # Fork PRs do not receive an OIDC token; they get fmt/validate only.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:

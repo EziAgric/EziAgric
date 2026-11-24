@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: SBOM
 
 # Generates a CycloneDX Software Bill of Materials for each release artifact
@@ -22,7 +24,7 @@ jobs:
   generate-sbom:
     if: github.event_name == 'release' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     name: Generate SBOM (${{ matrix.component }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         component: [backend, frontend, mobile]
@@ -60,7 +62,7 @@ jobs:
   vulnerability-diff:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Weekly SBOM Vulnerability Diff
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7

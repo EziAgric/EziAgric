@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Terraform Apply
 
 # Issue #267 — the ONLY workflow that can change infrastructure.
@@ -36,7 +38,7 @@ env:
 jobs:
   apply:
     name: apply (${{ matrix.environment }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       max-parallel: 1
       fail-fast: true

@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Mobile Crash Symbols
 
 # Exports JS bundles + sourcemaps for iOS/Android and attaches them to the
@@ -21,7 +23,7 @@ permissions:
 jobs:
   export-symbols:
     name: Export Crash Symbols (${{ matrix.platform }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         platform: [ios, android]

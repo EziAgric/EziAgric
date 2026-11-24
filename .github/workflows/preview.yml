@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: PR Preview Environments
 
 # Ephemeral per-PR preview stack: backend + postgres + redis via the
@@ -23,7 +25,7 @@ jobs:
   ceiling:
     name: Concurrency Ceiling Check
     if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       allowed: ${{ steps.check.outputs.allowed }}
       current: ${{ steps.check.outputs.current }}
@@ -60,7 +62,7 @@ jobs:
         github.event.action != 'labeled' &&
         contains(github.event.pull_request.labels.*.name, 'preview')
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40   # budget cap: max lifetime enforced even if the TTL step hangs
     env:
       PREVIEW_PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -242,7 +244,7 @@ jobs:
   teardown-on-close:
     name: Teardown on Merge/Close
     if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       PREVIEW_PR_NUMBER: ${{ github.event.pull_request.number }}

@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: CI
 
 on:
@@ -40,7 +42,7 @@ on:
 jobs:
   changes:
     name: Detect Changed Stacks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: checkout + path filter (~30s); 5 min caps a stuck filter action.
     timeout-minutes: 5
     outputs:
@@ -87,7 +89,7 @@ jobs:
 
   docs-architecture:
     name: Architecture Diagrams Required Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: Mermaid render + link check (~1 min); 10 min allows a cold npm cache.
     timeout-minutes: 10
     needs: [changes]
@@ -110,7 +112,7 @@ jobs:
 
   validate-quarantine:
     name: Validate flaky-tests quarantine registry
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: one Node script (~30s); 5 min is already generous.
     timeout-minutes: 5
     steps:
@@ -127,7 +129,7 @@ jobs:
 
   frontend:
     name: Frontend Required Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: pnpm install + lint + build + Storybook + tests (~10 min); 25 min headroom.
     timeout-minutes: 25
     needs: [changes, validate-quarantine]
@@ -218,7 +220,7 @@ jobs:
   # schema, or if the schema drifts from what the contract actually emits.
   event-schema:
     name: Event Schema Drift Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: codegen + drift diff (~1 min); 10 min headroom.
     timeout-minutes: 10
     needs: changes
@@ -247,7 +249,7 @@ jobs:
 
   visual-regression:
     name: Visual Regression (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [changes, frontend]
     if: needs.changes.outputs.frontend == 'true'
     timeout-minutes: 8
@@ -300,7 +302,7 @@ jobs:
 
   flag-catalog-drift:
     name: Feature Flag Catalog Drift Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: global ts-node install + drift check (~2 min); 10 min headroom.
     timeout-minutes: 10
     needs: changes
@@ -325,7 +327,7 @@ jobs:
 
   backend:
     name: Backend Required Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: pnpm install + Prisma/tsc build + jest suites (~15 min); 30 min headroom.
     timeout-minutes: 30
     needs: [changes, validate-quarantine]
@@ -429,7 +431,7 @@ jobs:
 
   mobile:
     name: Mobile Required Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: pnpm install + tsc + eslint + jest (~10 min); 25 min headroom.
     timeout-minutes: 25
     needs: [changes, validate-quarantine]
@@ -546,7 +548,7 @@ jobs:
 
   mobile-e2e-android:
     name: Mobile E2E Smoke — Android
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [changes, mobile]
     if: needs.changes.outputs.mobile == 'true'
     timeout-minutes: 25
@@ -638,7 +640,7 @@ jobs:
 
   contracts:
     name: Contracts Required Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: cargo audit/test + WASM build/optimize + reproducible rebuild (~20 min); 40 min headroom.
     timeout-minutes: 40
     needs: [changes, validate-quarantine]
@@ -765,7 +767,7 @@ jobs:
 
   storage-layout:
     name: Storage Layout Required Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Timeout rationale: full-history checkout + diff gate (~1 min); 10 min headroom.
     timeout-minutes: 10
     needs: changes
