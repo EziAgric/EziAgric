@@ -316,9 +316,10 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
 
       - name: Install ts-node
-        run: npm install -g ts-node typescript --prefer-offline
+        run: npm install -g ts-node@10.9.2 typescript@5.5.4 --prefer-offline
 
       - name: Run catalog drift check
         run: ts-node --skip-project scripts/check-flag-catalog-drift.ts
