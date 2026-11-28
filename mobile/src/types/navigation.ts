@@ -37,4 +37,6 @@ export type RootStackParamList = {
   TrustScore: { address: string };
   /** #441 — post-trade review screen. */
   LeaveReview: { tradeId: string; counterpartyAddress: string };
+  /** #947 — biometric authentication preference for protected actions. */
+  SecuritySettings: undefined;
 };

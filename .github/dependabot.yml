@@ -93,6 +93,8 @@ updates:
     labels:
       - dependencies
       - contracts
+    reviewers:
+      - EziAgric/contracts-maintainers
     groups:
       contracts-low-risk:
         applies-to: version-updates

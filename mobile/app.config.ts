@@ -60,6 +60,12 @@ const config: ExpoConfig = {
         photosPermission: 'Amana accesses your photos so you can add pictures to your listings.',
       },
     ],
+    [
+      'expo-local-authentication',
+      {
+        faceIDPermission: 'Amana uses Face ID to protect trade confirmations and settlement approvals.',
+      },
+    ],
   ],
 };
 

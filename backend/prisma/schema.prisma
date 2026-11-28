@@ -79,6 +79,8 @@ model User {
   /// Unique wallet address (always stored as lowercase)
   walletAddress   String           @unique @db.VarChar(255)
   displayName     String           @db.VarChar(255)
+  /// Optional E.164 phone number used for SMS notifications
+  phoneNumber     String?          @db.VarChar(32)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -217,6 +219,12 @@ model Dispute {
   /// Monotonic optimistic concurrency counter for status transitions.
   version      Int              @default(0)
   resolvedAt   DateTime?
+  /// Wallet address of the mediator assigned to this dispute (lowercase)
+  mediatorAddress    String?    @db.VarChar(255)
+  /// Deadline for evidence submission; extendable by the assigned mediator
+  evidenceDeadline   DateTime?
+  /// Number of times the evidence deadline has been extended (max 2)
+  deadlineExtensions Int        @default(0)
   categoryId   Int?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
@@ -265,6 +273,8 @@ model TradeEvidence {
   mimeType    String   @db.VarChar(100)
   uploadedBy  String   @db.VarChar(255)
   createdAt   DateTime @default(now())
+  /// Set when the seller retracts the evidence (soft delete).
+  deletedAt   DateTime?
 
   trade Trade @relation(fields: [tradeId], references: [tradeId], onDelete: Cascade)
 
@@ -370,6 +380,8 @@ model RefreshToken {
   jti       String   @unique @db.VarChar(255)
   userId    Int
   expiresAt DateTime
+  /// Set when the token is rotated; presenting a used token again signals theft.
+  usedAt    DateTime?
   createdAt DateTime @default(now())
 
   // Relations
@@ -438,16 +450,36 @@ model WebhookSubscription {
   id          Int      @id @default(autoincrement())
   url         String   @db.VarChar(500)
   events      String[]
-  secretHash  String   @db.VarChar(64)
+  /// HMAC-SHA256 signing key for payloads. Stored raw because the server
+  /// must recompute the signature; column kept as "secretHash" for compat.
+  secret      String   @map("secretHash") @db.VarChar(64)
   isActive    Boolean  @default(true)
   userId      Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries  WebhookDelivery[]
 
   @@index([userId])
   @@index([isActive])
+}
+
+/// WebhookDelivery records one outbound delivery attempt to a subscription.
+model WebhookDelivery {
+  id             Int      @id @default(autoincrement())
+  subscriptionId Int
+  event          String   @db.VarChar(50)
+  tradeId        String   @db.VarChar(255)
+  attempt        Int
+  statusCode     Int?
+  success        Boolean
+  error          String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
 }
 
 /// InAppNotification represents an in-app notification for a user
@@ -730,4 +762,18 @@ model EscrowAudit {
   @@index([tradeId])
   @@index([tradeId, createdAt])
   @@index([eventType])
+}
+
+/// TradeAuditLog is an append-only evidence trail of trade state transitions.
+/// Rows are immutable: UPDATE, DELETE and TRUNCATE are rejected by database triggers (see migration).
+model TradeAuditLog {
+  id        Int      @id @default(autoincrement())
+  tradeId   String   @map("trade_id") @db.VarChar(255)
+  eventType String   @map("event_type") @db.VarChar(100)
+  actorId   String?  @map("actor_id") @db.VarChar(255)
+  timestamp DateTime @default(now())
+  metadata  Json?
+
+  @@map("trade_audit_log")
+  @@index([tradeId, timestamp])
 }

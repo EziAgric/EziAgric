@@ -12,6 +12,12 @@ export interface NetworkStatus {
    * device cannot reach the backend.
    */
   isOffline: boolean;
+  /**
+   * True once netinfo has reported a value. Consumers that buffer actions
+   * (e.g. the offline trade queue) use this to avoid treating the initial
+   * "unknown" state as a real connectivity transition.
+   */
+  isResolved: boolean;
 }
 
 export function useNetworkStatus(): NetworkStatus {
@@ -22,10 +28,11 @@ export function useNetworkStatus(): NetworkStatus {
   // submits) must never be exposed in a "we don't know yet" state, since
   // an offline boot would briefly enable dangerous buttons otherwise.
   if (isInternetReachable === null && isConnected === null) {
-    return { isOffline: true };
+    return { isOffline: true, isResolved: false };
   }
 
   return {
     isOffline: isInternetReachable === false || isConnected === false,
+    isResolved: true,
   };
 }

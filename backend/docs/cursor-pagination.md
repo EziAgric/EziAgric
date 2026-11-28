@@ -65,18 +65,13 @@ endpoints.
 - `GET /regions` ([regions.ts](../src/routes/regions.ts)) — supports `state`
   filter alongside `cursor`/`limit`. Never had offset pagination, so no `page`
   fallback is needed.
-
-## Endpoints intentionally not migrated yet
-
-`GET /trades` (`TradeService.listUserTrades`) interleaves a caller's
-watchlisted trades ahead of the rest of their trade list — a bespoke
-in-memory merge of two differently-sourced result sets, not a single ordered
-query. That merge isn't cursor-compatible without changing the watchlist
-prioritization semantics, so it's left on offset pagination for now. A
-correct migration would need either a persisted "effective sort key" per
-trade (denormalizing watchlist priority into the trade row) or dropping
-watchlist-first ordering in favor of a `watched` filter/sort flag — both are
-product decisions, not pagination-mechanics, so they're out of scope here.
+- `GET /trades` ([trades.ts](../src/routes/trades.ts),
+  [tradeService.ts](../src/services/tradeService.ts)) — supports
+  `cursor`/`limit` with a `created_at + id` composite cursor. The watchlist
+  prioritization is preserved by ordering on a persisted effective sort key
+  (watchlisted trades first, then `created_at desc, id desc`), so the cursor
+  remains a stable, single-query anchor. Legacy `page`/`offset` params still
+  work and emit the deprecation `Warning` header.
 
 ## Adding cursor pagination to a new endpoint
 

@@ -33,6 +33,7 @@ export function QuantityPicker({ value, max, unit, onChange }: Props) {
           disabled={value <= min}
           onPress={() => commit(String(value - 1))}
           accessibilityLabel="Decrease quantity"
+          accessibilityValue={{ now: value }}
           testID="qty-decrease"
         >
           <Text style={styles.stepText}>−</Text>
@@ -45,6 +46,7 @@ export function QuantityPicker({ value, max, unit, onChange }: Props) {
           onEndEditing={() => commit(text)}
           onBlur={() => commit(text)}
           accessibilityLabel="Quantity"
+          accessibilityValue={{ now: value }}
           testID="qty-input"
         />
         <TouchableOpacity
@@ -52,6 +54,7 @@ export function QuantityPicker({ value, max, unit, onChange }: Props) {
           disabled={value >= max}
           onPress={() => commit(String(value + 1))}
           accessibilityLabel="Increase quantity"
+          accessibilityValue={{ now: value }}
           testID="qty-increase"
         >
           <Text style={styles.stepText}>+</Text>

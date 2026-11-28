@@ -1,0 +1,33 @@
+# cargo-mutants configuration for the contracts crate.
+#
+# Mutation testing verifies that the unit test suite actually detects logic
+# errors: cargo-mutants introduces small changes (mutants) into the source and
+# checks whether the tests fail. A surviving mutant means the tests did not
+# notice the change, i.e. that logic is effectively untested.
+
+# Only mutate the contracts crate sources.
+[workspace]
+# Restrict mutation to the contracts crate; other crates are out of scope.
+
+# Files/directories to mutate.
+include = ["contracts/src/**"]
+
+# Skip generated or non-logic files.
+exclude = [
+  "contracts/src/lib.rs",
+]
+
+# Fail the run when the survived-mutant count exceeds this threshold.
+#
+# Threshold: 5% of all generated mutants may survive. This keeps the suite
+# honest without blocking PRs on a handful of equivalent or low-value mutants.
+# The CI workflow computes the survival rate from the report and fails the job
+# when it is greater than this value.
+[thresholds]
+# Maximum percentage of surviving mutants allowed (5%).
+max_survival_percent = 5.0
+
+# Produce a machine-readable report for CI artifact upload.
+[output]
+# JSON report consumed by the CI workflow to compute the survival rate.
+json = "mutants-report/mutants.json"
