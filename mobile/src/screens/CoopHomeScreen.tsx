@@ -22,11 +22,73 @@ import { EmptyState } from '../components/EmptyState';
 
 type Props = StackScreenProps<RootStackParamList, 'CoopHome'>;
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <View style={styles.statCard}>
+function StatCard({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: string | number;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </>
+  );
+  if (!onPress) {
+    return <View style={styles.statCard}>{content}</View>;
+  }
+  return (
+    <TouchableOpacity
+      style={styles.statCard}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}`}
+    >
+      {content}
+    </TouchableOpacity>
+  );
+}
+
+function SkeletonBlock({ height, width }: { height: number; width?: number | string }) {
+  return <View style={[styles.skeleton, { height, width: width ?? '100%' }]} />;
+}
+
+function CoopHomeSkeleton() {
+  return (
+    <View style={styles.container} accessibilityLabel="Loading co-op summary">
+      <SkeletonBlock height={26} width="60%" />
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <SkeletonBlock height={20} width="50%" />
+          <View style={styles.skeletonGap} />
+          <SkeletonBlock height={11} width="70%" />
+        </View>
+        <View style={styles.statCard}>
+          <SkeletonBlock height={20} width="50%" />
+          <View style={styles.skeletonGap} />
+          <SkeletonBlock height={11} width="70%" />
+        </View>
+        <View style={styles.statCard}>
+          <SkeletonBlock height={20} width="50%" />
+          <View style={styles.skeletonGap} />
+          <SkeletonBlock height={11} width="70%" />
+        </View>
+      </View>
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <SkeletonBlock height={20} width="50%" />
+          <View style={styles.skeletonGap} />
+          <SkeletonBlock height={11} width="70%" />
+        </View>
+      </View>
+      <SkeletonBlock height={17} width="45%" />
+      <View style={styles.skeletonGap} />
+      <SkeletonBlock height={64} />
+      <View style={styles.skeletonGap} />
+      <SkeletonBlock height={64} />
     </View>
   );
 }
@@ -58,7 +120,7 @@ function AnnouncementCard({ item }: { item: CoopAnnouncement }) {
   );
 }
 
-export default function CoopHomeScreen({ route }: Props) {
+export default function CoopHomeScreen({ route, navigation }: Props) {
   const { coopId } = route.params;
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<CoopHomeData | null>(null);
@@ -91,9 +153,12 @@ export default function CoopHomeScreen({ route }: Props) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2d6a2d" />
-      </View>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: '#f0f4f0' }}
+        contentContainerStyle={{ paddingTop: insets.top + 16 }}
+      >
+        <CoopHomeSkeleton />
+      </ScrollView>
     );
   }
 
@@ -124,9 +189,29 @@ export default function CoopHomeScreen({ route }: Props) {
       </View>
 
       <View style={styles.statsRow}>
-        <StatCard label="Members" value={data.stats.memberCount} />
-        <StatCard label="Active Trades" value={data.stats.activeTrades} />
-        <StatCard label="Volume (USDC)" value={data.stats.totalVolumeUsdc.toLocaleString()} />
+        <StatCard
+          label="Active Trades"
+          value={data.stats.activeTrades}
+          onPress={() => navigation.navigate('CoopTrades', { coopId })}
+        />
+        <StatCard
+          label="In Escrow (cNGN)"
+          value={data.stats.totalEscrowCngn.toLocaleString()}
+          onPress={() => navigation.navigate('CoopEscrow', { coopId })}
+        />
+        <StatCard
+          label="Members"
+          value={data.stats.memberCount}
+          onPress={() => navigation.navigate('CoopMembers', { coopId })}
+        />
+      </View>
+
+      <View style={styles.statsRow}>
+        <StatCard
+          label="Open Disputes"
+          value={data.stats.openDisputes}
+          onPress={() => navigation.navigate('CoopDisputes', { coopId })}
+        />
       </View>
 
       {isManager && (
@@ -243,6 +328,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
+  skeleton: {
+    backgroundColor: '#e2e8e2',
+    borderRadius: 8,
+  },
+  skeletonGap: {
+    height: 8,
+  },
   managerBanner: {
     backgroundColor: '#fef3c7',
     borderRadius: 12,
@@ -312,32 +404,33 @@ const styles = StyleSheet.create({
   tradePair: {
     fontSize: 12,
     color: '#6b7280',
-    fontFamily: 'monospace',
   },
   announcementCard: {
     backgroundColor: '#fff',
     borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
+    padding: 12,
+    marginBottom: 8,
   },
   announcementHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 6,
   },
   announcementTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#1a3a1a',
     flex: 1,
   },
   announcementDate: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#9ca3af',
+    marginLeft: 8,
   },
   announcementBody: {
-    fontSize: 14,
-    color: '#4b5563',
-    lineHeight: 20,
+    fontSize: 13,
+    color: '#374151',
+    lineHeight: 18,
   },
 });

@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: k6-perf-budgets
+    orgId: 1
+    folder: Performance
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      # Mount infra/grafana/dashboards/ at this path in the Grafana container.
+      path: /etc/grafana/dashboards

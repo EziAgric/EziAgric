@@ -23,7 +23,7 @@ impl EscrowContract {
         if env.storage().instance().has(&DataKey::Initialized) {
             panic!("AlreadyInitialized");
         }
-        assert!(fee_bps <= 10_000, "fee_bps must not exceed 10000");
+        assert!(fee_bps <= BPS_DENOMINATOR, "fee_bps must not exceed 10000");
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
@@ -802,5 +802,33 @@ impl EscrowContract {
             .instance()
             .get(&DataKey::Treasury)
             .expect("Not initialized")
+    }
+
+    /// Set the maximum trade amount. Admin only.
+    /// This configurable limit replaces the hardcoded MAX_TRADE_VALUE.
+    pub fn set_max_trade_amount(env: Env, max_amount: i128) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        admin.require_auth();
+        
+        assert!(max_amount > 0, "max_amount must be greater than zero");
+        
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxTradeAmount, &max_amount);
+        
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Get the configured maximum trade amount.
+    /// Returns the admin-configured value or falls back to MAX_TRADE_VALUE.
+    pub fn get_max_trade_amount(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MaxTradeAmount)
+            .unwrap_or(MAX_TRADE_VALUE)
     }
 }

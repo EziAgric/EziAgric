@@ -1,112 +1,116 @@
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  Dimensions,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
-  type ListRenderItem,
+  Text,
+  StyleSheet,
+  FlatList,
+  Dimensions,
+  TouchableOpacity,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 
-export const ONBOARDING_SEEN_KEY = 'amana_onboarding_seen';
+export const ONBOARDING_COMPLETED_KEY = '@eziagric/onboarding_completed';
 
-interface Slide {
+const { width } = Dimensions.get('window');
+
+interface OnboardingStep {
   key: string;
-  title: string;
+  illustration: string;
+  heading: string;
   body: string;
-  emoji: string;
 }
 
-const SLIDES: Slide[] = [
+const STEPS: OnboardingStep[] = [
   {
     key: 'welcome',
-    title: 'Welcome to EziAgric',
-    body: 'A secure platform that protects buyers and sellers in agricultural trade across regions.',
-    emoji: '🌾',
+    illustration: '🌾',
+    heading: 'What is EziAgric',
+    body: 'EziAgric connects farmers and buyers directly. Trade produce, track prices, and grow your business with confidence.',
   },
   {
-    key: 'escrow',
-    title: 'Funds Held in Escrow',
-    body: 'Your payment is locked in a Soroban smart contract — neither party can touch it until delivery is confirmed.',
-    emoji: '🔒',
+    key: 'wallet',
+    illustration: '👛',
+    heading: 'Connect your wallet',
+    body: 'Link a Stellar wallet to hold funds and settle trades securely. Your keys stay in your control at all times.',
   },
   {
-    key: 'cngn',
-    title: 'Powered by cNGN',
-    body: 'Trade in local currency (NGN) while the contract automatically holds value in the stable cNGN token, shielding you from volatility.',
-    emoji: '💰',
-  },
-  {
-    key: 'delivery',
-    title: 'Verified Delivery',
-    body: 'Upload video evidence at delivery. Disputes are resolved by a neutral mediator — risk is shared fairly based on your agreed Loss Ratio.',
-    emoji: '✅',
+    key: 'trade',
+    illustration: '🤝',
+    heading: 'Make your first trade',
+    body: 'Browse the marketplace, place an order, and complete your first trade in just a few taps.',
   },
 ];
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+export default function OnboardingScreen() {
+  const navigation = useNavigation<any>();
+  const listRef = useRef<FlatList<OnboardingStep>>(null);
+  const [index, setIndex] = useState(0);
 
-interface OnboardingScreenProps {
-  onDone: () => void;
-}
+  const isLast = index === STEPS.length - 1;
 
-export default function OnboardingScreen({ onDone }: OnboardingScreenProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const listRef = useRef<FlatList<Slide>>(null);
-
-  const markSeenAndExit = async () => {
-    await SecureStore.setItemAsync(ONBOARDING_SEEN_KEY, 'true');
-    onDone();
-  };
-
-  const handleNext = () => {
-    if (currentIndex < SLIDES.length - 1) {
-      listRef.current?.scrollToIndex({ index: currentIndex + 1 });
-      setCurrentIndex(currentIndex + 1);
-    } else {
-      markSeenAndExit();
+  const completeOnboarding = async () => {
+    try {
+      await AsyncStorage.setItem(ONBOARDING_COMPLETED_KEY, 'true');
+    } catch (e) {
+      // Non-fatal: still let the user proceed.
     }
+    navigation.reset({ index: 0, routes: [{ name: 'Marketplace' }] });
   };
 
-  const renderSlide: ListRenderItem<Slide> = ({ item }) => (
-    <View style={styles.slide}>
-      <Text style={styles.emoji}>{item.emoji}</Text>
-      <Text style={styles.slideTitle}>{item.title}</Text>
-      <Text style={styles.slideBody}>{item.body}</Text>
-    </View>
-  );
+  const goNext = () => {
+    if (isLast) {
+      completeOnboarding();
+      return;
+    }
+    const next = index + 1;
+    listRef.current?.scrollToIndex({ index: next, animated: true });
+    setIndex(next);
+  };
+
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const page = Math.round(e.nativeEvent.contentOffset.x / width);
+    if (page !== index) setIndex(page);
+  };
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.skipButton} onPress={markSeenAndExit} accessibilityLabel="Skip onboarding">
-        <Text style={styles.skipText}>Skip</Text>
-      </TouchableOpacity>
-
       <FlatList
         ref={listRef}
-        data={SLIDES}
-        renderItem={renderSlide}
+        data={STEPS}
         keyExtractor={(item) => item.key}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        scrollEnabled={false}
-        getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+        onMomentumScrollEnd={onScrollEnd}
+        renderItem={({ item }) => (
+          <View style={[styles.slide, { width }]}>
+            <Text style={styles.illustration}>{item.illustration}</Text>
+            <Text style={styles.heading}>{item.heading}</Text>
+            <Text style={styles.body}>{item.body}</Text>
+          </View>
+        )}
       />
 
-      <View style={styles.footer}>
-        <View style={styles.dots}>
-          {SLIDES.map((_, i) => (
-            <View key={i} style={[styles.dot, i === currentIndex && styles.dotActive]} />
-          ))}
-        </View>
+      <View style={styles.dots}>
+        {STEPS.map((step, i) => (
+          <View
+            key={step.key}
+            style={[styles.dot, i === index && styles.dotActive]}
+          />
+        ))}
+      </View>
 
-        <TouchableOpacity style={styles.nextButton} onPress={handleNext} accessibilityLabel={currentIndex === SLIDES.length - 1 ? 'Get started' : 'Next slide'}>
-          <Text style={styles.nextText}>
-            {currentIndex === SLIDES.length - 1 ? 'Get Started' : 'Next'}
-          </Text>
+      <View style={styles.actions}>
+        {!isLast && (
+          <TouchableOpacity onPress={completeOnboarding} style={styles.skip}>
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={goNext} style={styles.primary}>
+          <Text style={styles.primaryText}>{isLast ? 'Get started' : 'Next'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -114,78 +118,55 @@ export default function OnboardingScreen({ onDone }: OnboardingScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f0f4f0',
-  },
-  skipButton: {
-    position: 'absolute',
-    top: 56,
-    right: 24,
-    zIndex: 10,
-    padding: 8,
-  },
-  skipText: {
-    color: '#2d6a2d',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#ffffff' },
   slide: {
-    width: SCREEN_WIDTH,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 40,
-    paddingTop: 80,
+    paddingHorizontal: 32,
   },
-  emoji: {
-    fontSize: 72,
-    marginBottom: 32,
-  },
-  slideTitle: {
+  illustration: { fontSize: 96, marginBottom: 32 },
+  heading: {
     fontSize: 26,
     fontWeight: '700',
-    color: '#1a3a1a',
+    color: '#1a1a1a',
     textAlign: 'center',
     marginBottom: 16,
   },
-  slideBody: {
+  body: {
     fontSize: 16,
-    color: '#4a6a4a',
-    textAlign: 'center',
     lineHeight: 24,
-  },
-  footer: {
-    paddingBottom: 48,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    gap: 24,
+    color: '#555555',
+    textAlign: 'center',
   },
   dots: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 24,
   },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#b0c8b0',
+    backgroundColor: '#d0d0d0',
+    marginHorizontal: 4,
   },
-  dotActive: {
-    backgroundColor: '#2d6a2d',
-    width: 20,
-  },
-  nextButton: {
-    backgroundColor: '#2d6a2d',
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    borderRadius: 12,
-    width: '100%',
+  dotActive: { backgroundColor: '#2e7d32' },
+  actions: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingBottom: 40,
   },
-  nextText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
+  skip: { paddingVertical: 12, paddingHorizontal: 16 },
+  skipText: { fontSize: 16, color: '#888888' },
+  primary: {
+    backgroundColor: '#2e7d32',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    marginLeft: 'auto',
   },
+  primaryText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
 });

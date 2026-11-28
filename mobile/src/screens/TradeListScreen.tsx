@@ -143,6 +143,15 @@ export default function TradeListScreen({ navigation }: Props) {
             <Text style={styles.createBtnText}>+ New</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            onPress={() => navigation.navigate('SecuritySettings')}
+            testID="open-security-settings"
+            accessibilityRole="button"
+            accessibilityLabel="Open security settings"
+            style={styles.headerBtn}
+          >
+            <Text style={styles.createBtnText}>Security</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={handleLogout}
             accessibilityRole="button"
             accessibilityLabel="Log out"
