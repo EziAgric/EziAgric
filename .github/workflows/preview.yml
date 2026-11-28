@@ -65,6 +65,7 @@ jobs:
     env:
       PREVIEW_PR_NUMBER: ${{ github.event.pull_request.number }}
       PREVIEW_PORT: "4001"
+      PREVIEW_FRONTEND_PORT: "3001"
       PREVIEW_POSTGRES_PORT: "5435"
       PREVIEW_REDIS_PORT: "6382"
     steps:
@@ -143,6 +144,41 @@ jobs:
           echo "::error title=Preview exposure failed::Tunnel URL did not serve /health/ready."
           exit 1
 
+      - name: Start frontend preview
+        if: steps.ceiling.outputs.skipped != 'true'
+        run: docker compose --profile preview up -d --wait frontend-preview
+        timeout-minutes: 10
+
+      - name: Start frontend tunnel
+        if: steps.ceiling.outputs.skipped != 'true'
+        id: frontend_tunnel
+        run: |
+          nohup /tmp/cloudflared tunnel --url "http://localhost:${PREVIEW_FRONTEND_PORT}" > /tmp/cloudflared-frontend.log 2>&1 &
+          for i in $(seq 1 30); do
+            URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cloudflared-frontend.log | head -1 || true)
+            if [ -n "$URL" ]; then break; fi
+            sleep 1
+          done
+          if [ -z "$URL" ]; then
+            echo "::error title=Frontend tunnel failed::Could not establish a public tunnel URL for the frontend."
+            cat /tmp/cloudflared-frontend.log || true
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Frontend preview tunnel: $URL"
+
+      - name: Smoke test frontend (Playwright)
+        if: steps.ceiling.outputs.skipped != 'true'
+        id: smoke
+        working-directory: frontend/tests/smoke
+        env:
+          PREVIEW_URL: ${{ steps.frontend_tunnel.outputs.url }}
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npx playwright test
+        timeout-minutes: 10
+
       - name: Deploy contract against isolated testnet account
         if: steps.ceiling.outputs.skipped != 'true' && env.TESTNET_ADMIN_SECRET != ''
         env:
@@ -154,16 +190,19 @@ jobs:
             | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Post preview URL on the PR
-        if: steps.ceiling.outputs.skipped != 'true'
+        if: always() && steps.ceiling.outputs.skipped != 'true' && steps.tunnel.outcome == 'success'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PREVIEW_URL: ${{ steps.tunnel.outputs.url }}
-          SMOKE: passed
+          FRONTEND_URL: ${{ steps.frontend_tunnel.outputs.url }}
+          SMOKE: ${{ steps.smoke.outcome }}
           TTL: ${{ env.PREVIEW_TTL_SECONDS }}
         with:
           script: |
             const marker = '<!-- eziagric-preview-bot -->';
             const url = process.env.PREVIEW_URL;
+            const frontendUrl = process.env.FRONTEND_URL || 'not available';
+            const smoke = { success: '✅ passed', failure: '❌ failed' }[process.env.SMOKE] || '⚠️ not run';
             const ttlMin = Math.floor(parseInt(process.env.TTL || '600', 10) / 60);
             const body = [
               marker,
@@ -171,8 +210,9 @@ jobs:
               '',
               `| | |`,
               `| --- | --- |`,
-              `| URL | ${url} |`,
-              `| Smoke | ✅ ${process.env.SMOKE} |`,
+              `| Frontend | ${frontendUrl} |`,
+              `| API | ${url} |`,
+              `| Smoke | ${smoke} (homepage 200, wallet connect visible, no console errors) |`,
               `| PR | #${context.payload.pull_request.number} |`,
               `| TTL | ~${ttlMin} min (budget cap: ${process.env.PREVIEW_MAX_LIFETIME_MINUTES || '40'} min job timeout) |`,
               `| Teardown | automatic on merge/close |`,
