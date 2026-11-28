@@ -49,6 +49,14 @@
     },
     {
       "name": "Goals"
+    },
+    {
+      "name": "Drivers",
+      "description": "Driver assignment records linked to delivery manifests.\nThird-party logistics providers use these endpoints to look up the driver\nassigned to a given trade.  All endpoints require bearer-token authentication.\nSellers may only access their own manifests; mediators and admins have\nfull visibility."
+    },
+    {
+      "name": "Vehicles",
+      "description": "Vehicle registration records linked to delivery manifests.\nThird-party logistics providers use these endpoints to look up the vehicle\nassigned to a given trade.  All endpoints require bearer-token authentication.\nSellers may only access their own manifests; mediators and admins have\nfull visibility."
     }
   ],
   "components": {
@@ -241,9 +249,194 @@
         "schema": {
           "type": "string"
         }
+      },
+      "StreamIdPath": {
+        "in": "path",
+        "name": "id",
+        "required": true,
+        "description": "Stream identifier. Must be alphanumeric with optional hyphens or underscores, max 128 characters.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "example": "stream-abc-123"
+      },
+      "FeatureNamePath": {
+        "in": "path",
+        "name": "name",
+        "required": true,
+        "description": "Feature flag name. Must be alphanumeric with optional dots, hyphens, or underscores, max 100 characters.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-zA-Z0-9._-]+$"
+        },
+        "example": "beta"
       }
     },
     "schemas": {
+      "OrphanDeposit": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "ledgerSeq": {
+            "type": "integer"
+          },
+          "txHash": {
+            "type": "string"
+          },
+          "depositorAddress": {
+            "type": "string"
+          },
+          "amountRaw": {
+            "type": "string"
+          },
+          "assetId": {
+            "type": "string"
+          },
+          "contractTradeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "detectedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "OrphanDepositListResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrphanDeposit"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        }
+      },
+      "OrphanDepositIngestRequest": {
+        "type": "object",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 500,
+            "items": {
+              "type": "object",
+              "required": [
+                "ledgerSeq",
+                "txHash",
+                "depositorAddress",
+                "amountRaw",
+                "assetId"
+              ],
+              "properties": {
+                "ledgerSeq": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "txHash": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "depositorAddress": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "amountRaw": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "assetId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "contractTradeId": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "OrphanScanResult": {
+        "type": "object",
+        "required": [
+          "scanned",
+          "orphansDetected",
+          "alreadyKnown"
+        ],
+        "properties": {
+          "scanned": {
+            "type": "integer"
+          },
+          "orphansDetected": {
+            "type": "integer"
+          },
+          "alreadyKnown": {
+            "type": "integer"
+          }
+        }
+      },
+      "OrphanDepositAttachRequest": {
+        "type": "object",
+        "required": [
+          "tradeId"
+        ],
+        "properties": {
+          "tradeId": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "OrphanDepositAttachResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "orphanId",
+          "tradeId"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "orphanId": {
+            "type": "integer"
+          },
+          "tradeId": {
+            "type": "string"
+          }
+        }
+      },
       "ErrorEnvelope": {
         "type": "object",
         "properties": {
@@ -271,8 +464,13 @@
               "NOT_FOUND",
               "INTERNAL_ERROR",
               "CLAWBACK_TOO_LARGE",
-              "CLAWBACK_INVALID_AMOUNT"
-            ]
+              "CLAWBACK_INVALID_AMOUNT",
+              "SUBMISSION_VALIDATION_ERROR",
+              "SUBMISSION_NETWORK_ERROR",
+              "SUBMISSION_CONTRACT_ERROR",
+              "SUBMISSION_AUTHORIZATION_ERROR"
+            ],
+            "description": "Error code classifying the failure type. Submission error codes:\n- `SUBMISSION_VALIDATION_ERROR`: Malformed transaction XDR (400)\n- `SUBMISSION_NETWORK_ERROR`: Network timeout, connection refused, or rate limiting (429/502/503/504)\n- `SUBMISSION_CONTRACT_ERROR`: Smart contract rejected the transaction (404/502)\n- `SUBMISSION_AUTHORIZATION_ERROR`: Transaction was not authorized (401/403)"
           },
           "message": {
             "type": "string"
@@ -1618,164 +1816,125 @@
           "timestamp"
         ]
       },
-      "OrphanDeposit": {
+      "DriverRecord": {
         "type": "object",
-        "additionalProperties": true,
+        "description": "A driver assignment record read from a DeliveryManifest.\nSensitive identity fields are only returned to callers with the seller,\nmediator, or admin role; on-chain hashes are always present.",
         "properties": {
           "id": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Manifest (driver record) identifier."
           },
-          "ledgerSeq": {
-            "type": "integer"
-          },
-          "txHash": {
-            "type": "string"
-          },
-          "depositorAddress": {
-            "type": "string"
-          },
-          "amountRaw": {
-            "type": "string"
-          },
-          "assetId": {
-            "type": "string"
-          },
-          "contractTradeId": {
+          "tradeId": {
             "type": "string",
-            "nullable": true
+            "description": "Trade this driver was assigned to."
           },
-          "resolved": {
-            "type": "boolean"
+          "driverName": {
+            "type": "string",
+            "description": "Plaintext driver name — mediator/admin visible."
           },
-          "detectedAt": {
+          "driverIdNumber": {
+            "type": "string",
+            "description": "Plaintext driver ID number — mediator/admin visible."
+          },
+          "driverNameHash": {
+            "type": "string",
+            "description": "SHA-256 hash of driverName stored on-chain."
+          },
+          "driverIdHash": {
+            "type": "string",
+            "description": "SHA-256 hash of driverIdNumber stored on-chain."
+          },
+          "vehicleRegistration": {
+            "type": "string",
+            "description": "Vehicle registration plate."
+          },
+          "routeDescription": {
+            "type": "string",
+            "description": "Human-readable route."
+          },
+          "expectedDeliveryAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
             "type": "string",
             "format": "date-time"
           }
-        }
-      },
-      "OrphanDepositListResponse": {
-        "type": "object",
+        },
         "required": [
-          "items",
-          "total",
-          "page",
-          "limit"
-        ],
+          "id",
+          "tradeId",
+          "driverNameHash",
+          "driverIdHash",
+          "vehicleRegistration",
+          "routeDescription",
+          "expectedDeliveryAt",
+          "createdAt"
+        ]
+      },
+      "DriverListResponse": {
+        "type": "object",
         "properties": {
-          "items": {
+          "drivers": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/OrphanDeposit"
-            }
-          },
-          "total": {
-            "type": "integer"
-          },
-          "page": {
-            "type": "integer"
-          },
-          "limit": {
-            "type": "integer"
-          }
-        }
-      },
-      "OrphanDepositIngestRequest": {
-        "type": "object",
-        "required": [
-          "events"
-        ],
-        "properties": {
-          "events": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 500,
-            "items": {
-              "type": "object",
-              "required": [
-                "ledgerSeq",
-                "txHash",
-                "depositorAddress",
-                "amountRaw",
-                "assetId"
-              ],
-              "properties": {
-                "ledgerSeq": {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "txHash": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "depositorAddress": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "amountRaw": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "assetId": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "contractTradeId": {
-                  "type": "string"
-                }
-              }
+              "$ref": "#/components/schemas/DriverRecord"
             }
           }
-        }
-      },
-      "OrphanScanResult": {
-        "type": "object",
+        },
         "required": [
-          "scanned",
-          "orphansDetected",
-          "alreadyKnown"
-        ],
-        "properties": {
-          "scanned": {
-            "type": "integer"
-          },
-          "orphansDetected": {
-            "type": "integer"
-          },
-          "alreadyKnown": {
-            "type": "integer"
-          }
-        }
+          "drivers"
+        ]
       },
-      "OrphanDepositAttachRequest": {
+      "VehicleRecord": {
         "type": "object",
-        "required": [
-          "tradeId"
-        ],
+        "description": "A vehicle assignment record read from a DeliveryManifest.\nDoes not include driver identity fields.",
         "properties": {
-          "tradeId": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "OrphanDepositAttachResponse": {
-        "type": "object",
-        "required": [
-          "success",
-          "orphanId",
-          "tradeId"
-        ],
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "orphanId": {
-            "type": "integer"
+          "id": {
+            "type": "integer",
+            "description": "Manifest (vehicle record) identifier."
           },
           "tradeId": {
             "type": "string"
+          },
+          "vehicleRegistration": {
+            "type": "string",
+            "description": "Vehicle registration plate."
+          },
+          "routeDescription": {
+            "type": "string"
+          },
+          "expectedDeliveryAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
           }
-        }
+        },
+        "required": [
+          "id",
+          "tradeId",
+          "vehicleRegistration",
+          "routeDescription",
+          "expectedDeliveryAt",
+          "createdAt"
+        ]
+      },
+      "VehicleListResponse": {
+        "type": "object",
+        "properties": {
+          "vehicles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VehicleRecord"
+            }
+          }
+        },
+        "required": [
+          "vehicles"
+        ]
       }
     },
     "responses": {
@@ -1898,8 +2057,7 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        },
-        "operationId": "get.api.admin.audit"
+        }
       }
     },
     "/api/admin/orphan-deposits": {
@@ -1961,8 +2119,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.api.admin.orphan-deposits"
+        }
       }
     },
     "/api/admin/orphan-deposits/ingest": {
@@ -2013,8 +2170,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.orphan-deposits.ingest"
+        }
       }
     },
     "/api/admin/orphan-deposits/{id}/attach": {
@@ -2079,8 +2235,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.orphan-deposits.id.attach"
+        }
       }
     },
     "/api/admin/features": {
@@ -2102,8 +2257,7 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        },
-        "operationId": "get.api.admin.features"
+        }
       }
     },
     "/api/admin/streams": {
@@ -2188,8 +2342,63 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.api.admin.streams"
+        }
+      }
+    },
+    "/api/admin/streams/{id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get stream state by ID",
+        "description": "Retrieve cached stream state for admin queries. Returns cached result\nwhen fresh, otherwise fetches from DB and caches it.\n\nError code references: `NOT_FOUND` (unknown stream), `VALIDATION_ERROR` (invalid stream ID format).",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StreamIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stream state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid stream ID format.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
       }
     },
     "/api/admin/streams/{id}/clawback/preview": {
@@ -2209,14 +2418,7 @@
         ],
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Stream identifier.",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
+            "$ref": "#/components/parameters/StreamIdPath"
           }
         ],
         "requestBody": {
@@ -2241,7 +2443,7 @@
             }
           },
           "400": {
-            "description": "Invalid amount, or amount exceeds the remaining vested balance.",
+            "description": "Invalid stream ID format, invalid amount, or amount exceeds the remaining vested balance.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2272,8 +2474,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.streams.id.clawback.preview"
+        }
       }
     },
     "/api/admin/streams/{id}/terminate": {
@@ -2293,14 +2494,7 @@
         ],
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Stream identifier.",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
+            "$ref": "#/components/parameters/StreamIdPath"
           }
         ],
         "requestBody": {
@@ -2325,7 +2519,14 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/LegacyValidationError"
+            "description": "Invalid stream ID format or validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
@@ -2349,8 +2550,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.streams.id.terminate"
+        }
       }
     },
     "/api/admin/streams/{id}/lock": {
@@ -2370,14 +2570,7 @@
         ],
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Stream identifier.",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
+            "$ref": "#/components/parameters/StreamIdPath"
           }
         ],
         "requestBody": {
@@ -2402,7 +2595,14 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/LegacyValidationError"
+            "description": "Invalid stream ID format or validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
@@ -2416,8 +2616,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.streams.id.lock"
+        }
       }
     },
     "/api/admin/streams/{id}/unlock": {
@@ -2437,14 +2636,7 @@
         ],
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Stream identifier.",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
+            "$ref": "#/components/parameters/StreamIdPath"
           }
         ],
         "requestBody": {
@@ -2469,7 +2661,14 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/LegacyValidationError"
+            "description": "Invalid stream ID format or validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
@@ -2483,8 +2682,60 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.streams.id.unlock"
+        }
+      }
+    },
+    "/api/admin/streams/{id}/reconcile": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Reconcile a stream's backend state against on-chain events",
+        "description": "Compares a stream's backend database record against ingested on-chain\ncontract events (StreamClawbackEvent, ProcessedEvent) and admin audit\nactions, returning a structured reconciliation result.\n\nFields compared:\n- `pendingClawback`: DB value vs sum of on-chain StreamClawbackEvent amounts\n- `unclaimed`: computed (totalVested - claimed - onChainClawbacks) vs DB value\n- `status`: checks if an admin terminate audit record exists but the stream is still live\n- `claimed`: flags when on-chain clawbacks exist but claimed is zero\n\nThe response includes a snapshot of the current backend state and an\non-chain summary so the operator can see both sides at a glance.\nAdmin only. No request body required.\nError code references: `NOT_FOUND`.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Stream identifier.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reconciliation completed — check `consistent` field for result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamReconciliationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
       }
     },
     "/health": {
@@ -2522,8 +2773,7 @@
               }
             }
           }
-        },
-        "operationId": "get.health"
+        }
       }
     },
     "/health/live": {
@@ -2543,8 +2793,7 @@
               }
             }
           }
-        },
-        "operationId": "get.health.live"
+        }
       }
     },
     "/health/ready": {
@@ -2581,8 +2830,7 @@
               }
             }
           }
-        },
-        "operationId": "get.health.ready"
+        }
       }
     },
     "/health/startup": {
@@ -2620,8 +2868,7 @@
               }
             }
           }
-        },
-        "operationId": "get.health.startup"
+        }
       }
     },
     "/auth/challenge": {
@@ -2673,8 +2920,7 @@
               }
             }
           }
-        },
-        "operationId": "post.auth.challenge"
+        }
       }
     },
     "/auth/verify": {
@@ -2729,8 +2975,7 @@
               }
             }
           }
-        },
-        "operationId": "post.auth.verify"
+        }
       }
     },
     "/auth/logout": {
@@ -2762,8 +3007,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.auth.logout"
+        }
       }
     },
     "/wallet/balance": {
@@ -2808,8 +3052,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.wallet.balance"
+        }
       }
     },
     "/wallet/path-payment-quote": {
@@ -2864,8 +3107,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.wallet.path_payment_quote"
+        }
       }
     },
     "/users/me": {
@@ -2897,8 +3139,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.users.me"
+        }
       },
       "put": {
         "tags": [
@@ -2941,8 +3182,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "put.users.me"
+        }
       }
     },
     "/users/{address}": {
@@ -2984,8 +3224,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.users.address"
+        }
       }
     },
     "/dispute-categories": {
@@ -3025,8 +3264,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.dispute_categories"
+        }
       },
       "post": {
         "tags": [
@@ -3082,8 +3320,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.dispute_categories"
+        }
       }
     },
     "/dispute-categories/{id}": {
@@ -3125,8 +3362,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.dispute_categories.id"
+        }
       },
       "patch": {
         "tags": [
@@ -3190,8 +3426,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "patch.dispute_categories.id"
+        }
       },
       "delete": {
         "tags": [
@@ -3228,8 +3463,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "delete.dispute_categories.id"
+        }
       }
     },
     "/disputes": {
@@ -3311,8 +3545,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.disputes"
+        }
       }
     },
     "/disputes/{id}/transition": {
@@ -3392,8 +3625,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.disputes.id.transition"
+        }
       }
     },
     "/trades": {
@@ -3443,8 +3675,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.trades"
+        }
       },
       "get": {
         "tags": [
@@ -3494,8 +3725,7 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        },
-        "operationId": "get.trades"
+        }
       }
     },
     "/trades/stats": {
@@ -3524,8 +3754,7 @@
           "401": {
             "$ref": "#/components/responses/UnauthorizedError"
           }
-        },
-        "operationId": "get.trades.stats"
+        }
       }
     },
     "/trades/{id}": {
@@ -3574,8 +3803,7 @@
           "404": {
             "$ref": "#/components/responses/NotFoundError"
           }
-        },
-        "operationId": "get.trades.id"
+        }
       }
     },
     "/trades/{id}/deposit": {
@@ -3624,8 +3852,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.trades.id.deposit"
+        }
       }
     },
     "/trades/{id}/confirm": {
@@ -3690,8 +3917,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.trades.id.confirm"
+        }
       }
     },
     "/trades/{id}/release": {
@@ -3759,8 +3985,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.trades.id.release"
+        }
       }
     },
     "/trades/{id}/dispute": {
@@ -3841,8 +4066,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.trades.id.dispute"
+        }
       }
     },
     "/trades/{id}/manifest": {
@@ -3891,8 +4115,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.trades.id.manifest"
+        }
       },
       "post": {
         "tags": [
@@ -3962,8 +4185,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.trades.id.manifest"
+        }
       }
     },
     "/trades/{id}/evidence": {
@@ -4018,8 +4240,7 @@
           "404": {
             "$ref": "#/components/responses/NotFoundError"
           }
-        },
-        "operationId": "get.trades.id.evidence"
+        }
       }
     },
     "/evidence/{cid}/stream": {
@@ -4099,8 +4320,7 @@
               }
             }
           }
-        },
-        "operationId": "get.evidence.cid.stream"
+        }
       }
     },
     "/evidence/video": {
@@ -4212,8 +4432,7 @@
               }
             }
           }
-        },
-        "operationId": "post.evidence.video"
+        }
       }
     },
     "/trades/{id}/history": {
@@ -4273,8 +4492,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.trades.id.history"
+        }
       }
     },
     "/trades/{id}/history/verify": {
@@ -4338,8 +4556,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.trades.id.history.verify"
+        }
       }
     },
     "/api/admin/auth/claims": {
@@ -4398,8 +4615,7 @@
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
           }
-        },
-        "operationId": "get.api.admin.auth.claims"
+        }
       }
     },
     "/api/admin/sessions/revoke": {
@@ -4461,8 +4677,7 @@
           "403": {
             "$ref": "#/components/responses/ForbiddenError"
           }
-        },
-        "operationId": "post.api.admin.sessions.revoke"
+        }
       }
     },
     "/treasury/balance": {
@@ -4505,8 +4720,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.treasury.balance"
+        }
       }
     },
     "/treasury/withdraw": {
@@ -4573,8 +4787,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.treasury.withdraw"
+        }
       }
     },
     "/treasury/config": {
@@ -4617,8 +4830,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.treasury.config"
+        }
       }
     },
     "/admin/contract/mediators": {
@@ -4678,8 +4890,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.admin.contract.mediators"
+        }
       }
     },
     "/admin/contract/mediators/{address}": {
@@ -4731,8 +4942,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "delete.admin.contract.mediators.address"
+        }
       }
     },
     "/admin/contract/fee": {
@@ -4794,8 +5004,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "patch.admin.contract.fee"
+        }
       }
     },
     "/api/admin/streams/{id}/suspend": {
@@ -4815,12 +5024,7 @@
         ],
         "parameters": [
           {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
+            "$ref": "#/components/parameters/StreamIdPath"
           }
         ],
         "requestBody": {
@@ -4843,6 +5047,7 @@
             "description": "Stream suspended."
           },
           "400": {
+            "description": "Invalid stream ID format or validation error.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4866,8 +5071,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.streams.id.suspend"
+        }
       }
     },
     "/api/admin/streams/{id}/resume": {
@@ -4887,12 +5091,7 @@
         ],
         "parameters": [
           {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
+            "$ref": "#/components/parameters/StreamIdPath"
           }
         ],
         "requestBody": {
@@ -4915,6 +5114,7 @@
             "description": "Stream resumed."
           },
           "400": {
+            "description": "Invalid stream ID format or validation error.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4938,8 +5138,7 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "post.api.admin.streams.id.resume"
+        }
       }
     },
     "/goals": {
@@ -4971,8 +5170,182 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           }
-        },
-        "operationId": "get.goals"
+        }
+      }
+    },
+    "/drivers": {
+      "get": {
+        "tags": [
+          "Drivers"
+        ],
+        "summary": "List driver assignments",
+        "description": "Returns all driver records visible to the authenticated caller.\n- Sellers see only records where they are the trade seller.\n- Mediators and admins see all records.\n\nError code references: `AUTH_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of driver records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/drivers/{driverId}": {
+      "get": {
+        "tags": [
+          "Drivers"
+        ],
+        "summary": "Fetch a driver record by manifest ID",
+        "description": "Returns the full driver and vehicle assignment for a single manifest.\nAccess is restricted to the trade's seller, a mediator, or an admin.\n\nError code references: `AUTH_ERROR`, `NOT_FOUND`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "driverId",
+            "required": true,
+            "description": "Manifest (driver record) integer identifier.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 42
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Driver record found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/LegacyValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/vehicles": {
+      "get": {
+        "tags": [
+          "Vehicles"
+        ],
+        "summary": "List vehicle registrations",
+        "description": "Returns all vehicle assignment records visible to the authenticated caller.\n- Sellers see only records where they are the trade seller.\n- Mediators and admins see all records.\n\nError code references: `AUTH_ERROR`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of vehicle records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/vehicles/{registration}": {
+      "get": {
+        "tags": [
+          "Vehicles"
+        ],
+        "summary": "Fetch vehicle records by registration plate",
+        "description": "Returns all manifests that used the given vehicle registration plate.\nA registration can appear on multiple historical manifests.\nAccess is restricted to the trade's seller, a mediator, or an admin.\n\nError code references: `AUTH_ERROR`, `NOT_FOUND`, `INTERNAL_ERROR`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "registration",
+            "required": true,
+            "description": "Vehicle registration plate string (e.g. `ABC-001`).",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "example": "ABC-001"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vehicle records found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VehicleListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
       }
     }
   }

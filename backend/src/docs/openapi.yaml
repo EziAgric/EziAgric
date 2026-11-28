@@ -41,6 +41,25 @@ tags:
   - name: Audit Trail
   - name: Treasury
   - name: Goals
+  - name: Drivers
+    description: |-
+      Driver assignment records linked to delivery manifests.
+      Third-party logistics providers use these endpoints to look up the driver
+      assigned to a given trade.  All endpoints require bearer-token authentication.
+      Sellers may only access their own manifests; mediators and admins have
+      full visibility.
+  - name: Vehicles
+    description: |-
+      Vehicle registration records linked to delivery manifests.
+      Third-party logistics providers use these endpoints to look up the vehicle
+      assigned to a given trade.  All endpoints require bearer-token authentication.
+      Sellers may only access their own manifests; mediators and admins have
+      full visibility.
+  - name: Watchlist
+  - name: Reputation
+  - name: Templates
+  - name: Cooperatives
+  - name: Notifications
 components:
   securitySchemes:
     bearerAuth:
@@ -1158,6 +1177,97 @@ components:
         - overallProgressPercentage
         - goals
         - timestamp
+    DriverRecord:
+      type: object
+      description: |-
+        A driver assignment record read from a DeliveryManifest.
+        Sensitive identity fields are only returned to callers with the seller,
+        mediator, or admin role; on-chain hashes are always present.
+      properties:
+        id:
+          type: integer
+          description: Manifest (driver record) identifier.
+        tradeId:
+          type: string
+          description: Trade this driver was assigned to.
+        driverName:
+          type: string
+          description: Plaintext driver name — mediator/admin visible.
+        driverIdNumber:
+          type: string
+          description: Plaintext driver ID number — mediator/admin visible.
+        driverNameHash:
+          type: string
+          description: SHA-256 hash of driverName stored on-chain.
+        driverIdHash:
+          type: string
+          description: SHA-256 hash of driverIdNumber stored on-chain.
+        vehicleRegistration:
+          type: string
+          description: Vehicle registration plate.
+        routeDescription:
+          type: string
+          description: Human-readable route.
+        expectedDeliveryAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tradeId
+        - driverNameHash
+        - driverIdHash
+        - vehicleRegistration
+        - routeDescription
+        - expectedDeliveryAt
+        - createdAt
+    DriverListResponse:
+      type: object
+      properties:
+        drivers:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriverRecord"
+      required: [drivers]
+    VehicleRecord:
+      type: object
+      description: |-
+        A vehicle assignment record read from a DeliveryManifest.
+        Does not include driver identity fields.
+      properties:
+        id:
+          type: integer
+          description: Manifest (vehicle record) identifier.
+        tradeId:
+          type: string
+        vehicleRegistration:
+          type: string
+          description: Vehicle registration plate.
+        routeDescription:
+          type: string
+        expectedDeliveryAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tradeId
+        - vehicleRegistration
+        - routeDescription
+        - expectedDeliveryAt
+        - createdAt
+    VehicleListResponse:
+      type: object
+      properties:
+        vehicles:
+          type: array
+          items:
+            $ref: "#/components/schemas/VehicleRecord"
+      required: [vehicles]
   responses:
     UnauthorizedError:
       description: Missing, invalid, revoked, or semantically invalid bearer token.
@@ -3136,6 +3246,202 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GoalsAnalyticsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /drivers:
+    get:
+      tags: [Drivers]
+      summary: List driver assignments
+      description: |-
+        Returns all driver records visible to the authenticated caller.
+        - Sellers see only records where they are the trade seller.
+        - Mediators and admins see all records.
+
+        Error code references: `AUTH_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of driver records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /drivers/{driverId}:
+    get:
+      tags: [Drivers]
+      summary: Fetch a driver record by manifest ID
+      description: |-
+        Returns the full driver and vehicle assignment for a single manifest.
+        Access is restricted to the trade's seller, a mediator, or an admin.
+
+        Error code references: `AUTH_ERROR`, `NOT_FOUND`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: driverId
+          required: true
+          description: Manifest (driver record) integer identifier.
+          schema:
+            type: integer
+            minimum: 1
+          example: 42
+      responses:
+        "200":
+          description: Driver record found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverRecord"
+        "400":
+          $ref: "#/components/responses/LegacyValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /vehicles:
+    get:
+      tags: [Vehicles]
+      summary: List vehicle registrations
+      description: |-
+        Returns all vehicle assignment records visible to the authenticated caller.
+        - Sellers see only records where they are the trade seller.
+        - Mediators and admins see all records.
+
+        Error code references: `AUTH_ERROR`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of vehicle records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /vehicles/{registration}:
+    get:
+      tags: [Vehicles]
+      summary: Fetch vehicle records by registration plate
+      description: |-
+        Returns all manifests that used the given vehicle registration plate.
+        A registration can appear on multiple historical manifests.
+        Access is restricted to the trade's seller, a mediator, or an admin.
+
+        Error code references: `AUTH_ERROR`, `NOT_FOUND`, `INTERNAL_ERROR`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: registration
+          required: true
+          description: Vehicle registration plate string (e.g. `ABC-001`).
+          schema:
+            type: string
+            minLength: 1
+          example: ABC-001
+      responses:
+        "200":
+          description: Vehicle records found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /watchlist:
+    get:
+      tags: [Watchlist]
+      summary: List watchlisted trades
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Watchlist returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reputation:
+    get:
+      tags: [Reputation]
+      summary: Get reputation score for authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Reputation data returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List trade templates
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Templates returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /cooperatives:
+    get:
+      tags: [Cooperatives]
+      summary: List cooperatives
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Cooperatives returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List in-app notifications for authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Notifications returned.
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "500":

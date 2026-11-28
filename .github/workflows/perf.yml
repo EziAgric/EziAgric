@@ -1,0 +1,90 @@
+name: Performance Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Base URL for the API'
+        required: false
+        default: 'http://localhost:4000'
+      token:
+        description: 'JWT token for authenticated requests'
+        required: false
+        default: ''
+     vus:
+        description: 'Number of virtual users'
+        required: false
+        default: '100'
+      duration:
+        description: 'Test duration (e.g., 60s, 1m)'
+        required: false
+        default: '60s'
+  schedule:
+    # Run weekly on Sunday at 2 AM
+    - cron: '0 2 * * 0'
+
+jobs:
+  k6-load-test:
+    name: k6 Load Test - Trade Endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup k6
+        uses: grafana/k6-action@v0.2.0
+        with:
+          version: 'latest'
+
+      - name: Run k6 load test
+        id: k6-test
+        run: |
+          k6 run \
+            --vus ${{ github.event.inputs.vus || '100' }} \
+            --duration ${{ github.event.inputs.duration || '60s' }} \
+            --summary-export=results.json \
+            backend/k6/trades.js
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:4000' }}
+          TOKEN: ${{ github.event.inputs.token || '' }}
+          VUS: ${{ github.event.inputs.vus || '100' }}
+          DURATION: ${{ github.event.inputs.duration || '60s' }}
+
+      - name: Check p95 latency threshold
+        run: |
+          # Extract p95 latency from results
+          P95=$(cat results.json | jq -r '.metrics.http_req_duration.values."p(95)"')
+          
+          echo "p95 latency: ${P95}ms"
+          
+          # Fail if p95 > 200ms
+          if (( $(echo "$P95 > 200" | bc -l) )); then
+            echo "❌ p95 latency ${P95}ms exceeds 200ms threshold"
+            exit 1
+          fi
+          echo "✅ p95 latency ${P95}ms is within 200ms threshold"
+
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: k6-results-${{ github.run_number }}
+          path: results.json
+          retention-days: 30
+
+      - name: Post results to PR comment
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          P95=$(cat results.json | jq -r '.metrics.http_req_duration.values."p(95)"')
+          ERROR_RATE=$(cat results.json | jq -r '.metrics.errors.values.rate')
+          
+          echo "## Load Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| p95 Latency | ${P95}ms |" >> $GITHUB_STEP_SUMMARY
+          echo "| Error Rate | $(echo "$ERROR_RATE * 100" | bc -l | xargs printf '%.2f')% |" >> $GITHUB_STEP_SUMMARY
+          echo "| VUs | ${{ github.event.inputs.vus || '100' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Duration | ${{ github.event.inputs.duration || '60s' }} |" >> $GITHUB_STEP_SUMMARY

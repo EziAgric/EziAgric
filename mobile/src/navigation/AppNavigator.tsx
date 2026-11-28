@@ -28,6 +28,7 @@ import MediatorDisputeReviewScreen from '../screens/MediatorDisputeReviewScreen'
 import ProfileScreen from '../screens/ProfileScreen';
 import TrustScoreScreen from '../screens/TrustScoreScreen';
 import LeaveReviewScreen from '../screens/LeaveReviewScreen';
+import SecuritySettingsScreen from '../screens/SecuritySettingsScreen';
 import { useDeepLink } from '../hooks/useDeepLink';
 import {
   LINK_PREFIXES,
@@ -69,7 +70,7 @@ function makeLinking(isAuthenticated: boolean): LinkingOptions<RootStackParamLis
         // /trades/:id/dispute land on the same screen as their canonical path.
         return { routes: [{ name: target.screen, params: target.params }] } as never;
       }
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
       const nav = require('@react-navigation/native');
       return nav.getStateFromPath(path, options);
     },
@@ -138,6 +139,7 @@ export function AppNavigator({ isAuthenticated }: AppNavigatorProps) {
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="TrustScore" component={TrustScoreScreen} />
         <Stack.Screen name="LeaveReview" component={LeaveReviewScreen} />
+        <Stack.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

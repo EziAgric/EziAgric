@@ -12,6 +12,101 @@
       "doc": "README.md",
       "ref": "docs/tracing.md",
       "reason": "Historical tracing guide filename; superseded by the current tracing documentation. Kept for archived links."
+    },
+    {
+      "doc": "README.md",
+      "ref": "docs/archive/README.md",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Remove once the doc is restored or the link is fixed."
+    },
+    {
+      "doc": "README.md",
+      "ref": "scripts/dev-doctor.sh",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Remove once the doc is restored or the link is fixed."
+    },
+    {
+      "doc": "README.md",
+      "ref": "docs/event-flow.md",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Remove once the doc is restored or the link is fixed."
+    },
+    {
+      "doc": "README.md",
+      "ref": "docs/threat-model-review-checklist.md",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Remove once the doc is restored or the link is fixed."
+    },
+    {
+      "doc": "docs/adr/ADR-001-stellar-path-payment-architecture.md",
+      "ref": "backend/src/services/pathPayment.service.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). ADR text may describe a removed file."
+    },
+    {
+      "doc": "docs/adr/ADR-001-stellar-path-payment-architecture.md",
+      "ref": "lib/retry.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). ADR text may describe a removed file."
+    },
+    {
+      "doc": "docs/adr/ADR-001-stellar-path-payment-architecture.md",
+      "ref": "lib/circuitBreaker.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). ADR text may describe a removed file."
+    },
+    {
+      "doc": "docs/adr/ADR-002-escrow-loss-sharing-model.md",
+      "ref": "contracts/amana_escrow/src/tests/bps_fuzz_tests.rs",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the test or update the ADR."
+    },
+    {
+      "doc": "docs/adr/ADR-002-escrow-loss-sharing-model.md",
+      "ref": "backend/src/lib/lossAllocation.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the module or update the ADR."
+    },
+    {
+      "doc": "docs/adr/ADR-002-escrow-loss-sharing-model.md",
+      "ref": "backend/src/__tests__/lossAllocation.test.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the test or update the ADR."
+    },
+    {
+      "doc": "docs/contract-error-codes.md",
+      "ref": "backend/src/services/contractClawbackError.service.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the file or update the doc."
+    },
+    {
+      "doc": "docs/contract-error-codes.md",
+      "ref": "backend/src/errors/errorCodes.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the file or update the doc."
+    },
+    {
+      "doc": "docs/contract-error-codes.md",
+      "ref": "contracts/amana_escrow/tests/clawback_error_tests.rs",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the test or update the doc."
+    },
+    {
+      "doc": "docs/event-schema.md",
+      "ref": "schemas/events/amana_escrow.events.json",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the schema or update the doc."
+    },
+    {
+      "doc": "docs/event-schema.md",
+      "ref": "contracts/amana_escrow/src/generated/event_schema.rs",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the generated file or update the doc."
+    },
+    {
+      "doc": "docs/event-schema.md",
+      "ref": "backend/src/types/generated/events.generated.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the generated file or update the doc."
+    },
+    {
+      "doc": "docs/event-schema.md",
+      "ref": "backend/src/lib/eventDecoder.ts",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the module or update the doc."
+    },
+    {
+      "doc": "docs/event-schema.md",
+      "ref": "contracts/amana_escrow/src/tests/generated_schema_tests.rs",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the test or update the doc."
+    },
+    {
+      "doc": "docs/eziagric_contract_overview.md",
+      "ref": "src/tests/partial_delivery_tests.rs",
+      "reason": "Pre-existing unresolved reference at checker introduction (#696). Restore the test or update the doc."
     }
   ]
 }

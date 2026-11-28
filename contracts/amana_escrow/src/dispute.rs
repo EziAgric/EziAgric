@@ -1,7 +1,7 @@
 //! Dispute lifecycle: initiation, single-mediator and quorum resolution,
 //! fallback resolution and evidence submission.
 
-use soroban_sdk::{Address, Bytes, Env, String, Vec, contractimpl, token};
+use soroban_sdk::{Address, Bytes, Env, Strin     g, Vec, contractimpl, token};
 
 use crate::*;
 
@@ -134,7 +134,7 @@ impl EscrowContract {
         let mediator = Self::require_mediator(&env, mediator);
 
         assert!(
-            seller_gets_bps <= BPS_DIVISOR as u32,
+            seller_gets_bps <= BPS_DENOMINATOR,
             "seller_gets_bps must be <= 10_000"
         );
 
@@ -304,7 +304,7 @@ impl EscrowContract {
         let mediator = Self::require_mediator(&env, mediator);
 
         assert!(
-            seller_gets_bps <= BPS_DIVISOR as u32,
+            seller_gets_bps <= BPS_DENOMINATOR,
             "seller_gets_bps must be <= 10_000"
         );
         assert!(
@@ -609,7 +609,7 @@ impl EscrowContract {
         let total = trade.amount;
 
         // Calculate the loss amount in basis points
-        let loss_bps = BPS_DIVISOR - (seller_gets_bps as i128);
+        let loss_bps = BPS_DENOMINATOR as i128 - (seller_gets_bps as i128);
 
         // Distribute loss according to agreed ratios
         // seller_loss = total * loss_bps * seller_loss_bps / (10_000 * 10_000)

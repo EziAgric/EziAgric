@@ -5,13 +5,16 @@ import { Alert, type AlertButton } from 'react-native';
 import MediatorDisputeReviewScreen from '../MediatorDisputeReviewScreen';
 import apiClient from '../../api/client';
 import { useAuthStore } from '../../stores/authStore';
+import { useBiometrics } from '../../hooks/useBiometrics';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('../../api/client', () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn() } }));
 jest.mock('../../stores/authStore', () => ({ useAuthStore: jest.fn() }));
+jest.mock('../../hooks/useBiometrics', () => ({ useBiometrics: jest.fn() }));
 
+const mockAuthenticate = jest.fn();
 const mockGet = apiClient.get as jest.Mock;
 const mockPost = apiClient.post as jest.Mock;
 const authHeaders = { headers: { Authorization: 'Bearer tok-123' } };
@@ -62,6 +65,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   (useAuthStore as unknown as jest.Mock).mockReturnValue({ token: 'tok-123' });
+  mockAuthenticate.mockResolvedValue(true);
+  (useBiometrics as unknown as jest.Mock).mockReturnValue({
+    authenticate: mockAuthenticate,
+  });
   mockGet.mockResolvedValue({ data: detail() });
   mockPost.mockResolvedValue({ data: {} });
 });
@@ -162,6 +169,29 @@ describe('MediatorDisputeReviewScreen', () => {
 
       expect(lastAlertButtons()[0]).toMatchObject({ text: 'Cancel', style: 'cancel' });
       expect(mockPost).not.toHaveBeenCalled();
+    });
+
+    it('does not settle the dispute when biometric authentication fails', async () => {
+      mockAuthenticate.mockResolvedValue(false);
+      const utils = setup();
+      await fillNotesAndSubmit(utils);
+
+      await pressAlertButton('Submit');
+
+      expect(mockAuthenticate).toHaveBeenCalledWith('Approve settlement');
+      expect(mockPost).not.toHaveBeenCalled();
+    });
+
+    it('re-prompts on every settlement approval', async () => {
+      const utils = setup();
+      await fillNotesAndSubmit(utils);
+      await pressAlertButton('Submit');
+
+      await fillNotesAndSubmit(utils);
+      await pressAlertButton('Submit');
+
+      expect(mockAuthenticate).toHaveBeenCalledTimes(2);
+      expect(mockPost).toHaveBeenCalledTimes(2);
     });
 
     it('submits trimmed notes on confirm, then goes back after OK', async () => {

@@ -13,23 +13,31 @@ on:
         required: false
         default: "on-demand mutation check"
 
+  # Run contracts mutation testing on PRs that touch contracts/src/
+  pull_request:
+    paths:
+      - "contracts/src/**"
+      - ".cargo-mutants.toml"
+      - ".github/workflows/mutation-testing.yml"
+
 jobs:
   mutation-money-math:
     name: StrykerJS — feeComputation + lossAllocation
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: backend
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: pnpm
@@ -46,7 +54,7 @@ jobs:
 
       - name: Upload mutation HTML report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: mutation-report-money-math-${{ github.run_number }}
           path: backend/reports/mutation/money-math/
@@ -54,7 +62,7 @@ jobs:
 
       - name: Upload mutation JSON report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: mutation-json-money-math-${{ github.run_number }}
           path: backend/reports/mutation/money-math/mutation-report.json
@@ -76,6 +84,63 @@ jobs:
             echo "Report artifact: mutation-report-money-math-${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "See \`docs/mutation-testing-baseline.md\` for triage instructions." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Mutation report not found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  mutation-contracts:
+    name: cargo-mutants — contracts
+    runs-on: ubuntu-latest
+    # Only run on PRs that modify contracts/src/ (schedule/dispatch skip this job)
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: contracts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-mutants-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-mutants-
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+
+      - name: Run cargo mutants
+        # Threshold (5% survived) is configured in .cargo-mutants.toml;
+        # cargo-mutants exits non-zero when the threshold is exceeded.
+        run: cargo mutants --workspace --in-place --output mutants.out
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cargo-mutants-report-${{ github.run_number }}
+          path: contracts/mutants.out/
+          retention-days: 30
+
+      - name: Summarise mutation results in job summary
+        if: always()
+        run: |
+          OUT="mutants.out"
+          if [ -f "$OUT/outcomes.json" ]; then
+            echo "## cargo-mutants results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Report artifact: cargo-mutants-report-${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Threshold (max survived %): see \`.cargo-mutants.toml\`." >> $GITHUB_STEP_SUMMARY
           else
             echo "Mutation report not found." >> $GITHUB_STEP_SUMMARY
           fi

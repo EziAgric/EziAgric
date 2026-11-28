@@ -14,6 +14,7 @@ import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types/navigation';
 import apiClient from '../api/client';
 import { useAuthStore } from '../stores/authStore';
+import { useBiometrics } from '../hooks/useBiometrics';
 
 type Props = StackScreenProps<RootStackParamList, 'MediatorDisputeReview'>;
 
@@ -67,6 +68,7 @@ export default function MediatorDisputeReviewScreen({ route, navigation }: Props
   const { disputeId } = route.params;
   const insets = useSafeAreaInsets();
   const { token } = useAuthStore();
+  const { authenticate } = useBiometrics();
 
   const [dispute, setDispute] = useState<DisputeDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,6 +104,10 @@ export default function MediatorDisputeReviewScreen({ route, navigation }: Props
           onPress: async () => {
             setSubmitting(true);
             try {
+              // A cancelled or failed biometric prompt must never settle a
+              // dispute. The result is never cached; every approval re-prompts.
+              const authenticated = await authenticate('Approve settlement');
+              if (!authenticated) return;
               await apiClient.post(
                 `/mediator/disputes/${disputeId}/resolve`,
                 { resolution, notes: notes.trim() },

@@ -4,13 +4,13 @@ use soroban_sdk::{Address, Env, contractimpl, token};
 
 use crate::*;
 
-pub(crate) const BPS_DIVISOR: i128 = 10_000;
+pub(crate) const BPS_DENOMINATOR: u32 = 10_000;
 
 pub(crate) fn checked_fee_amount(amount: i128, fee_bps: u32) -> i128 {
     amount
         .checked_mul(fee_bps as i128)
         .expect("fee calculation overflow")
-        / BPS_DIVISOR
+        / BPS_DENOMINATOR as i128
 }
 
 pub(crate) fn checked_loss_amount(total: i128, loss_bps: i128, seller_loss_bps: u32) -> i128 {
@@ -19,7 +19,7 @@ pub(crate) fn checked_loss_amount(total: i128, loss_bps: i128, seller_loss_bps: 
         .expect("loss calculation overflow")
         .checked_mul(seller_loss_bps as i128)
         .expect("loss sharing calculation overflow")
-        / (BPS_DIVISOR * BPS_DIVISOR)
+        / (BPS_DENOMINATOR as i128 * BPS_DENOMINATOR as i128)
 }
 
 #[contractimpl]
@@ -116,12 +116,12 @@ pub(crate) fn partial_delivery_split(
     let delivered = total
         .checked_mul(delivered_bps as i128)
         .expect("delivered amount overflow")
-        / BPS_DIVISOR;
+        / BPS_DENOMINATOR as i128;
     let undelivered = total - delivered;
     let buyer_refund = undelivered
         .checked_mul(seller_loss_bps as i128)
         .expect("undelivered loss overflow")
-        / BPS_DIVISOR;
+        / BPS_DENOMINATOR as i128;
     let fee = checked_fee_amount(delivered, fee_bps);
     let seller_amount = total - buyer_refund - fee;
     (delivered, undelivered, seller_amount, buyer_refund, fee)

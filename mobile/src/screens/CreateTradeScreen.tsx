@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -217,6 +217,26 @@ function Step2Negotiation({
   onBack: () => void;
   onNext: () => void;
 }) {
+  const [customBuyer, setCustomBuyer] = useState(String(data.buyerRatio));
+  const [customError, setCustomError] = useState<string | null>(null);
+
+  // Keep the custom field in step with presets and the +/-1% stepper.
+  useEffect(() => {
+    setCustomBuyer(String(data.buyerRatio));
+    setCustomError(null);
+  }, [data.buyerRatio]);
+
+  const onCustomChange = (text: string) => {
+    setCustomBuyer(text);
+    const n = Number(text);
+    if (/^\d{1,3}$/.test(text) && n <= 100) {
+      setCustomError(null);
+      update({ buyerRatio: n, sellerRatio: 100 - n });
+    } else {
+      setCustomError('Enter a whole number from 0 to 100.');
+    }
+  };
+
   return (
     <View style={stepStyles.container}>
       <Text style={styles.sectionTitle}>Step 2: Negotiation</Text>
@@ -230,9 +250,9 @@ function Step2Negotiation({
         {/* Preset chips */}
         <View style={stepStyles.presetRow}>
           {([
-            { label: 'Equal\n50/50', buyer: 50 },
-            { label: 'Buyer-lean\n70/30', buyer: 70 },
-            { label: 'Seller-lean\n30/70', buyer: 30 },
+            { label: 'Balanced\n50/50', buyer: 50 },
+            { label: 'Seller-favored\n70/30', buyer: 70 },
+            { label: 'Buyer-favored\n30/70', buyer: 30 },
             { label: 'Full buyer\n100/0', buyer: 100 },
             { label: 'Full seller\n0/100', buyer: 0 },
           ] as { label: string; buyer: number }[]).map(({ label, buyer }) => (
@@ -305,6 +325,19 @@ function Step2Negotiation({
             <Text style={stepStyles.lossExampleBold}>{data.sellerRatio * 10} cNGN</Text>.
           </Text>
         </View>
+
+        {/* Custom entry: seller share is derived, so the split always sums to 100 */}
+        <Text style={stepStyles.label}>Custom buyer share (%)</Text>
+        <TextInput
+          style={stepStyles.input}
+          keyboardType="number-pad"
+          maxLength={3}
+          placeholder="50"
+          value={customBuyer}
+          onChangeText={onCustomChange}
+          accessibilityLabel="Custom buyer loss share percent"
+        />
+        {customError ? <Text style={stepStyles.ratioSubtitle}>{customError}</Text> : null}
       </View>
 
       <View style={stepStyles.field}>
