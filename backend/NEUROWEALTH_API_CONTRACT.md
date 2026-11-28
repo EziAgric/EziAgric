@@ -760,3 +760,76 @@ grep "correlation_id=12345678" logs/amana-backend.log
 ```
 
 Or in Jaeger/Zipkin UI, search by trace ID.
+
+---
+
+## Trade Templates
+
+Trade templates let users save reusable trade configurations and spin up new trades from them in one call.
+
+### Save a template
+
+```
+POST /trades/templates
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "name": "Maize bulk deal",
+  "cropType": "MAIZE",
+  "quantity": 1000,
+  "unit": "KG",
+  "pricePerUnit": "0.50",
+  "currency": "USDC",
+  "deliveryDays": 14
+}
+```
+
+**Response `201 Created`**
+
+```json
+{
+  "id": "tmpl_01HXYZ",
+  "name": "Maize bulk deal",
+  "cropType": "MAIZE",
+  "quantity": 1000,
+  "unit": "KG",
+  "pricePerUnit": "0.50",
+  "currency": "USDC",
+  "deliveryDays": 14,
+  "createdAt": "2026-06-24T10:00:00Z"
+}
+```
+
+### List templates
+
+```
+GET /trades/templates
+Authorization: Bearer <jwt_token>
+```
+
+**Response `200 OK`**
+
+```json
+{
+  "templates": [
+    { "id": "tmpl_01HXYZ", "name": "Maize bulk deal", "cropType": "MAIZE", "createdAt": "2026-06-24T10:00:00Z" }
+  ]
+}
+```
+
+### Create a trade from a template
+
+```
+POST /trades/templates/:templateId/create
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "counterpartyWallet": "GBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+}
+```
+
+A new trade is created with all fields pre-filled from the template. The response mirrors `POST /trades`.
+
+**Relationship to trades:** a template is a saved parameter set only; it has no on-chain state. Creating from a template is equivalent to `POST /trades` with those parameters — the resulting trade is independent and the template is unchanged.

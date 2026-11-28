@@ -40,6 +40,26 @@ function LossRatioBar({
 
 export function ContractInfo({ trade }: ContractInfoProps) {
   const { t } = useTranslation();
+  const stellarNetwork =
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK === "testnet"
+      ? "testnet"
+      : "public";
+  const contractExplorerUrl = `https://stellar.expert/explorer/${stellarNetwork}/contract/${encodeURIComponent(
+    trade.contractId
+  )}`;
+  const metadata: { label: string; value: string; href?: string }[] = [
+    {
+      label: t("tradeDetail.contractId"),
+      value: trade.contractId,
+      href: contractExplorerUrl,
+    },
+    { label: t("tradeDetail.incoterms"), value: trade.incoterms },
+    { label: t("tradeDetail.originPort"), value: trade.originPort },
+    { label: t("tradeDetail.destinationPort"), value: trade.destinationPort },
+    { label: t("tradeDetail.eta"), value: trade.eta },
+    { label: t("tradeDetail.carrier"), value: trade.carrier },
+  ];
+
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card">
       <h2 className="text-sm font-semibold text-text-secondary tracking-wide uppercase mb-4">
@@ -48,19 +68,23 @@ export function ContractInfo({ trade }: ContractInfoProps) {
 
       {/* Contract meta */}
       <div className="grid grid-cols-2 gap-3 mb-5">
-        {[
-          { label: t("tradeDetail.contractId"), value: trade.contractId },
-          { label: t("tradeDetail.incoterms"), value: trade.incoterms },
-          { label: t("tradeDetail.originPort"), value: trade.originPort },
-          { label: t("tradeDetail.destinationPort"), value: trade.destinationPort },
-          { label: t("tradeDetail.eta"), value: trade.eta },
-          { label: t("tradeDetail.carrier"), value: trade.carrier },
-        ].map(({ label, value }) => (
+        {metadata.map(({ label, value, href }) => (
           <div key={label}>
             <p className="text-xs text-text-muted mb-0.5">{label}</p>
-            <p className="text-xs font-semibold text-text-primary truncate">
-              {value}
-            </p>
+            {href ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block truncate text-xs font-semibold text-gold hover:text-gold-hover hover:underline"
+              >
+                {value}
+              </a>
+            ) : (
+              <p className="text-xs font-semibold text-text-primary truncate">
+                {value}
+              </p>
+            )}
           </div>
         ))}
       </div>

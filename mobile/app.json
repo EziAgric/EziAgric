@@ -56,6 +56,12 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Amana uses Face ID to protect trade confirmations and settlement approvals."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "cameraPermission": "Amana uses the camera so you can photograph produce for your listings.",
