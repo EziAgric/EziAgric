@@ -6,8 +6,10 @@ name: k6 Performance Budgets
 #                     hot path changes; a budget breach fails the required
 #                     check and posts a readable diff table on the PR.
 #   * schedule      → nightly full-load run against staging; results are
-#                     appended to the `perf-trends` branch and a Markdown
-#                     trend dashboard is regenerated.
+#                     appended to the `perf-trends` branch, pushed to the
+#                     Prometheus Pushgateway (Grafana dashboard + breach
+#                     alert in infra/), and a Markdown trend dashboard is
+#                     regenerated.
 #   * workflow_dispatch (mode=slowdown-experiment) → injects latency via a
 #                     proxy and asserts the gate trips. Proves the budgets
 #                     actually block regressions.
@@ -99,13 +101,13 @@ jobs:
       SLOWDOWN: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'slowdown-experiment' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
 
       - name: Setup Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: pnpm
@@ -179,14 +181,14 @@ jobs:
 
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request' && hashFiles('k6-budget-report.md') != ''
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3
         with:
           header: k6-budget-report
           path: k6-budget-report.md
 
       - name: Upload k6 artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: k6-smoke-${{ github.run_number }}
           path: |
@@ -225,7 +227,7 @@ jobs:
       contents: write   # push to the perf-trends branch only
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install k6
         run: |
@@ -244,6 +246,11 @@ jobs:
             echo "::error::STAGING_BASE_URL secret is not configured"; exit 1
           fi
           k6 run k6/load-test.js
+          # Write-path scenarios (deposit → confirm → dispute) — tracked in #690.
+          # Runs only when the scenario files exist so the job doesn't break before they're added.
+          for scenario in k6/deposit.js k6/confirm.js k6/dispute.js; do
+            [ -f "$scenario" ] && k6 run "$scenario" || echo "skip: $scenario not yet present (#690)"
+          done
 
       - name: Fetch trend history
         run: |
@@ -262,7 +269,19 @@ jobs:
             --profile full \
             --output k6-budget-report-full.md \
             --trend-file perf-trends/full.jsonl \
-            --sha "$GITHUB_SHA"
+            --sha "$GITHUB_SHA" \
+            --metrics-output k6-budget-metrics-full.prom
+
+      - name: Push budget metrics to Pushgateway
+        if: always() && hashFiles('k6-budget-metrics-full.prom') != ''
+        env:
+          PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
+        run: |
+          if [ -z "$PUSHGATEWAY_URL" ]; then
+            echo "::warning::PUSHGATEWAY_URL is not configured; budget metrics were not pushed to Prometheus"; exit 0
+          fi
+          curl -fsS --retry 3 --data-binary @k6-budget-metrics-full.prom \
+            "$PUSHGATEWAY_URL/metrics/job/k6_perf_budgets/profile/full"
 
       - name: Render trend dashboard
         if: always()
@@ -286,7 +305,7 @@ jobs:
 
       - name: Upload k6 artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: k6-full-${{ github.run_number }}
           path: |

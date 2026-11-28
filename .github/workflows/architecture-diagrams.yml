@@ -22,11 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Detect changed paths
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
         with:
           filters: |
             docs:
@@ -41,7 +41,7 @@ jobs:
         if: steps.filter.outputs.docs != 'true' && github.event_name != 'workflow_dispatch'
         run: echo "No docs or diagram changes — architecture diagram gate skipped."
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.filter.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
         with:
           node-version: 20
@@ -58,7 +58,7 @@ jobs:
 
       - name: Upload rendered previews
         if: always() && (steps.filter.outputs.docs == 'true' || github.event_name == 'workflow_dispatch')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: architecture-diagrams
           path: ${{ runner.temp }}/diagrams

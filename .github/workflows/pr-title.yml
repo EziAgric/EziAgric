@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Lint PR title
         id: lint
-        uses: amannn/action-semantic-pull-request@v6
+        uses: amannn/action-semantic-pull-request@66e72920af32222769c386d81f89656ebcb6d6d5 # v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -44,7 +44,7 @@ jobs:
 
       - name: Explain how to fix the title
         if: always() && steps.lint.outputs.error_message != null
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3
         with:
           header: pr-title-lint
           message: |
@@ -66,7 +66,7 @@ jobs:
 
       - name: Clear lint comment
         if: steps.lint.outputs.error_message == null
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3
         with:
           header: pr-title-lint
           delete: true

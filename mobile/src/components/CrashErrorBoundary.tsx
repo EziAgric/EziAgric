@@ -36,7 +36,7 @@ export class CrashErrorBoundary extends Component<Props, State> {
     });
   }
 
-  private handleReset = (): void => {
+  private handleRestart = (): void => {
     this.setState({ error: null });
   };
 
@@ -48,9 +48,12 @@ export class CrashErrorBoundary extends Component<Props, State> {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Something went wrong</Text>
-        <Text style={styles.body}>The team has been notified. You can try again.</Text>
-        <Pressable style={styles.button} onPress={this.handleReset} testID="crash-boundary-retry">
-          <Text style={styles.buttonLabel}>Try again</Text>
+        <Text style={styles.body}>
+          The app ran into an unexpected problem. The team has been notified. You can restart the app to
+          try again.
+        </Text>
+        <Pressable style={styles.button} onPress={this.handleRestart} testID="crash-boundary-restart">
+          <Text style={styles.buttonLabel}>Restart app</Text>
         </Pressable>
       </View>
     );

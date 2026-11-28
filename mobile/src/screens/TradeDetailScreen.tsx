@@ -17,6 +17,7 @@ import type { RootStackParamList } from '../types/navigation';
 import type { Trade, TradeStatus } from '../types/trade';
 import { useTradeStore } from '../stores/tradeStore';
 import { useAuthStore } from '../stores/authStore';
+import { useBiometrics } from '../hooks/useBiometrics';
 import apiClient from '../api/client';
 import { AdminErrorBanner } from '../components/AdminErrorBanner';
 import { buildSupportMailto } from '../constants/support';
@@ -150,6 +151,7 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
     clearErrorView,
   } = useTradeStore();
   const { clearAuth, token } = useAuthStore();
+  const { authenticate } = useBiometrics();
 
   const [disputeModalVisible, setDisputeModalVisible] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
@@ -172,6 +174,25 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
       void Linking.openURL(buildSupportMailto(view, 'trade detail'));
     },
     []
+  );
+
+  /**
+   * High-value actions are gated by a fresh OS authentication prompt. A
+   * cancelled/failed prompt never reaches the store mutation.
+   */
+  const runProtectedAction = useCallback(
+    async (reason: string, action: () => Promise<void>): Promise<boolean> => {
+      setActionLoading(true);
+      try {
+        const authenticated = await authenticate(reason);
+        if (!authenticated) return false;
+        await action();
+        return true;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [authenticate]
   );
 
   const handleDeposit = useCallback(() => {
@@ -202,15 +223,14 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
         {
           text: 'Confirm',
           style: 'default',
-          onPress: async () => {
-            setActionLoading(true);
-            await confirmDelivery(tradeId);
-            setActionLoading(false);
-          },
+          onPress: () =>
+            void runProtectedAction('Confirm delivery', () =>
+              confirmDelivery(tradeId)
+            ),
         },
       ]
     );
-  }, [tradeId, confirmDelivery]);
+  }, [tradeId, confirmDelivery, runProtectedAction]);
 
   const handleReleaseFunds = useCallback(() => {
     Alert.alert(
@@ -221,15 +241,14 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
         {
           text: 'Release',
           style: 'destructive',
-          onPress: async () => {
-            setActionLoading(true);
-            await releaseFunds(tradeId);
-            setActionLoading(false);
-          },
+          onPress: () =>
+            void runProtectedAction('Release escrow funds', () =>
+              releaseFunds(tradeId)
+            ),
         },
       ]
     );
-  }, [tradeId, releaseFunds]);
+  }, [tradeId, releaseFunds, runProtectedAction]);
 
   const handleDisputeSubmit = useCallback(async () => {
     if (!disputeReason.trim()) {
@@ -398,6 +417,7 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
 
           {canConfirm && (
             <TouchableOpacity
+              testID="confirm-delivery-button"
               style={[styles.actionBtn, styles.confirmBtn, actionLoading && styles.btnDisabled]}
               onPress={handleConfirmDelivery}
               disabled={actionLoading}
@@ -412,6 +432,7 @@ export default function TradeDetailScreen({ route, navigation }: Props) {
 
           {canRelease && (
             <TouchableOpacity
+              testID="release-funds-button"
               style={[styles.actionBtn, styles.releaseBtn, actionLoading && styles.btnDisabled]}
               onPress={handleReleaseFunds}
               disabled={actionLoading}

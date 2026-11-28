@@ -9,14 +9,23 @@ interface FinancialSummaryProps {
   trade: TradeDetail;
 }
 
+// shortcut: fixed cNGN→NGN estimate, replace with a live rate when one is exposed
+const NGN_PER_CNGN = 1600;
+
+const toNgn = (cngn: number) => Math.round(cngn * NGN_PER_CNGN);
+
 function FinancialRow({
   label,
   value,
+  ngn,
+  sub,
   highlight,
   dimmed,
 }: {
   label: string;
   value: string;
+  ngn?: number;
+  sub?: string;
   highlight?: boolean;
   dimmed?: boolean;
 }) {
@@ -27,20 +36,31 @@ function FinancialRow({
       >
         {label}
       </span>
-      <span
-        className={`text-sm font-semibold ${
-          highlight ? "text-status-danger" : "text-text-primary"
-        }`}
-      >
-        {value}
-      </span>
+      <div className="text-right">
+        <span
+          className={`block text-sm font-semibold ${
+            highlight ? "text-status-danger" : "text-text-primary"
+          }`}
+        >
+          {value}
+        </span>
+        {sub && <span className="block text-xs text-text-muted">{sub}</span>}
+        {ngn !== undefined && (
+          <span className="block text-xs text-text-muted">
+            {`≈ ₦${ngn.toLocaleString("en-US")} NGN`}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
 export function FinancialSummary({ trade }: FinancialSummaryProps) {
   const { t } = useTranslation();
-  const ngnEquivalent = Math.round(trade.vaultAmountLocked * 1600);
+  const ngnEquivalent = toNgn(trade.vaultAmountLocked);
+  // Settlement: buyer pays the locked amount; seller receives it minus the platform fee.
+  const netSellerReceipt = trade.vaultAmountLocked - trade.platformFee;
+  const feeBps = Math.round(trade.platformFeePercent * 100);
 
   return (
     <div className="bg-card rounded-xl border border-border-default p-6 shadow-card">
@@ -64,11 +84,24 @@ export function FinancialSummary({ trade }: FinancialSummaryProps) {
         <FinancialRow
           label={t("tradeDetail.assetValue")}
           value={`${trade.assetValue.toLocaleString()} cNGN`}
+          ngn={toNgn(trade.assetValue)}
         />
         <FinancialRow
           label={t("tradeDetail.platformFee", { percent: trade.platformFeePercent })}
           value={`${trade.platformFee.toLocaleString()} cNGN`}
+          ngn={toNgn(trade.platformFee)}
+          sub={`${feeBps} bps`}
           highlight
+        />
+        <FinancialRow
+          label={t("tradeDetail.netSellerReceipt")}
+          value={`${netSellerReceipt.toLocaleString()} cNGN`}
+          ngn={toNgn(netSellerReceipt)}
+        />
+        <FinancialRow
+          label={t("tradeDetail.netBuyerPayment")}
+          value={`${trade.vaultAmountLocked.toLocaleString()} cNGN`}
+          ngn={ngnEquivalent}
         />
         <FinancialRow
           label={t("tradeDetail.networkGasEst")}

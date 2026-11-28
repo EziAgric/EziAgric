@@ -1,0 +1,105 @@
+name: Contracts CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - '.cargo-mutants.toml'
+      - '.github/workflows/contracts.yml'
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - '.cargo-mutants.toml'
+      - '.github/workflows/contracts.yml'
+
+jobs:
+  test:
+    name: Build & Test Contracts
+    runs-on: ubuntu-latest
+    defaults:
+      run: 
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
+
+      - name: Build contracts
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Run tests
+        run: cargo test --all-features
+
+  mutation:
+    name: Mutation Testing (cargo-mutants)
+    runs-on: ubuntu-latest
+    # Only run mutation testing on PRs that modify contracts sources.
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-mutants-${{ hashFiles('contracts/Cargo.lock') }}
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+
+      - name: Run cargo mutants
+        # Continue on error so the report is always uploaded before failing.
+        continue-on-error: true
+        run: |
+          cargo mutants --config ../.cargo-mutants.toml --json > mutants-report/mutants.json || true
+          mkdir -p mutants-report
+          cargo mutants --config ../.cargo-mutants.toml --json > mutants-report/mutants.json || true
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-report
+          path: contracts/mutants-report/
+          if-no-files-found: warn
+
+      - name: Enforce survival threshold
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          with open('mutants-report/mutants.json') as f:
+              data = json.load(f)
+          mutants = data.get('mutants', data if isinstance(data, list) else [])
+          total = len(mutants)
+          survived = sum(1 for m in mutants if m.get('status') == 'survived')
+          if total == 0:
+              print('No mutants generated; skipping threshold check.')
+              sys.exit(0)
+          rate = survived / total * 100
+          print(f'Survived {survived}/{total} mutants ({rate:.2f}%)')
+          if rate > 5.0:
+              print('Survival rate exceeds 5% threshold.')
+              sys.exit(1)
+          PY
