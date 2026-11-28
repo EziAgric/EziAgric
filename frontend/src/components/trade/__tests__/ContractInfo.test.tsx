@@ -39,6 +39,56 @@ const fullTrade: TradeDetail = {
 };
 
 describe("ContractInfo", () => {
+  const originalNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+
+  afterEach(() => {
+    if (originalNetwork === undefined) {
+      delete process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+    } else {
+      process.env.NEXT_PUBLIC_STELLAR_NETWORK = originalNetwork;
+    }
+  });
+
+  function expectContractLink(href: string) {
+    const link = screen.getByRole("link", { name: fullTrade.contractId });
+    expect(link).toHaveAttribute("href", href);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  }
+
+  it("links the contract ID to the public Stellar Expert explorer by default", () => {
+    delete process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+
+    render(<ContractInfo trade={fullTrade} />);
+
+    expectContractLink(
+      "https://stellar.expert/explorer/public/contract/AMN-CTR-42"
+    );
+  });
+
+  it("uses the testnet explorer when NEXT_PUBLIC_STELLAR_NETWORK is testnet", () => {
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK = "testnet";
+
+    render(<ContractInfo trade={fullTrade} />);
+
+    expectContractLink(
+      "https://stellar.expert/explorer/testnet/contract/AMN-CTR-42"
+    );
+  });
+
+  it("encodes the contract ID in the explorer URL", () => {
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK = "public";
+    const contractId = "AMN/CTR 42";
+
+    render(<ContractInfo trade={{ ...fullTrade, contractId }} />);
+
+    const link = screen.getByRole("link", { name: contractId });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://stellar.expert/explorer/public/contract/AMN%2FCTR%2042"
+    );
+  });
+
   it("renders the key contract metadata fields from a full trade", () => {
     render(<ContractInfo trade={fullTrade} />);
 

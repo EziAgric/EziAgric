@@ -1,0 +1,310 @@
+name: Contracts CI
+
+# PR guards for the Soroban escrow contract:
+#   1. wasm-size  - builds the optimized WASM on the PR head AND the base branch,
+#                   reports the size delta, fails over the Soroban limit, warns on >10% growth.
+#   2. abi-snapshot - regenerates the contract interface (ABI) JSON and diffs it
+#                   against contracts/snapshots/amana_escrow.abi.json.
+#   3. test - builds the contracts and runs the test suite.
+#   4. mutation - runs cargo-mutants and enforces a survival threshold.
+
+on:
+  pull_request:
+    paths:
+      - "contracts/**"
+      - "scripts/update-abi-snapshot.sh"
+      - ".cargo-mutants.toml"
+      - ".github/workflows/contracts.yml"
+  push:
+    branches: [main]
+    paths:
+      - "contracts/**"
+      - "scripts/update-abi-snapshot.sh"
+      - ".cargo-mutants.toml"
+      - ".github/workflows/contracts.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CRATE_DIR: contracts/amana_escrow
+  CRATE_NAME: amana_escrow
+  # Soroban network limit for contract code (64 KiB).
+  SOROBAN_WASM_LIMIT_BYTES: "65536"
+  # Growth above this percentage produces a warning (not a failure).
+  WASM_GROWTH_WARN_PCT: "10"
+  STELLAR_CLI_VERSION: "23.1.4"
+
+jobs:
+  wasm-size:
+    name: WASM Size Delta
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: wasm-size-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.lock') }}
+
+      - name: Install wasm-opt (binaryen)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binaryen
+
+      - name: Build and optimize head WASM
+        id: head
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/head.wasm"
+          build_wasm() {
+            ( cd "$1/$CRATE_DIR" && cargo build --locked --target wasm32-unknown-unknown --features wasm --release )
+            local target_dir
+            target_dir=$(cd "$1/$CRATE_DIR" && cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
+            wasm-opt -Oz --strip-debug --strip-producers \
+              "$target_dir/wasm32-unknown-unknown/release/$CRATE_NAME.wasm" -o "$2"
+          }
+          build_wasm "$GITHUB_WORKSPACE" "$out"
+          echo "size=$(stat -c%s "$out")" >> "$GITHUB_OUTPUT"
+
+      - name: Build and optimize base WASM
+        id: base
+        # A base branch that cannot build (e.g. crate did not exist yet) must not
+        # block the PR - the delta is simply reported as unavailable.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "Base commit $BASE_SHA not available"; exit 1
+          fi
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          out="$RUNNER_TEMP/base.wasm"
+          ( cd "$RUNNER_TEMP/base/$CRATE_DIR" && cargo build --locked --target wasm32-unknown-unknown --features wasm --release )
+          target_dir=$(cd "$RUNNER_TEMP/base/$CRATE_DIR" && cargo metadata --format-version 1 --no-deps | jq -r .target_directory)
+          wasm-opt -Oz --strip-debug --strip-producers \
+            "$target_dir/wasm32-unknown-unknown/release/$CRATE_NAME.wasm" -o "$out"
+          echo "size=$(stat -c%s "$out")" >> "$GITHUB_OUTPUT"
+
+      - name: Report size delta and enforce limits
+        env:
+          HEAD_SIZE: ${{ steps.head.outputs.size }}
+          BASE_SIZE: ${{ steps.base.outputs.size }}
+        run: |
+          set -euo pipefail
+          kb() { awk -v b="$1" 'BEGIN { printf "%.2f KB", b / 1024 }'; }
+          signed_kb() { awk -v b="$1" 'BEGIN { printf "%+.2f KB", b / 1024 }'; }
+
+          LIMIT="$SOROBAN_WASM_LIMIT_BYTES"
+          HEADROOM=$(( LIMIT - HEAD_SIZE ))
+
+          if [ -n "${BASE_SIZE:-}" ]; then
+            DELTA=$(( HEAD_SIZE - BASE_SIZE ))
+            PCT=$(awk -v d="$DELTA" -v b="$BASE_SIZE" 'BEGIN { if (b == 0) print "0.00"; else printf "%+.2f", d * 100 / b }')
+            DELTA_TXT="$(signed_kb "$DELTA") (${PCT}%)"
+            BASE_TXT="$(kb "$BASE_SIZE") ($BASE_SIZE B)"
+          else
+            DELTA=""; PCT=""
+            DELTA_TXT="n/a (base branch did not build)"
+            BASE_TXT="n/a"
+          fi
+
+          {
+            echo "## Contract WASM size delta"
+            echo ""
+            echo "| | Size |"
+            echo "|---|---:|"
+            echo "| Base (\`${{ github.base_ref || 'previous commit' }}\`) | $BASE_TXT |"
+            echo "| Head (this PR) | $(kb "$HEAD_SIZE") ($HEAD_SIZE B) |"
+            echo "| **Delta** | **$DELTA_TXT** |"
+            echo "| Soroban limit | $(kb "$LIMIT") ($LIMIT B) |"
+            echo "| Headroom | $(signed_kb "$HEADROOM") |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$PCT" ] && awk -v p="$PCT" -v t="$WASM_GROWTH_WARN_PCT" 'BEGIN { exit !(p > t) }'; then
+            MSG="WASM grew by ${PCT}% ($(signed_kb "$DELTA")), above the ${WASM_GROWTH_WARN_PCT}% threshold. Check for new dependencies or features."
+            echo "::warning title=WASM size growth::$MSG"
+            echo "> ⚠️ $MSG" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$HEAD_SIZE" -gt "$LIMIT" ]; then
+            MSG="Optimized WASM is $HEAD_SIZE bytes, over the Soroban limit of $LIMIT bytes. The contract cannot be deployed."
+            echo "::error title=WASM over Soroban limit::$MSG"
+            echo "> ❌ $MSG" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "> ✅ Within Soroban size limit." >> "$GITHUB_STEP_SUMMARY"
+
+  abi-snapshot:
+    name: ABI Snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache stellar-cli binary
+        id: cache-stellar
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/stellar
+          key: stellar-cli-${{ runner.os }}-${{ env.STELLAR_CLI_VERSION }}
+
+      - name: Install stellar-cli
+        if: steps.cache-stellar.outputs.cache-hit != 'true'
+        run: cargo install --locked stellar-cli --version "$STELLAR_CLI_VERSION"
+
+      - name: Regenerate ABI and diff against snapshot
+        run: |
+          set -euo pipefail
+          SNAPSHOT="contracts/snapshots/$CRATE_NAME.abi.json"
+          GENERATED="$RUNNER_TEMP/$CRATE_NAME.abi.json"
+
+          bash ./scripts/update-abi-snapshot.sh "$GENERATED"
+
+          if [ ! -f "$SNAPSHOT" ]; then
+            echo "::error title=ABI snapshot missing::$SNAPSHOT does not exist. Run ./scripts/update-abi-snapshot.sh and commit the result."
+            exit 1
+          fi
+
+          if diff -u "$SNAPSHOT" "$GENERATED" > "$RUNNER_TEMP/abi.diff"; then
+            echo "## Contract ABI snapshot" >> "$GITHUB_STEP_SUMMARY"
+            echo "✅ ABI matches \`$SNAPSHOT\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          cat "$RUNNER_TEMP/abi.diff"
+          {
+            echo "## Contract ABI snapshot"
+            echo ""
+            echo "❌ The contract interface changed but \`$SNAPSHOT\` was not updated."
+            echo ""
+            echo "If the change is **intentional**:"
+            echo "1. Run \`./scripts/update-abi-snapshot.sh\` from the repo root."
+            echo "2. Update the backend TypeScript bindings that call the changed functions."
+            echo "3. Commit both the snapshot and the binding changes in this PR."
+            echo ""
+            echo "If it is **not intentional**, revert the signature change in \`$CRATE_DIR/src/\`."
+            echo ""
+            echo '```diff'
+            head -c 60000 "$RUNNER_TEMP/abi.diff"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=ABI snapshot is stale::Contract ABI differs from $SNAPSHOT. See the job summary for the diff and how to update the snapshot."
+          exit 1
+
+  test:
+    name: Build & Test Contracts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/Cargo.lock') }}
+
+      - name: Build contracts
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Run tests
+        run: cargo test --all-features
+
+  mutation:
+    name: Mutation Testing (cargo-mutants)
+    runs-on: ubuntu-latest
+    # Only run mutation testing on PRs that modify contracts sources.
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: ${{ runner.os }}-cargo-mutants-${{ hashFiles('contracts/Cargo.lock') }}
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+
+      - name: Run cargo mutants
+        # Continue on error so the report is always uploaded before failing.
+        continue-on-error: true
+        run: |
+          cargo mutants --config ../.cargo-mutants.toml --json > mutants-report/mutants.json || true
+          mkdir -p mutants-report
+          cargo mutants --config ../.cargo-mutants.toml --json > mutants-report/mutants.json || true
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-report
+          path: contracts/mutants-report/
+          if-no-files-found: warn
+
+      - name: Enforce survival threshold
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          with open('mutants-report/mutants.json') as f:
+              data = json.load(f)
+          mutants = data.get('mutants', data if isinstance(data, list) else [])
+          total = len(mutants)
+          survived = sum(1 for m in mutants if m.get('status') == 'survived')
+          if total == 0:
+              print('No mutants generated; skipping threshold check.')
+              sys.exit(0)
+          rate = survived / total * 100
+          print(f'Survived {survived}/{total} mutants ({rate:.2f}%)')
+          if rate > 5.0:
+              print('Survival rate exceeds 5% threshold.')
+              sys.exit(1)
+          PY

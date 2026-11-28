@@ -21,6 +21,9 @@ export interface ListingFilters {
   region?: string;
   minPrice?: number;
   maxPrice?: number;
+  /** Quantity range, in the listing's unit. */
+  minQuantity?: number;
+  maxQuantity?: number;
   /** Free-text search. */
   q?: string;
 }

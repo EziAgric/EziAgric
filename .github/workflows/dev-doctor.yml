@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: debian:bookworm-slim
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Doctor must fail with fix hints
         run: |
           set +e
@@ -31,11 +31,11 @@ jobs:
     name: Doctor passes after following its hints
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           targets: wasm32-unknown-unknown
       - name: Install dependencies and env files per doctor hints
@@ -43,5 +43,7 @@ jobs:
           for s in frontend backend mobile; do (cd $s && npm install --no-audit --no-fund --ignore-scripts); done
           cp backend/.env.example backend/.env
           cp frontend/.env.example frontend/.env.local
+          # Copy tracing env file; dev-doctor validates its presence separately from .env
+          cp backend/.env.tracing.example backend/.env.tracing 2>/dev/null || true
       - name: Run doctor
         run: bash scripts/dev-doctor.sh --no-smoke

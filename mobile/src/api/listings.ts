@@ -14,6 +14,8 @@ export function buildListingParams(
   if (filters.q?.trim()) params.q = filters.q.trim();
   if (filters.minPrice !== undefined) params.minPrice = filters.minPrice;
   if (filters.maxPrice !== undefined) params.maxPrice = filters.maxPrice;
+  if (filters.minQuantity !== undefined) params.minQuantity = filters.minQuantity;
+  if (filters.maxQuantity !== undefined) params.maxQuantity = filters.maxQuantity;
   return params;
 }
 

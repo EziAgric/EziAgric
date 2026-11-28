@@ -48,22 +48,22 @@ jobs:
       pull-requests: write   # sticky coverage comment
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Setup Rust (with llvm-tools)
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           components: llvm-tools-preview
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2
         with:
           tool: cargo-llvm-cov
 
       - name: Cache cargo
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -99,14 +99,14 @@ jobs:
 
       - name: Upload HTML report
         id: html
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: contract-coverage-html
           path: coverage-html/
           retention-days: 30
 
       - name: Upload summary (+ lcov)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           # The main-branch copy of this artifact is the ratchet baseline.
           name: contract-coverage-summary
@@ -117,7 +117,7 @@ jobs:
 
       - name: Download main baseline
         if: github.event_name == 'pull_request'
-        uses: dawidd6/action-download-artifact@v27
+        uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
         with:
           workflow: contract-coverage.yml
           branch: main
@@ -154,7 +154,7 @@ jobs:
 
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request' && hashFiles('coverage-report.md') != ''
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3
         with:
           header: contract-coverage-report
           path: coverage-report.md
