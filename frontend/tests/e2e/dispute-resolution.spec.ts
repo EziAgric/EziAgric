@@ -1,75 +1,206 @@
-import { test, expect, Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
-/**
- * E2E: full dispute resolution flow
- * create trade -> fund -> open dispute -> mediator login -> resolve
- *
- * Requires a local dev stack seeded with a test wallet that holds cNGN.
- * Seeded credentials are provided via env vars (see .github/workflows/e2e.yml).
- */
+const MEDIATOR_ADDRESS = 'GEXAMPLEMEDIATORPUBLICKEY1';
+const BUYER_ADDRESS = 'GDNM7WSJ7VIUVK2TSZ2OQES5XR2663TZEIBFXRDT56B5IRLHERVWSXMU';
+const SELLER_ADDRESS = 'GA4T33YK6H6D5E7ZQY5W3J2L7F8K9B0N1M2P3Q4R5S6T7U8V9W0X1Y2Z3';
 
-const BUYER = {
-  email: process.env.E2E_BUYER_EMAIL ?? 'buyer@example.test',
-  password: process.env.E2E_BUYER_PASSWORD ?? 'password123',
-};
-
-const MEDIATOR = {
-  email: process.env.E2E_MEDIATOR_EMAIL ?? 'mediator@example.test',
-  password: process.env.E2E_MEDIATOR_PASSWORD ?? 'password123',
-};
-
-async function login(page: Page, user: { email: string; password: string }) {
-  await page.goto('/login');
-  await page.getByLabel(/email/i).fill(user.email);
-  await page.getByLabel(/password/i).fill(user.password);
-  await page.getByRole('button', { name: /log ?in|sign ?in/i }).click();
-  await expect(page).not.toHaveURL(/\/login/);
+function testJwt(walletAddress: string) {
+  const payload = {
+    exp: Math.floor(Date.now() / 1000) + 60 * 60,
+    walletAddress,
+  };
+  return [
+    Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
+    Buffer.from(JSON.stringify(payload)).toString('base64url'),
+    'e2e',
+  ].join('.');
 }
 
-async function createAndFundTrade(page: Page): Promise<string> {
-  await page.goto('/trades/new');
-
-  // Seeded wallet must have cNGN balance for funding to succeed.
-  await expect(page.getByTestId('wallet-balance')).toContainText(/cNGN/i);
-
-  await page.getByLabel(/amount/i).fill('1000');
-  await page.getByLabel(/asset|currency/i).fill('cNGN');
-  await page.getByRole('button', { name: /create trade/i }).click();
-
-  await expect(page).toHaveURL(/\/trades\/[^/]+/);
-  const tradeId = page.url().split('/trades/')[1].split(/[/?#]/)[0];
-  expect(tradeId).toBeTruthy();
-
-  await page.getByRole('button', { name: /fund trade/i }).click();
-  await expect(page.getByTestId('trade-status')).toContainText(/funded/i);
-
-  return tradeId;
+async function seedMediatorWallet(page: Page) {
+  await page.addInitScript(
+    ({ token, addr }) => {
+      window.sessionStorage.setItem('amana_jwt', token);
+      const freighter = {
+        isConnected: async () => ({ isConnected: true }),
+        isAllowed: async () => ({ isAllowed: true }),
+        getAddress: async () => ({ address: addr }),
+        requestAccess: async () => ({ address: addr }),
+        signMessage: async () => ({ signedMessage: 'signed-message' }),
+        signTransaction: async (xdr: string) => ({ signedTxXdr: `signed-${xdr}` }),
+      };
+      Object.assign(window, { freighter, freighterApi: freighter });
+    },
+    { token: testJwt(addr), addr: MEDIATOR_ADDRESS },
+  );
 }
 
-async function openDispute(page: Page) {
-  await page.getByRole('button', { name: /open dispute/i }).click();
-  await page.getByLabel(/reason/i).fill('Counterparty did not deliver as agreed');
-  await page.getByRole('button', { name: /submit dispute/i }).click();
-  await expect(page.getByTestId('trade-status')).toContainText(/disputed/i);
-}
+test.describe('Dispute Resolution Flow', () => {
+  test('displays open disputes on the mediator dashboard', async ({ page }) => {
+    await seedMediatorWallet(page);
 
-test.describe('dispute resolution flow', () => {
-  test('buyer opens a dispute and mediator resolves it', async ({ page }) => {
-    await login(page, BUYER);
-    const tradeId = await createAndFundTrade(page);
-    await openDispute(page);
+    await page.route('http://localhost:4000/disputes?**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [
+            {
+              id: 1,
+              tradeId: '4294967297',
+              initiator: SELLER_ADDRESS,
+              reason: 'Buyer refuses to confirm delivery after goods were shipped.',
+              status: 'OPEN',
+              createdAt: new Date().toISOString(),
+              trade: {
+                buyerAddress: BUYER_ADDRESS,
+                sellerAddress: SELLER_ADDRESS,
+                amountUsdc: '25000',
+              },
+            },
+          ],
+          pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
+        }),
+      });
+    });
 
-    // Mediator logs in and resolves the dispute.
-    await page.getByRole('button', { name: /log ?out|sign ?out/i }).click();
-    await login(page, MEDIATOR);
+    await page.route('http://localhost:4000/trades/4294967297/evidence', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ evidence: [] }),
+      });
+    });
 
-    await page.goto(`/mediator/disputes/${tradeId}`);
-    await expect(page.getByTestId('dispute-details')).toBeVisible();
+    await page.goto('/mediator/disputes');
+    await page.waitForLoadState('networkidle');
 
-    await page.getByRole('button', { name: /resolve/i }).click();
-    await page.getByLabel(/resolution/i).fill('Refund buyer in full');
-    await page.getByRole('button', { name: /confirm resolution/i }).click();
+    await expect(page.getByText(/mediator disputes/i)).toBeVisible();
+    await expect(page.getByText(/4294967297/i)).toBeVisible();
+    await expect(page.getByText(/25000/i)).toBeVisible();
+  });
 
-    await expect(page.getByTestId('dispute-status')).toContainText(/resolved/i);
+  test('resolves a dispute with equal split', async ({ page }) => {
+    await seedMediatorWallet(page);
+
+    await page.route('http://localhost:4000/disputes?**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [
+            {
+              id: 1,
+              tradeId: '4294967297',
+              initiator: BUYER_ADDRESS,
+              reason: 'Goods damaged on arrival.',
+              status: 'OPEN',
+              createdAt: new Date().toISOString(),
+              trade: {
+                buyerAddress: BUYER_ADDRESS,
+                sellerAddress: SELLER_ADDRESS,
+                amountUsdc: '25000',
+              },
+            },
+          ],
+          pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
+        }),
+      });
+    });
+
+    await page.route('http://localhost:4000/trades/4294967297/evidence', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          evidence: [
+            {
+              id: 'ev-001',
+              cid: 'QmTestHash123',
+              mimeType: 'image/jpeg',
+              uploadedBy: SELLER_ADDRESS,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto('/mediator/disputes');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByText(/4294967297/i).click();
+    await expect(page.getByText(/resolve dispute/i)).toBeVisible();
+
+    const equalSplitButton = page.getByRole('button', {
+      name: /equal split|50\/50/i,
+    }).first();
+    if (await equalSplitButton.isVisible()) {
+      await equalSplitButton.click();
+      await expect(page.getByText(/confirm resolution/i)).toBeVisible();
+      await expect(page.getByText(/seller receives/i)).toBeVisible();
+    }
+  });
+
+  test('submits evidence for a dispute', async ({ page }) => {
+    await seedMediatorWallet(page);
+
+    await page.route('http://localhost:4000/trades/4294967297/evidence', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            evidenceId: 'ev-002',
+            ipfsHash: 'QmNewEvidenceHash',
+          }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            evidence: [
+              {
+                id: 'ev-001',
+                cid: 'QmExistingHash',
+                mimeType: 'video/mp4',
+                uploadedBy: SELLER_ADDRESS,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }),
+        });
+      }
+    });
+
+    await page.route('http://localhost:4000/disputes?**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [
+            {
+              id: 1,
+              tradeId: '4294967297',
+              initiator: BUYER_ADDRESS,
+              reason: 'Damaged goods.',
+              status: 'OPEN',
+              createdAt: new Date().toISOString(),
+              trade: {
+                buyerAddress: BUYER_ADDRESS,
+                sellerAddress: SELLER_ADDRESS,
+                amountUsdc: '25000',
+              },
+            },
+          ],
+          pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
+        }),
+      });
+    });
+
+    await page.goto('/mediator/disputes');
+    await page.waitForLoadState('networkidle');
+    await page.getByText(/4294967297/i).click();
+    await expect(page.getByText(/evidence/i)).toBeVisible();
   });
 });

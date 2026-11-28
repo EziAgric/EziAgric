@@ -67,6 +67,9 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@pact-foundation/pact": "17.1.4",
+    "@stryker-mutator/core": "8.7.1",
+    "@stryker-mutator/jest-runner": "8.7.1",
+    "@stryker-mutator/typescript-checker": "8.7.1",
     "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
     "@types/jest": "30.0.0",
@@ -84,9 +87,6 @@
     "ts-jest": "29.4.15",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.73.0",
-    "@stryker-mutator/core": "8.7.1",
-    "@stryker-mutator/jest-runner": "8.7.1",
-    "@stryker-mutator/typescript-checker": "8.7.1"
+    "typescript-eslint": "8.73.0"
   }
 }
