@@ -112,6 +112,24 @@ for (const page of pages.filter((name) => name !== "README.md")) {
   }
 }
 
+// Self-test mode: node scripts/check-architecture-links.mjs --self-test
+if (process.argv.includes("--self-test")) {
+  const cases = [
+    ["Hello World", "hello-world"],
+    ["Foo #Bar (Baz)", "foo-bar-baz"],
+    ["  Trim  ", "trim"],
+  ];
+  let passed = 0;
+  for (const [input, expected] of cases) {
+    const got = slugify(input);
+    if (got === expected) { passed++; continue; }
+    console.error(`slugify(${JSON.stringify(input)}): expected ${JSON.stringify(expected)}, got ${JSON.stringify(got)}`);
+    process.exit(1);
+  }
+  console.log(`self-test: ${passed}/${cases.length} slugify cases OK`);
+  process.exit(0);
+}
+
 if (problems.length > 0) {
   console.error("architecture link check failed:\n");
   for (const problem of problems) console.error(`  - ${problem}`);

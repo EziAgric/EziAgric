@@ -5,44 +5,71 @@ use soroban_sdk::{Address, Env, String, Vec, contractimpl, panic_with_error, tok
 
 use crate::*;
 
+/// Loss ratio for trade cancellation/refund calculations.
+/// buyer_pct and seller_pct must sum to exactly 100.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LossRatio {
+    pub buyer_pct: u32,
+    pub seller_pct: u32,
+}
+
+impl LossRatio {
+    /// Validate that buyer_pct + seller_pct = 100
+    pub fn validate(&self) {
+        assert!(self.buyer_pct <= 100, "buyer_pct must not exceed 100");
+        assert!(self.seller_pct <= 100, "seller_pct must not exceed 100");
+        assert!(
+            self.buyer_pct + self.seller_pct == 100,
+            "loss ratios must sum to 100"
+        );
+    }
+
+    /// Convert percentage to basis points for internal use
+    pub fn to_bps(&self) -> (u32, u32) {
+        (self.buyer_pct * 100, self.seller_pct * 100)
+    }
+}
+
 #[contractimpl]
 impl EscrowContract {
     // -----------------------------------------------------------------------
     // Trade lifecycle
     // -----------------------------------------------------------------------
 
+    /// Get the configured maximum trade amount, or default if not set.
+    fn get_max_trade_amount(env: &Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MaxTradeAmount)
+            .unwrap_or(MAX_TRADE_VALUE)
+    }
+
     pub fn create_trade(
         env: Env,
         buyer: Address,
         seller: Address,
         amount: i128,
-        buyer_loss_bps: u32,
-        seller_loss_bps: u32,
+        loss_ratio: LossRatio,
         expires_at: Option<u64>,
     ) -> u64 {
         Self::assert_not_paused(&env);
         buyer.require_auth();
         assert!(amount > 0, "amount must be greater than zero");
-        assert!(amount <= MAX_TRADE_VALUE, "TradeValueTooLarge");
+        
+        // Use configurable max_trade_amount
+        let max_amount = Self::get_max_trade_amount(&env);
+        assert!(amount <= max_amount, "TradeValueTooLarge");
+        
         assert!(
             buyer != seller,
             "buyer and seller must be different addresses"
         );
-        // Bound each share before summing so a malformed out-of-range value is
-        // rejected with a clear message rather than triggering an opaque u32
-        // overflow panic on the addition below.
-        assert!(
-            buyer_loss_bps <= 10_000,
-            "buyer_loss_bps must not exceed 10000"
-        );
-        assert!(
-            seller_loss_bps <= 10_000,
-            "seller_loss_bps must not exceed 10000"
-        );
-        assert!(
-            buyer_loss_bps + seller_loss_bps == 10_000,
-            "loss ratios must sum to 10000 (100%)"
-        );
+        
+        // Validate loss_ratio sums to exactly 100
+        loss_ratio.validate();
+        
+        let (buyer_loss_bps, seller_loss_bps) = loss_ratio.to_bps();
         let now = env.ledger().timestamp();
         // Validate deadline is in the future when provided
         if let Some(deadline) = expires_at {
@@ -138,6 +165,53 @@ impl EscrowContract {
             amount: trade.amount,
         }
         .publish(&env);
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Lock funds into escrow - alternative entry point that emits TradeFundedEvent
+    /// for real-time backend reactions. This is separate from deposit() to allow
+    /// the backend to track funding status via events.
+    pub fn lock_funds(env: Env, trade_id: u64) {
+        Self::assert_not_paused(&env);
+        let key = DataKey::Trade(trade_id);
+        let mut trade: Trade = Self::load_trade(&env, &key);
+        
+        assert!(
+            matches!(trade.status, TradeStatus::Created),
+            "Trade must be in Created status"
+        );
+        
+        trade.buyer.require_auth();
+        
+        // Transfer cNGN from buyer to escrow
+        let token_client = token::Client::new(&env, &trade.token);
+        token_client.transfer(&trade.buyer, env.current_contract_address(), &trade.amount);
+        
+        let now = env.ledger().timestamp();
+        trade.status = TradeStatus::Funded;
+        trade.funded_at = Some(now);
+        trade.updated_at = now;
+        Self::save_trade(&env, &key, &trade);
+        
+        Self::update_release_sequence(&env, &trade, |sequence, at| {
+            sequence.funded_at = Some(at);
+        });
+        
+        Self::record_trade_event(
+            &env,
+            trade_id,
+            "funded",
+            trade.buyer.clone(),
+            "escrow funded via lock_funds",
+        );
+        
+        // Emit TradeFundedEvent for backend to react in real-time
+        TradeFundedEvent {
+            trade_id,
+            amount: trade.amount,
+        }
+        .publish(&env);
+        
         Self::bump_instance_ttl(&env);
     }
 
@@ -659,6 +733,15 @@ impl EscrowContract {
         }
     }
 
+    /// Confirms delivery of goods, transitioning the trade from `Funded` to
+    /// `Delivered` and recording `delivered_at` on both the trade and the
+    /// release sequence.
+    ///
+    /// **Caller:** buyer only — `trade.buyer.require_auth()` is enforced.
+    ///
+    /// **Precondition:** trade status must be `Funded`; panics otherwise.
+    ///
+    /// **Emits:** [`DeliveryConfirmedEvent`] with `trade_id` and `delivered_at` timestamp.
     pub fn confirm_delivery(env: Env, trade_id: u64) {
         let key = DataKey::Trade(trade_id);
         let mut trade: Trade = Self::load_trade(&env, &key);
@@ -952,6 +1035,11 @@ impl EscrowContract {
             .unwrap_or_else(|| soroban_sdk::Vec::new(&env))
     }
 
+    /// Returns a snapshot of cumulative contract counters: `(total_trades, total_disputes, total_resolved)`.
+    ///
+    /// - `total_trades`   – number of trades ever created via `create_trade`
+    /// - `total_disputes` – number of disputes ever raised via `initiate_dispute`
+    /// - `total_resolved` – number of disputes resolved via `resolve_dispute`
     pub fn get_contract_metrics(env: Env) -> (u64, u64, u64) {
         let total_trades: u64 = env
             .storage()

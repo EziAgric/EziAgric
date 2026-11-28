@@ -49,6 +49,7 @@ To provide a programmable safety net for regional commodity trading. Amana ensur
 - **Storage:** IPFS (via Pinata) for decentralized storage of video evidence.
 - **Database:** Supabase (Off-chain metadata, driver logs, and user profiles).
 - **Observability:** OpenTelemetry distributed tracing with correlation IDs for end-to-end request tracking.
+- **Feature flags:** Admin-controlled toggles. Partially documented; see [docs/feature-flags.md](./docs/feature-flags.md) for status and gaps.
 
 ## 🧪 Local Environments (Folder-Based)
 
@@ -83,10 +84,26 @@ Setup failing? See [Troubleshooting local setup](docs/troubleshooting-local-setu
 
 ### Mobile setup
 
+The mobile app (`mobile/`) is a React Native Expo application providing the wallet, notification, and trade UX for buyers and sellers on iOS and Android.
+
+**Key responsibilities:**
+- Passkey-based onboarding and wallet creation (via the email-auth flow in `backend/`)
+- Real-time push notifications for trade state changes (deposit, confirm, dispute, release)
+- In-app trade flow: initiate → deposit → confirm → dispute/release
+
+**Environment variables** (see `mobile/.env.example`):
+| Variable | Description |
+|---|---|
+| `EXPO_PUBLIC_API_URL` | Backend base URL |
+| `EXPO_PUBLIC_WS_URL` | WebSocket endpoint for real-time updates |
+
+**Local dev:**
 1. `cd mobile`
 2. `cp .env.example .env.local`
 3. `npm install`
 4. `npm start`
+
+The Expo dev server starts on port 8081. Use Expo Go or a simulator to preview on device. CI runs `npm run type-check` and `npm run lint` on every PR (see "Mobile Required Gate" in the CI matrix).
 
 ### Backend API docs
 
@@ -124,12 +141,9 @@ Amana enforces stack-level CI gates on pull requests through `.github/workflows/
 - **Backend Required Gate**: `npm ci`, `npm run build`, `npm test` in `backend/`
 - **Mobile Required Gate**: `npm ci`, `npm run type-check`, `npm run lint` in `mobile/`
 - **Contracts Required Gate**: `cargo test` in `contracts/amana_escrow/`
-<<<<<<< HEAD
   - Also builds the optimized WASM, posts its size and sha256 to the job summary, fails if it exceeds the size budget (`WASM_SIZE_BUDGET_BYTES`), and verifies a clean rebuild produces the same sha256
 - **Conventional PR Title**: PR titles must follow Conventional Commits (`.github/workflows/pr-title.yml`); see [CONTRIBUTING.md](CONTRIBUTING.md#commits-and-pr-titles)
-=======
 - **Architecture Diagrams Gate** (`.github/workflows/architecture-diagrams.yml`): renders the Mermaid diagrams in `docs/architecture/` and link-checks them on docs changes
->>>>>>> pr-484
 
 Path-aware execution is enabled to avoid unnecessary runtime. If a stack has no changed files, the gate reports a skip-note and passes.
 
@@ -315,6 +329,7 @@ Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr).
 - [ADR-006: Mobile Navigation and State Architecture](./docs/adr/ADR-006-mobile-navigation-and-state-architecture.md)
 - [ADR-007: Offline Caching and Conflict Resolution](./docs/adr/ADR-007-offline-caching-and-conflict-resolution.md)
 - [ADR-008: Notification and Deep-Link Architecture](./docs/adr/ADR-008-notification-and-deep-link-architecture.md)
+- [ADR-010: Event Bus for Trade State Change Propagation](./docs/adr/adr-010-event-bus.md)
 
 ## 🔐 Security & Operations
 
@@ -332,6 +347,8 @@ Key architectural decisions are documented as ADRs in [`docs/adr/`](./docs/adr).
 ## 🤝 Contributing
 
 EziAgric is an open-source project aimed at improving food security and trade efficiency. We welcome developers, designers, and agricultural experts!
+
+See [CHANGELOG.md](./CHANGELOG.md) for a detailed list of changes between releases.
 
 1. Fork the Project.
 2. Create your Feature Branch (`git checkout -b feature/NewFeature`).
@@ -400,3 +417,27 @@ Distributed under the MIT License. See `LICENSE` for more information.
 - #364: [Contract] Reject self-trades where buyer == seller
 <!-- handsoff-issue-426 -->
 - #426: [Frontend] Price reference widget on listing form
+
+<!-- handsoff-issue-965 -->
+- #965: [Testing] Add settlement amount invariant test
+
+<!-- handsoff-issue-924 -->
+- #924: [Contracts] Add list_disputes view returning open dispute IDs
+
+<!-- handsoff-issue-926 -->
+- #926: [Contracts] Add partial delivery tests for split escrow release
+
+<!-- handsoff-issue-912 -->
+- #912: [Contracts] Add get_trade_count view function
+
+<!-- handsoff-issue-913 -->
+- #913: [Contracts] Add configurable evidence submission deadline
+
+<!-- handsoff-issue-914 -->
+- #914: [Contracts] Add pause/unpause admin entrypoints for emergency stops
+
+<!-- handsoff-issue-915 -->
+- #915: [Contracts] Write Rustdoc for dispute.rs public functions
+
+<!-- handsoff-issue-1002 -->
+- #1002: [Contracts] Add per-token minimum trade amount

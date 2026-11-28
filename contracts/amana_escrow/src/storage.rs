@@ -103,6 +103,8 @@ pub enum DataKey {
     /// Pending `PartialDeliveryProposal` for a trade (#349). Absent when no
     /// partial delivery has been proposed or once it has been settled.
     PartialDelivery(u64),
+    /// Admin-configured maximum trade amount. Absent means use MAX_TRADE_VALUE.
+    MaxTradeAmount,
 }
 
 // ---------------------------------------------------------------------------

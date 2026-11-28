@@ -53,5 +53,8 @@ flowchart LR
   `get_trades(ids)` (max 50 ids per call) instead of one `get_trade` per row.
 - Path-payment funding (NGN → cNGN) is described in
   [ADR-001](../adr/ADR-001-stellar-path-payment-architecture.md).
+- Operators read background job health from `@endpoint GET /health/jobs`, served by
+  `backend/src/routes/job-health.routes.ts`. The clawback script accepts `@flag --dry-run`
+  to preview without submitting transactions.
 
 Up: [System context](./system-context.md) · Down: [Contract modules](./contract-modules.md)

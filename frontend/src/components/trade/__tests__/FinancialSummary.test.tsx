@@ -51,14 +51,16 @@ describe("FinancialSummary", () => {
 
     expect(screen.getByText("25,000")).toBeInTheDocument();
     // 25,000 cNGN × 1,600 = 40,000,000 NGN
-    expect(screen.getByText("≈ ₦40,000,000 NGN")).toBeInTheDocument();
+    // shown on the vault row and the net buyer payment row
+    expect(screen.getAllByText("≈ ₦40,000,000 NGN")).toHaveLength(2);
   });
 
   it("formats asset value, platform fee and gas estimate", () => {
     render(<FinancialSummary trade={baseTrade} />);
 
     expect(screen.getByText("1,250,000 cNGN")).toBeInTheDocument();
-    expect(screen.getByText("25,000 cNGN")).toBeInTheDocument();
+    // fee and net buyer payment both equal 25,000 in this fixture
+    expect(screen.getAllByText("25,000 cNGN")).toHaveLength(2);
     expect(screen.getByText("0.013 ETH")).toBeInTheDocument();
   });
 
@@ -77,7 +79,7 @@ describe("FinancialSummary", () => {
 
     expect(screen.getByText("1,234.56")).toBeInTheDocument();
     // 1,234.56 × 1,600 = 1,975,296 NGN
-    expect(screen.getByText("≈ ₦1,975,296 NGN")).toBeInTheDocument();
+    expect(screen.getAllByText("≈ ₦1,975,296 NGN")).toHaveLength(2);
     expect(screen.getByText("Platform Fee (1.5%)")).toBeInTheDocument();
     expect(screen.getByText("9,876.5 cNGN")).toBeInTheDocument();
     expect(screen.getByText("148.15 cNGN")).toBeInTheDocument();
@@ -95,7 +97,7 @@ describe("FinancialSummary", () => {
       />,
     );
 
-    expect(screen.getByText("≈ ₦0 NGN")).toBeInTheDocument();
-    expect(screen.getAllByText("0 cNGN")).toHaveLength(2);
+    expect(screen.getAllByText("≈ ₦0 NGN")).toHaveLength(4);
+    expect(screen.getAllByText("0 cNGN")).toHaveLength(4);
   });
 });

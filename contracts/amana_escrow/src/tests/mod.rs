@@ -1,4 +1,5 @@
 pub mod batch_getter_tests;
+pub mod clawback_invariant_tests;
 pub mod bps_fuzz_tests;
 pub mod event_schema_tests;
 pub mod fee_update_tests;

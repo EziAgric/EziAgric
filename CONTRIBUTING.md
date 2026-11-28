@@ -11,6 +11,39 @@ merged.
 3. Create a branch with a descriptive name, e.g. `fix/login-redirect`.
 4. Make your changes, add tests where it makes sense, and open a pull request.
 
+## Commit message format
+
+All commits in a pull request are validated against the
+[Conventional Commits](https://www.conventionalcommits.org/) spec by commitlint
+(`commitlint.config.js`, extending `@commitlint/config-conventional`). CI checks
+every commit on your branch that is not in `main` and fails with a list of the
+non-compliant commits.
+
+```
+<type>(<optional scope>)!: <description>
+```
+
+- **type** — one of `feat`, `fix`, `perf`, `security`, `docs`, `refactor`,
+  `test`, `build`, `ci`, `chore`, `style`, `revert`.
+- **scope** — optional, e.g. `feat(api): ...`.
+- **description** — short, imperative, lower-case summary.
+- Mark breaking changes with `!` after the type/scope (`feat(api)!: ...`) or a
+  `BREAKING CHANGE:` footer in the commit body.
+
+Examples:
+
+```
+feat(contracts): add self-trade guard
+fix(api): reject zero-amount transfers
+docs: clarify deployment steps
+```
+
+To check your commits locally before pushing:
+
+```sh
+npx commitlint --from origin/main --to HEAD --verbose
+```
+
 ## Documentation conventions
 
 Documentation lives in `docs/` and in the top-level `README.md`. Docs frequently
@@ -24,19 +57,22 @@ Use the following inline syntax inside Markdown docs:
 
 | Reference kind | Syntax | Example |
 | --- | --- | --- |
-| File path | `` `path/to/file.ext` `` | `` `backend/src/server.ts` `` |
-| Endpoint | `@endpoint METHOD /path` | `@endpoint GET /api/health` |
-| CLI flag | `@flag --name` | `@flag --verbose` |
+| File path | `` `path/to/file.ext` `` | `` `backend/src/routes/job-health.routes.ts` `` |
+| Endpoint | `` `@endpoint <METHOD> <path>` `` | `` `@endpoint GET /health/jobs` `` |
+| CLI flag | `` `@flag <--flag>` `` | `` `@flag --dry-run` `` |
 
 Rules of thumb:
 
-- Reference files by their repository-relative path, wrapped in backticks.
-- Reference endpoints with `@endpoint <METHOD> <path>`; the path must match a
-  route registered in the codebase.
-- Reference CLI flags with `@flag <--flag>`; the flag must be declared in the
-  relevant argument parser.
+- Reference files by their repository-relative path, wrapped in backticks. The
+  path must include a directory and a file extension.
+- Reference endpoints with `@endpoint <METHOD> <path>`; a route registered with
+  that method under `backend/src/` must match the path. Mount prefixes may be
+  omitted from the registration, so `GET /health/jobs` matches `router.get("/jobs")`.
+- Reference CLI flags with `` `@flag --name` ``; the flag must appear as a literal
+  in `scripts/`, `backend/scripts/` or `backend/src/`.
 - Prefer linking to a stable anchor (a file, a route, a flag) over quoting
   snippets that will drift.
+- Text inside fenced code blocks is not checked.
 
 ### Checking your references
 
@@ -44,13 +80,13 @@ The documentation checker validates every anchored reference against the
 codebase. Run it locally before opening a PR:
 
 ```sh
-node scripts/check-docs.mjs
+node scripts/check-doc-refs.mjs
 ```
 
 The checker runs automatically in CI on pull requests that touch documentation
 and **blocks newly broken references**. If a reference is intentionally stale
-(for example, a historical ADR that describes a removed endpoint), add the doc
-to the whitelist in `scripts/check-docs.mjs` with a short comment explaining why.
+(for example, a historical ADR that describes a removed file), add an entry to
+`references` in `.github/doc-refs-whitelist.json` with a reason explaining why.
 
 ### Ownership and staleness
 
@@ -76,6 +112,16 @@ stale docs; keep it clean or triage the entries.
 ## Questions
 
 If anything here is unclear, open an issue and we will improve this guide.
+
+## Snapshot Testing (Mobile)
+
+The mobile app uses Jest snapshot tests to detect UI regressions. When adding or modifying components in `mobile/src/screens/`, update snapshots after changes:
+
+```sh
+cd mobile && npm test -- --updateSnapshot
+```
+
+Review all snapshot changes in PRs to ensure they reflect intended UI changes. Commit updated snapshots alongside code changes.
 # Contributing to EziAgric
 
 ## Picking up an issue (Drips Wave)
@@ -109,6 +155,17 @@ PR titles (and commits) follow [Conventional Commits](https://www.conventionalco
 
 Mark breaking changes with `!` after the type/scope (`feat(api)!: ...`) or a `BREAKING CHANGE:` footer in the commit body. Breaking changes produce a major bump and are highlighted at the top of the release notes.
 
+### Commit message requirements
+
+Every commit on a PR branch that is not already in `main` is validated by
+commitlint (`commitlint.config.js`, extending `@commitlint/config-conventional`)
+in CI. Non-compliant commits fail the check with a list of the offending SHAs and
+messages. To validate locally before pushing:
+
+```sh
+npx commitlint --from origin/main --to HEAD --verbose
+```
+
 ## Pull requests
 
 - Fill in the [PR template](.github/pull_request_template.md), including the issue's area, complexity and `Closes #<number>`.
@@ -118,6 +175,33 @@ Mark breaking changes with `!` after the type/scope (`feat(api)!: ...`) or a `BR
   relevant diagram under `docs/architecture` in the same PR, and say in the PR
   description why no diagram changed when that is not obvious — see
   [docs/architecture/README.md](docs/architecture/README.md).
+
+## Load testing
+
+Write-path load tests live under `k6/` and use [k6](https://k6.io). Each scenario targets one endpoint group:
+
+| File | Coverage |
+|---|---|
+| `k6/deposit.js` | `POST /api/v1/trades/:id/deposit` |
+| `k6/confirm.js` | `POST /api/v1/trades/:id/confirm` |
+| `k6/dispute.js` | `POST /api/v1/trades/:id/dispute` |
+
+**Environment variables:**
+
+| Variable | Description |
+|---|---|
+| `K6_API_URL` | Base URL of the target API, e.g. `https://staging.eziagric.app` |
+| `K6_AUTH_TOKEN` | Bearer token for an authenticated test user |
+| `K6_VUS` | Number of virtual users (default: 10) |
+| `K6_DURATION` | Test duration, e.g. `30s` (default: `30s`) |
+
+Run locally:
+```sh
+K6_API_URL=http://localhost:4000 K6_AUTH_TOKEN=<token> k6 run k6/deposit.js
+```
+
+Add a new scenario file when introducing a new write endpoint expected to receive high traffic.
+See #690 for the initial k6 coverage milestone.
 
 ## Where do implementation and PR notes go?
 

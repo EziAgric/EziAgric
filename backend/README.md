@@ -92,6 +92,28 @@ import { uploadListingPhoto } from './services/ipfs.service';
 const { original, display, thumbnail } = await uploadListingPhoto(buffer);
 ```
 
+### Cooperatives API
+
+A **cooperative** is a registered agricultural group that acts as a trusted intermediary between individual farmers and trade buyers. Each cooperative has members (farmers), managers, and admins, identified by their `coopId` (UUID).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/cooperatives/:coopId/home` | Member JWT | Returns the caller's role, cooperative stats (`memberCount`, `activeTrades`, `totalVolumeUsdc`), recent trades, and announcements |
+| `POST` | `/api/v1/cooperatives/:coopId/announcements` | Manager/Admin JWT | Publish a new announcement to the cooperative's feed |
+
+**Response shape — `GET /home`:**
+
+```json
+{
+  "role": "MEMBER",
+  "stats": { "coopId": "…", "name": "Green Valley Cooperative", "memberCount": 12, "activeTrades": 3, "totalVolumeUsdc": 15000 },
+  "recentTrades": [{ "tradeId": "…", "buyerAddress": "G…", "sellerAddress": "G…", "amountUsdc": 500, "status": "ACTIVE", "createdAt": "…" }],
+  "announcements": [{ "id": "…", "title": "Market day Friday", "body": "…", "publishedAt": "…" }]
+}
+```
+
+Cooperative records are cross-referenced in [`docs/architecture/system-context.md`](../docs/architecture/system-context.md) and seeded by `prisma/seed.ts` (see **Demo Seed Data** below).
+
 ### Inbound Webhooks
 
 See [docs/inbound-webhooks.md](docs/inbound-webhooks.md) for how to register a new

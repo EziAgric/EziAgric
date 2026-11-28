@@ -1,0 +1,32 @@
+# k6 nightly performance budget alerts (issue #695).
+#
+# Source: scripts/k6-budget-report.mjs → Pushgateway (job k6_perf_budgets),
+# pushed by .github/workflows/perf-budgets.yml (nightly-full).
+#
+# The consecutive-night count is computed by the report script from the
+# perf-trends history, so Prometheus only has to read the latest push.
+# The `push_time_seconds` guard stops a stale push (nightly job stopped
+# running) from firing forever: Pushgateway keeps the last value indefinitely.
+#
+# Load with `rule_files:` in prometheus.yml.
+
+groups:
+  - name: k6-perf-budgets
+    rules:
+      - alert: K6PerfBudgetBreachedConsecutiveNights
+        # N = 2: the nightly full-load run breached at least one budget on
+        # two consecutive nights.
+        expr: |
+          k6_perf_budget_consecutive_breach_nights{profile="full"} >= 2
+          and on()
+          (time() - push_time_seconds{job="k6_perf_budgets"}) < 172800
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "k6 performance budgets breached {{ $value }} nights in a row"
+          description: >-
+            The nightly full-load k6 run has breached a performance budget
+            for {{ $value }} consecutive nights. Check the Grafana dashboard
+            "k6 Performance Budgets" and the perf-trends branch for the
+            breached thresholds. Triage: docs/performance-budgets.md
