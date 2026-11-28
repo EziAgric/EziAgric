@@ -11,6 +11,39 @@ merged.
 3. Create a branch with a descriptive name, e.g. `fix/login-redirect`.
 4. Make your changes, add tests where it makes sense, and open a pull request.
 
+## Commit message format
+
+All commits in a pull request are validated against the
+[Conventional Commits](https://www.conventionalcommits.org/) spec by commitlint
+(`commitlint.config.js`, extending `@commitlint/config-conventional`). CI checks
+every commit on your branch that is not in `main` and fails with a list of the
+non-compliant commits.
+
+```
+<type>(<optional scope>)!: <description>
+```
+
+- **type** — one of `feat`, `fix`, `perf`, `security`, `docs`, `refactor`,
+  `test`, `build`, `ci`, `chore`, `style`, `revert`.
+- **scope** — optional, e.g. `feat(api): ...`.
+- **description** — short, imperative, lower-case summary.
+- Mark breaking changes with `!` after the type/scope (`feat(api)!: ...`) or a
+  `BREAKING CHANGE:` footer in the commit body.
+
+Examples:
+
+```
+feat(contracts): add self-trade guard
+fix(api): reject zero-amount transfers
+docs: clarify deployment steps
+```
+
+To check your commits locally before pushing:
+
+```sh
+npx commitlint --from origin/main --to HEAD --verbose
+```
+
 ## Documentation conventions
 
 Documentation lives in `docs/` and in the top-level `README.md`. Docs frequently
@@ -121,6 +154,17 @@ PR titles (and commits) follow [Conventional Commits](https://www.conventionalco
 | `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `style`, `revert` | Other changes | patch |
 
 Mark breaking changes with `!` after the type/scope (`feat(api)!: ...`) or a `BREAKING CHANGE:` footer in the commit body. Breaking changes produce a major bump and are highlighted at the top of the release notes.
+
+### Commit message requirements
+
+Every commit on a PR branch that is not already in `main` is validated by
+commitlint (`commitlint.config.js`, extending `@commitlint/config-conventional`)
+in CI. Non-compliant commits fail the check with a list of the offending SHAs and
+messages. To validate locally before pushing:
+
+```sh
+npx commitlint --from origin/main --to HEAD --verbose
+```
 
 ## Pull requests
 
