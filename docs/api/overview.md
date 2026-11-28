@@ -7,6 +7,7 @@ across every endpoint. For endpoint-by-endpoint detail see:
 - [trades.md](./trades.md) - trade lifecycle endpoints
 - [stellar.md](./stellar.md) - Stellar network proxy endpoints
 - [admin.md](./admin.md) - admin-only endpoints
+- [notifications.md](./notifications.md) - in-app notifications and notification preferences
 - [reputation.md](./reputation.md) - user reputation and trust score endpoints
 - [errors.md](./errors.md) - error code reference
 
