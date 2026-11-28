@@ -418,6 +418,9 @@ Distributed under the MIT License. See `LICENSE` for more information.
 <!-- handsoff-issue-426 -->
 - #426: [Frontend] Price reference widget on listing form
 
+<!-- handsoff-issue-965 -->
+- #965: [Testing] Add settlement amount invariant test
+
 <!-- handsoff-issue-924 -->
 - #924: [Contracts] Add list_disputes view returning open dispute IDs
 
