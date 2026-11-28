@@ -17,7 +17,7 @@ services:
     profiles: ["preview"]
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${PREVIEW_POSTGRES_PASSWORD:-preview-password}
+      POSTGRES_PASSWORD: ${PREVIEW_POSTGRES_PASSWORD:?PREVIEW_POSTGRES_PASSWORD must be set for the preview profile}
       POSTGRES_DB: amana_preview
     ports:
       - "${PREVIEW_POSTGRES_PORT:-5435}:5432"
@@ -37,7 +37,7 @@ services:
     image: redis:7-alpine
     profiles: ["preview"]
     environment:
-      REDIS_PASSWORD: ${PREVIEW_REDIS_PASSWORD:-preview-redis-password}
+      REDIS_PASSWORD: ${PREVIEW_REDIS_PASSWORD:?PREVIEW_REDIS_PASSWORD must be set for the preview profile}
     command:
       - sh
       - -c
@@ -61,9 +61,9 @@ services:
     environment:
       NODE_ENV: staging
       PORT: "4000"
-      DATABASE_URL: postgresql://postgres:${PREVIEW_POSTGRES_PASSWORD:-preview-password}@postgres:5432/amana_preview
-      REDIS_URL: redis://:${PREVIEW_REDIS_PASSWORD:-preview-redis-password}@redis:6379/0
-      JWT_SECRET: ${PREVIEW_JWT_SECRET:-preview-jwt-secret-value-minimum-32-chars}
+      DATABASE_URL: postgresql://postgres:${PREVIEW_POSTGRES_PASSWORD:?PREVIEW_POSTGRES_PASSWORD must be set for the preview profile}@postgres:5432/amana_preview
+      REDIS_URL: redis://:${PREVIEW_REDIS_PASSWORD:?PREVIEW_REDIS_PASSWORD must be set for the preview profile}@redis:6379/0
+      JWT_SECRET: ${PREVIEW_JWT_SECRET:?PREVIEW_JWT_SECRET must be set for the preview profile}
       ADMIN_ROUTES_ENABLED: "false"
     ports:
       - "${PREVIEW_PORT:-4001}:4000"

@@ -47,6 +47,7 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const allItems = useMemo(
@@ -59,6 +60,8 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
   );
 
   const open = useCallback(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setIsOpen(true);
     setQuery("");
     setResults(EMPTY_RESULTS);
@@ -129,13 +132,18 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
     return () => document.removeEventListener("keydown", handleFocusTrap);
   }, [isOpen]);
 
-  // Return focus to the trigger button once the dialog closes
+  // Return focus to the previously focused element once the dialog closes
   useEffect(() => {
     if (isOpen) {
       wasOpenRef.current = true;
     } else if (wasOpenRef.current) {
       wasOpenRef.current = false;
-      triggerRef.current?.focus();
+      const previous = previousFocusRef.current;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      } else {
+        triggerRef.current?.focus();
+      }
     }
   }, [isOpen]);
 
@@ -189,9 +197,10 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, -1));
-    } else if (e.key === "Enter" && activeIndex >= 0 && allItems[activeIndex]) {
+    } else if (e.key === "Enter") {
       e.preventDefault();
-      handleSelect(allItems[activeIndex]);
+      const target = activeIndex >= 0 ? allItems[activeIndex] : allItems[0];
+      if (target) handleSelect(target);
     }
   }
 
@@ -248,76 +257,96 @@ export function GlobalSearch({ onClose }: GlobalSearchProps) {
             className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
           />
           {loading && (
-            <svg className="w-4 h-4 animate-spin text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
-              <path d="M12 2a10 10 0 0 1 10 10" />
+            <svg className="w-4 h-4 animate-spin text-text-muted" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="8" cy="8" r="6" strokeOpacity="0.25" />
+              <path d="M14 8a6 6 0 0 0-6-6" strokeLinecap="round" />
             </svg>
           )}
-          <button
-            onClick={close}
-            aria-label="Close search"
-            className="rounded px-1.5 py-0.5 text-xs text-text-muted border border-border-default hover:border-border-hover transition-colors"
-          >
+          <kbd className="hidden sm:inline-flex items-center rounded border border-border-default px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
             Esc
-          </button>
+          </kbd>
         </div>
 
         {/* Results */}
-        <div className="max-h-[60vh] overflow-y-auto p-2" role="listbox" aria-label="Search results">
+        <div className="max-h-[60vh] overflow-y-auto">
           {error && (
-            <p className="px-3 py-4 text-center text-sm text-status-danger">{error}</p>
+            <p className="px-4 py-6 text-center text-sm text-text-muted">{error}</p>
           )}
 
-          {!error && query && !loading && !hasResults && (
-            <p className="px-3 py-4 text-center text-sm text-text-muted">No results for &ldquo;{query}&rdquo;</p>
+          {!error && !query.trim() && (
+            <p className="px-4 py-6 text-center text-sm text-text-muted">
+              Search trades by ID, commodity, buyer, or seller…
+            </p>
           )}
 
-          {!error && !query && (
-            <p className="px-3 py-4 text-center text-sm text-text-muted">Type to search trades, users, and contracts</p>
+          {!error && query.trim() && !loading && !hasResults && (
+            <p className="px-4 py-6 text-center text-sm text-text-muted">
+              No results for “{query.trim()}”
+            </p>
           )}
 
-          {hasResults &&
-            (Object.keys(CATEGORY_LABELS) as Array<keyof GroupedResults>).map((category) => {
-              const items = results[category];
-              if (items.length === 0) return null;
-
-              const baseOffset =
-                category === "trades"
-                  ? 0
-                  : category === "users"
-                    ? results.trades.length
-                    : results.trades.length + results.users.length;
-
-              return (
-                <div key={category} className="mb-1">
-                  <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                    {CATEGORY_LABELS[category]}
-                  </p>
-                  {items.map((item, idx) => {
-                    const globalIdx = baseOffset + idx;
-                    const isActive = activeIndex === globalIdx;
-                    return (
-                      <button
-                        key={item.id}
-                        role="option"
-                        aria-selected={isActive}
-                        onClick={() => handleSelect({ ...item, category })}
-                        className={`w-full flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                          isActive
-                            ? "bg-bg-elevated text-text-primary"
-                            : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
-                        }`}
-                      >
-                        <span className="flex-1 text-sm font-medium truncate">{item.title}</span>
-                        {item.subtitle && (
-                          <span className="text-xs text-text-muted truncate max-w-[40%]">{item.subtitle}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
+          {!error && hasResults && (
+            <ul role="listbox" aria-label="Search results">
+              {(Object.keys(CATEGORY_LABELS) as (keyof GroupedResults)[]).map((category) => {
+                const items = results[category];
+                if (items.length === 0) return null;
+                return (
+                  <li key={category}>
+                    <p className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                      {CATEGORY_LABELS[category]}
+                    </p>
+                    <ul>
+                      {items.map((item) => {
+                        const index = allItems.findIndex(
+                          (i) => i.category === category && i.id === item.id
+                        );
+                        const isActive = index === activeIndex;
+                        return (
+                          <li key={`${category}-${item.id}`}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={isActive}
+                              onClick={() => handleSelect({ ...item, category })}
+                              onMouseEnter={() => setActiveIndex(index)}
+                              className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                                isActive
+                                  ? "bg-bg-elevated text-text-primary"
+                                  : "text-text-secondary hover:bg-bg-elevated"
+                              }`}
+                            >
+                              <span className="flex min-w-0 flex-col">
+                                <span className="truncate font-medium text-text-primary">
+                                  {item.title}
+                                </span>
+                                {item.subtitle && (
+                                  <span className="truncate text-xs text-text-muted">
+                                    {item.subtitle}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="flex flex-shrink-0 items-center gap-2">
+                                {item.status && (
+                                  <span className="rounded-full border border-border-default px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
+                                    {item.status}
+                                  </span>
+                                )}
+                                {item.createdAt && (
+                                  <span className="text-xs text-text-muted">
+                                    {new Date(item.createdAt).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </div>
     </div>

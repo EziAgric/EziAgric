@@ -41,7 +41,7 @@ impl EscrowContract {
             "Trade must be funded"
         );
         assert!(
-            delivered_bps <= BPS_DIVISOR as u32,
+            delivered_bps <= BPS_DENOMINATOR,
             "delivered_bps must be <= 10_000"
         );
 

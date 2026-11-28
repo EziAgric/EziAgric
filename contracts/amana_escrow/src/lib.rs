@@ -27,6 +27,7 @@ mod fees;
 mod partial_delivery;
 pub mod storage;
 mod trade;
+pub mod trade;
 pub mod types;
 
 pub use errors::*;

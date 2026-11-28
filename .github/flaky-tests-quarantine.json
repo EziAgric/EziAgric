@@ -1,4 +1,19 @@
 {
   "version": "1",
-  "entries": []
+  "entries": [
+    {
+      "name": "trade lifecycle: deposit → confirm → release emits SettlementReleased event",
+      "scope": "backend/src/__tests__/trade.lifecycle.test.ts",
+      "expiresAt": "2027-03-01",
+      "owner": "@amana/backend",
+      "reason": "Intermittent timing issue on slow CI runners when Stellar testnet is congested; tracked in #688"
+    },
+    {
+      "name": "cooperative home returns correct activeTrades count after partial delivery",
+      "scope": "backend/src/__tests__/cooperative.home.test.ts",
+      "expiresAt": "2026-10-01",
+      "owner": "@amana/backend",
+      "reason": "Race condition in test teardown — entry left expired intentionally to exercise quarantine expiry validation"
+    }
+  ]
 }

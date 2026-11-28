@@ -55,6 +55,11 @@ tags:
       assigned to a given trade.  All endpoints require bearer-token authentication.
       Sellers may only access their own manifests; mediators and admins have
       full visibility.
+  - name: Watchlist
+  - name: Reputation
+  - name: Templates
+  - name: Cooperatives
+  - name: Notifications
 components:
   securitySchemes:
     bearerAuth:
@@ -3245,7 +3250,6 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "500":
           $ref: "#/components/responses/InternalError"
-
   /drivers:
     get:
       tags: [Drivers]
@@ -3370,5 +3374,75 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /watchlist:
+    get:
+      tags: [Watchlist]
+      summary: List watchlisted trades
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Watchlist returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /reputation:
+    get:
+      tags: [Reputation]
+      summary: Get reputation score for authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Reputation data returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List trade templates
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Templates returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /cooperatives:
+    get:
+      tags: [Cooperatives]
+      summary: List cooperatives
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Cooperatives returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List in-app notifications for authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Notifications returned.
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
         "500":
           $ref: "#/components/responses/InternalError"
