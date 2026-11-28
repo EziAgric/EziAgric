@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Terraform Drift Detection
 
 # Issue #267
@@ -40,7 +42,7 @@ jobs:
   drift:
     name: drift (${{ matrix.environment }})
     if: github.event_name == 'schedule' || inputs.mode == 'drift'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +120,7 @@ jobs:
   lock-test:
     name: state lock test (${{ inputs.environment }})
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'lock-test'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: terraform-${{ inputs.environment }}
     concurrency:
       group: terraform-apply-${{ inputs.environment }}

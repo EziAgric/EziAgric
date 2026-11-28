@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Quarterly Threat Model Review Reminder
 
 # Opens a tracked issue at the start of each quarterly review window
@@ -16,7 +18,7 @@ permissions:
 jobs:
   open-review-issue:
     name: Open Threat Model Review Issue
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

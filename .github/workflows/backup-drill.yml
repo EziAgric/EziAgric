@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Backup Freshness & Restore Drills
 
 # Issue #266 — backups are only real when they've been restored:
@@ -35,7 +37,7 @@ permissions:
 jobs:
   freshness:
     name: Backup Freshness Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: >
       github.event_name == 'schedule' && github.event.schedule == '0 4 * * 1' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'freshness' || github.event.inputs.mode == 'both')
@@ -80,7 +82,7 @@ jobs:
 
   drill:
     name: Quarterly Restore Drill
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     if: >
       github.event_name == 'schedule' && github.event.schedule == '0 5 1 1,4,7,10 *' ||

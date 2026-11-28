@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Mutation Testing — Money Math Pilot
 
 on:
@@ -23,7 +25,7 @@ on:
 jobs:
   mutation-money-math:
     name: StrykerJS — feeComputation + lossAllocation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
       run:

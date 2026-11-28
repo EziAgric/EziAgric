@@ -1,3 +1,5 @@
+# Runner pinned to ubuntu-24.04 (not ubuntu-latest) so runner upgrades are explicit.
+# Revisit when GitHub deprecates ubuntu-24.04 or a newer LTS is needed; bump all workflows together.
 name: Container Scan
 
 # Trivy scanning for container images and IaC (issue #206).
@@ -33,7 +35,7 @@ permissions:
 jobs:
   trivyignore-expiry:
     name: Validate .trivyignore expiry markers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -44,7 +46,7 @@ jobs:
 
   image-scan:
     name: Image scan (${{ matrix.image }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: trivyignore-expiry
     strategy:
@@ -79,7 +81,7 @@ jobs:
 
   backend-image-scan:
     name: Backend application image scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: trivyignore-expiry
     steps:
       - uses: actions/checkout@v7
@@ -138,7 +140,7 @@ jobs:
   posture-report:
     name: Image posture report
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: trivyignore-expiry
     continue-on-error: true
